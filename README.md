@@ -144,6 +144,7 @@ cd frontend && npm run dev
 - **Flask** - API server with SSE streaming
 - **PostgreSQL** - Primary database (conversation history, memory)
 - **ChromaDB** - Vector embeddings for semantic search
+- **Neo4j** - Graph database for Graph RAG (optional, local DB fallback)
 - **OpenRouter** - Multi-model LLM gateway
 - **RestrictedPython** - Sandboxed code execution
 
