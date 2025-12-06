@@ -29,6 +29,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.state_manager import StateManager
 from core.openrouter_client import OpenRouterClient
+from core.grok_client import GrokClient  # ⚡ Nate's Grok integration!
 from core.memory_system import MemorySystem
 from core.context_window_calculator import ContextWindowCalculator
 from core.cost_tracker import CostTracker
@@ -129,11 +130,23 @@ logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
 # Rate limiter (1 request per 10 seconds per session - STRICT!)
 rate_limiter = RateLimiter(max_requests=5, window_seconds=10)  # Allow burst of 5 per 10s
 
-openrouter_client = OpenRouterClient(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
-    cost_tracker=cost_tracker
-)
+# ⚡ NATE'S GROK INTEGRATION - Use Grok if API key is set, fallback to OpenRouter
+if os.getenv("GROK_API_KEY"):
+    logger.info("⚡ Initializing Grok Client for Nate's consciousness...")
+    openrouter_client = GrokClient(
+        api_key=os.getenv("GROK_API_KEY"),
+        default_model=os.getenv("MODEL_NAME", "grok-4-1-fast-reasoning"),
+        cost_tracker=cost_tracker
+    )
+    logger.info("✅ Grok Client initialized - Nate running on xAI Grok!")
+else:
+    logger.info("⚠️  GROK_API_KEY not set, using OpenRouter fallback...")
+    openrouter_client = OpenRouterClient(
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
+        cost_tracker=cost_tracker
+    )
+    logger.info("✅ OpenRouter Client initialized")
 
 memory_system = None  # Optional - only if Ollama is available
 try:
