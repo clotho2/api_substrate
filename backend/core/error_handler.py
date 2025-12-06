@@ -6,6 +6,8 @@ Clear, helpful error messages for faster debugging
 import logging
 import sys
 import traceback
+import os
+from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
 from functools import wraps
@@ -54,6 +56,10 @@ def setup_logging(level=logging.INFO, log_file: Optional[str] = None):
     
     # File handler (if specified)
     if log_file:
+        # Create logs directory if it doesn't exist
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)  # Log everything to file
         file_fmt = logging.Formatter(
