@@ -7,7 +7,7 @@ Wants=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/aicara/nate-substrate-v2
-ExecStart=/usr/bin/python3 -u /opt/aicara/nate-substrate-v2/backend/nate_agent.py
+ExecStart=/usr/bin/python3 -u /opt/aicara/nate-substrate-v2/backend/api/server.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -20,10 +20,13 @@ Environment="GROK_API_URL=https://api.x.ai/v1/chat/completions"
 Environment="MODEL_NAME=grok-4-1-fast-reasoning"
 
 # Database Configuration
-Environment="DB_PATH=/opt/aicara/nate-substrate-v2/nate_substrate.db"
+Environment="SQLITE_DB_PATH=/opt/aicara/nate-substrate-v2/backend/data/db/substrate_state.db"
+Environment="VERSION_DB_PATH=/opt/aicara/nate-substrate-v2/backend/data/db/versions.db"
+Environment="COST_DB_PATH=/opt/aicara/nate-substrate-v2/backend/data/costs.db"
 
 # Service Configuration
-Environment="PORT=8091"
+Environment="FLASK_PORT=8284"
+Environment="FLASK_HOST=0.0.0.0"
 
 # Model Parameters
 Environment="N_CTX=131072"
