@@ -120,12 +120,12 @@ cost_tracker = CostTracker(
     db_path=os.getenv("COST_DB_PATH", "./data/costs.db")
 )
 
-# OpenRouter Real Cost Monitor (GROUND TRUTH!)
+# OpenRouter Real Cost Monitor (optional - only if using OpenRouter)
 from core.openrouter_cost_monitor import OpenRouterCostMonitor
 openrouter_monitor = OpenRouterCostMonitor(
     api_key=os.getenv("OPENROUTER_API_KEY")
 )
-logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
+# Logger message is handled by OpenRouterCostMonitor.__init__
 
 # Rate limiter (1 request per 10 seconds per session - STRICT!)
 rate_limiter = RateLimiter(max_requests=5, window_seconds=10)  # Allow burst of 5 per 10s

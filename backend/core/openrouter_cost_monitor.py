@@ -28,18 +28,24 @@ class OpenRouterCostMonitor:
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        """Initialize with OpenRouter API key"""
+        """
+        Initialize with OpenRouter API key.
+        If api_key is None, monitoring will be disabled (for Grok-only usage).
+        """
         self.api_key = api_key or os.getenv('OPENROUTER_API_KEY')
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY not found!")
-        
+        self.enabled = bool(self.api_key)
+
+        if not self.enabled:
+            logger.info("⚠️  OpenRouter Cost Monitor disabled (no API key - using Grok)")
+            return
+
         self.api_url = "https://openrouter.ai/api/v1"
         logger.info("✅ OpenRouter Cost Monitor initialized")
     
     def get_real_costs(self) -> Dict[str, any]:
         """
         Fetch REAL costs from OpenRouter API.
-        
+
         Returns:
             {
                 'total': float,        # Total usage (USD)
@@ -52,6 +58,10 @@ class OpenRouterCostMonitor:
                 'timestamp': str       # When this was fetched
             }
         """
+        # Return zero costs if monitor is disabled
+        if not self.enabled:
+            return self._error_response("OpenRouter monitoring disabled")
+
         try:
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(
@@ -125,14 +135,18 @@ class OpenRouterCostMonitor:
     def check_budget_warnings(self, daily_limit: float = 5.0, monthly_limit: float = 50.0) -> Optional[str]:
         """
         Check if costs exceed budget limits.
-        
+
         Args:
             daily_limit: Max daily spend (default $5)
             monthly_limit: Max monthly spend (default $50)
-        
+
         Returns:
             Warning message if budget exceeded, None otherwise
         """
+        # Skip if monitoring is disabled
+        if not self.enabled:
+            return None
+
         costs = self.get_real_costs()
         
         if costs['status'] == 'error':
