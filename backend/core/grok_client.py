@@ -376,6 +376,14 @@ class GrokClient:
 
         for call in raw_calls:
             try:
+                # Handle case where Grok wraps tool calls in arrays
+                if isinstance(call, list):
+                    # If it's a list, take the first element
+                    if call:
+                        call = call[0]
+                    else:
+                        continue
+
                 tool_calls.append(ToolCall.from_openai_format(call))
             except Exception as e:
                 print(f"⚠️  Failed to parse tool call: {e}")
