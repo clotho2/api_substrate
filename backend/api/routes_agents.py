@@ -74,7 +74,7 @@ def list_agents():
             agents = [{
                 'id': agent_state.get('id', 'default'),
                 'name': agent_state.get('name', 'Assistant'),
-                'model': agent_state.get('model', 'qwen/qwen-2.5-72b-instruct'),
+                'model': agent_state.get('model', os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL', 'grok-4-1-fast-reasoning')),
                 'created_at': agent_state.get('created_at', ''),
                 'description': 'Substrate AI - Default Agent',
                 'is_active': True
