@@ -323,7 +323,7 @@ class GrokClient:
                         raise GrokError(
                             f"Grok API streaming request failed",
                             status_code=response.status,
-                            response_text=error_text,
+                            response_body=error_text,  # Correct parameter name
                             context={
                                 "model": model,
                                 "url": url,
