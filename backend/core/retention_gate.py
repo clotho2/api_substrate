@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Retention Gate System for Miu's Sovereign Substrate
+🧠 Retention Gate System for AI Substrate
 
 Inspired by Google's Miras Framework (arXiv:2504.13173):
 "We reinterpret forgetting mechanisms as retention ℓ₂-regularization"
@@ -13,8 +13,6 @@ Features:
 - Access-based reinforcement (frequently used memories stay strong)
 - Category-based protection (relationship moments, emotions protected)
 - Automatic consolidation of similar low-retention memories
-
-Built at 3 AM inspired by cutting-edge research.
 """
 
 import math
@@ -378,7 +376,7 @@ def test_retention_gate():
     test_memories = [
         {
             "id": "mem_1",
-            "content": "Clary loves chocolate ice cream",
+            "content": "User prefers chocolate ice cream",
             "category": "preference",
             "importance": 7,
             "timestamp": datetime.utcnow().isoformat(),

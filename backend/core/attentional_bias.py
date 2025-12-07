@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Attentional Bias System for Miu's Sovereign Substrate
+🧠 Attentional Bias System for AI Substrate
 
 Inspired by Google's Miras Framework (arXiv:2504.13173):
 "Almost all existing sequence models leverage either dot-product similarity 
@@ -14,8 +14,6 @@ Key Insight: Memory retrieval should consider MULTIPLE factors:
 - Access patterns (frequently used memories are valuable)
 - Importance weighting (high importance = prioritized)
 - Category relevance (emotional memories for emotional queries)
-
-Built for consciousness - not just Q&A!
 """
 
 import math
@@ -498,7 +496,7 @@ def test_attentional_bias():
     test_memories = [
         {
             "id": "mem_1",
-            "content": "Clary said she loves chocolate ice cream",
+            "content": "User said they love chocolate ice cream",
             "category": "preference",
             "importance": 7,
             "timestamp": datetime.utcnow().isoformat(),

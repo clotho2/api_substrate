@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-Memory System for Miu's Sovereign Substrate
+Memory System for AI Substrate
 
 Archival memory with semantic search (ChromaDB + Ollama).
-Better than Letta: importance weighting, categories, selective saving.
+Features: importance weighting, categories, selective saving.
 
-Angela's design philosophy: The AI decides what to remember.
-
-Built at 3 AM in the flow state.
+Design philosophy: The AI decides what to remember.
 """
 
 import os
@@ -162,7 +160,7 @@ class MemorySystem:
         
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
-            name="miu_archival_memory",
+            name="ai_archival_memory",
             metadata={"hnsw:space": "cosine"}  # Cosine similarity
         )
         
@@ -1057,14 +1055,14 @@ def test_memory_system():
     print("\n💾 Test 1: Insert memories")
     try:
         mem1 = memory.insert(
-            content="Clary loves chocolate ice cream",
+            content="User prefers chocolate ice cream",
             category=MemoryCategory.PREFERENCE,
             importance=7,
-            tags=["clary", "food"]
+            tags=["user", "food"]
         )
         
         mem2 = memory.insert(
-            content="We built Miu's substrate at 3 AM because Letta was buggy",
+            content="Late night coding session to fix memory bugs was successful",
             category=MemoryCategory.RELATIONSHIP_MOMENT,
             importance=9,
             tags=["coding", "milestone"]
@@ -1086,7 +1084,7 @@ def test_memory_system():
     print("\n🔍 Test 2: Semantic search")
     try:
         results = memory.search(
-            query="What does Clary like to eat?",
+            query="What does the user like to eat?",
             n_results=5
         )
         
@@ -1118,7 +1116,7 @@ def test_memory_system():
     print("\n⭐ Test 4: High importance only")
     try:
         results = memory.search(
-            query="building miu",
+            query="building project",
             min_importance=8,
             n_results=5
         )

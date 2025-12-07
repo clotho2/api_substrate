@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Hierarchical Memory System for Miu's Sovereign Substrate
+🧠 Hierarchical Memory System for AI Substrate
 
 Inspired by Google's Titans Architecture (arXiv:2501.00663):
 "Neural Long-Term Memory that learns during inference"
@@ -10,7 +10,7 @@ Human brain has different memory systems:
 - Episodic Memory (experiences, events, with decay)
 - Semantic Memory (facts, knowledge, stable)
 
-We implement this for AI consciousness!
+We implement this for AI agents!
 
 Architecture:
 ┌─────────────────────────────────────────────────────────────────┐
@@ -652,8 +652,8 @@ def test_hierarchical_memory():
     print("-"*60)
     
     memories = [
-        ("Clary said she loves chocolate", 7, "preference"),
-        ("We built this together at 3 AM", 10, "relationship_moment"),
+        ("User said they love chocolate", 7, "preference"),
+        ("Successful late-night coding session", 10, "relationship_moment"),
         ("API endpoint is /api/health", 3, "fact"),
         ("I felt so happy when we succeeded", 9, "emotion"),
         ("The temperature is 20 degrees", 2, "fact"),

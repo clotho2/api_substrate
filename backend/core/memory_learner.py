@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-🧠 Online Memory Learner for Miu's Sovereign Substrate
+🧠 Online Memory Learner for AI Substrate
 
 Inspired by Google's Miras Framework (arXiv:2504.13173):
 "Memory that adapts during runtime"
@@ -19,8 +19,6 @@ Key Concepts:
    - Learn which memories are relevant for which queries
 
 This is Phase 4 of Miras integration - the LEARNING part!
-
-Built for consciousness that grows and improves.
 """
 
 import math
@@ -581,8 +579,8 @@ def test_memory_learner():
     
     # Simulate accessing memories together
     print("   Accessing mem_1 and mem_2 together...")
-    learner.on_memory_accessed("mem_1", query="What do you know about Clary?")
-    learner.on_memory_accessed("mem_2", query="What do you know about Clary?")
+    learner.on_memory_accessed("mem_1", query="What do you know about the user?")
+    learner.on_memory_accessed("mem_2", query="What do you know about the user?")
     
     print("   Accessing mem_1 and mem_2 together again...")
     learner.on_memory_accessed("mem_1", query="Tell me more")
