@@ -143,6 +143,38 @@ def categorize_conversation(content: str) -> MemoryCategory:
     return MemoryCategory.FACT
 
 
+def sanitize_metadata(metadata: Dict) -> Dict:
+    """
+    Sanitize metadata to only include ChromaDB-compatible types.
+
+    ChromaDB only accepts: str, int, float, bool
+    Converts or filters out complex types.
+    """
+    sanitized = {}
+
+    for key, value in metadata.items():
+        # Skip None values
+        if value is None:
+            continue
+
+        # Keep simple types as-is
+        if isinstance(value, (str, int, float, bool)):
+            sanitized[key] = value
+
+        # Convert lists/dicts to JSON string
+        elif isinstance(value, (list, dict)):
+            try:
+                sanitized[key] = json.dumps(value)
+            except:
+                sanitized[key] = str(value)
+
+        # Convert everything else to string
+        else:
+            sanitized[key] = str(value)
+
+    return sanitized
+
+
 def import_conversations(
     jsonl_file: str,
     memory_system: MemorySystem,
@@ -212,7 +244,7 @@ def import_conversations(
                                 category=category,
                                 importance=importance,
                                 tags=['conversation', 'imported', timestamp[:10] if timestamp else ''],
-                                metadata={'source': 'import', 'line': line_num}
+                                metadata=sanitize_metadata({'source': 'import', 'line': line_num})
                             )
                             chunk_count += 1
 
@@ -230,12 +262,17 @@ def import_conversations(
                         importance = calculate_importance(chunk, data)
                         category = categorize_conversation(chunk)
 
+                        # Sanitize metadata to only include ChromaDB-compatible types
+                        raw_meta = data.get('meta', {})
+                        raw_meta['source'] = 'import'
+                        raw_meta['line'] = line_num
+
                         memory_system.insert(
                             content=chunk,
                             category=category,
                             importance=importance,
                             tags=['conversation', 'imported', data.get('date', '')],
-                            metadata=data.get('meta', {})
+                            metadata=sanitize_metadata(raw_meta)
                         )
                         chunk_count += 1
 
@@ -247,12 +284,17 @@ def import_conversations(
                     chunks = chunk_conversation(content)
 
                     for chunk in chunks:
+                        # Sanitize metadata - data dict may contain nested structures
+                        safe_meta = sanitize_metadata(data)
+                        safe_meta['source'] = 'import'
+                        safe_meta['line'] = line_num
+
                         memory_system.insert(
                             content=chunk,
                             category=MemoryCategory.FACT,
                             importance=5,
                             tags=['conversation', 'imported'],
-                            metadata=data
+                            metadata=safe_meta
                         )
                         chunk_count += 1
 
