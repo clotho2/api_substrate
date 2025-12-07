@@ -500,21 +500,35 @@ class MemoryTools:
             Result dict with status, query, page, and results
         """
         if not self.memory:
+            print(f"⚠️  archival_memory_search: self.memory is None!")
             return {
                 "status": "error",
                 "message": "Archival memory system not initialized"
             }
-        
+
         try:
             page_size = 5
-            
+
+            # DEBUG logging
+            print(f"🔍 archival_memory_search DEBUG:")
+            print(f"   Query: '{query}'")
+            print(f"   Min importance: {min_importance}")
+            print(f"   Memory system: {type(self.memory).__name__}")
+
             # Search
             results = self.memory.search(
                 query=query,
                 n_results=page_size,
                 min_importance=min_importance
             )
-            
+
+            print(f"   Results found: {len(results)}")
+            if results:
+                print(f"   First result:")
+                print(f"      Importance: {results[0]['importance']}")
+                print(f"      Relevance: {results[0]['relevance']}")
+                print(f"      Content: {results[0]['content'][:100]}...")
+
             return {
                 "status": "OK",
                 "query": query,
