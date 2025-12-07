@@ -264,6 +264,96 @@ class GrokClient:
                 }
             )
 
+    async def chat_completion_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        model: Optional[str] = None,
+        tools: Optional[List[Dict]] = None,
+        tool_choice: str = "auto",
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ):
+        """
+        Stream chat completion from Grok API.
+
+        Args:
+            messages: List of message dicts
+            model: Model to use (defaults to grok-4-1-fast-reasoning)
+            tools: Tool definitions
+            tool_choice: Tool choice mode ("auto", "none", or specific tool)
+            temperature: Sampling temperature
+            max_tokens: Max tokens to generate
+            **kwargs: Additional parameters
+
+        Yields:
+            Delta dicts from streaming response
+
+        Raises:
+            GrokError: If request fails
+        """
+        model = model or self.default_model
+        url = f"{self.base_url}/chat/completions"
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "temperature": temperature,
+            **kwargs
+        }
+
+        if max_tokens:
+            payload["max_tokens"] = max_tokens
+
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise GrokError(
+                            f"Grok API streaming request failed",
+                            status_code=response.status,
+                            response_text=error_text,
+                            context={
+                                "model": model,
+                                "url": url,
+                                "message_count": len(messages)
+                            }
+                        )
+
+                    # Stream the response
+                    async for line in response.content:
+                        line = line.decode('utf-8').strip()
+
+                        if not line or line == "data: [DONE]":
+                            continue
+
+                        if line.startswith("data: "):
+                            try:
+                                data = json.loads(line[6:])  # Remove "data: " prefix
+                                yield data
+                            except json.JSONDecodeError:
+                                continue
+
+        except aiohttp.ClientError as e:
+            raise GrokError(
+                f"Network error during Grok streaming: {str(e)}",
+                context={
+                    "url": url,
+                    "model": model
+                }
+            )
+
     def get_stats(self) -> Dict[str, Any]:
         """
         Get client statistics (same interface as OpenRouterClient).
