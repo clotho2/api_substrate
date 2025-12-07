@@ -235,13 +235,14 @@ class GrokClient:
                         self.total_prompt_tokens += usage.get('prompt_tokens', 0)
                         self.total_completion_tokens += usage.get('completion_tokens', 0)
 
-                        # Log to cost tracker if available
+                        # Log to cost tracker if available (use CostTracker parameter names)
                         if self.cost_tracker:
                             self.cost_tracker.log_request(
                                 model=model,
-                                prompt_tokens=usage.get('prompt_tokens', 0),
-                                completion_tokens=usage.get('completion_tokens', 0),
-                                cost=0.0  # Grok pricing TBD
+                                input_tokens=usage.get('prompt_tokens', 0),  # Grok calls it prompt_tokens
+                                output_tokens=usage.get('completion_tokens', 0),  # Grok calls it completion_tokens
+                                input_cost=0.0,  # Grok pricing TBD
+                                output_cost=0.0
                             )
 
                     return data
