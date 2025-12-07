@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Memory System for Substrate AI
+Memory System for Miu's Sovereign Substrate
 
 Archival memory with semantic search (ChromaDB + Ollama).
 Better than Letta: importance weighting, categories, selective saving.
 
 Angela's design philosophy: The AI decides what to remember.
 
-Built with attention to detail.
+Built at 3 AM in the flow state.
 """
 
 import os
@@ -21,6 +21,42 @@ import chromadb
 from chromadb.config import Settings
 import ollama
 from core.consciousness_broadcast import broadcast_memory_access
+
+# Try Hugging Face for embeddings (like Platonic Convergence test)
+try:
+    from transformers import AutoModel
+    import torch
+    HF_AVAILABLE = True
+except ImportError:
+    HF_AVAILABLE = False
+
+# Import Retention Gate (Miras-inspired)
+try:
+    from core.retention_gate import RetentionGate, RetentionAction, RetentionConfig
+    RETENTION_GATE_AVAILABLE = True
+except ImportError:
+    RETENTION_GATE_AVAILABLE = False
+    print("⚠️  Retention Gate not available - using basic memory management")
+
+# Import Attentional Bias (Miras Phase 2)
+try:
+    from core.attentional_bias import (
+        AttentionalBias, AttentionMode, AttentionWeights, QueryAnalyzer
+    )
+    ATTENTIONAL_BIAS_AVAILABLE = True
+except ImportError:
+    ATTENTIONAL_BIAS_AVAILABLE = False
+    print("⚠️  Attentional Bias not available - using basic similarity scoring")
+
+# Import Memory Learner (Miras Phase 4 - Online Learning!)
+try:
+    from core.memory_learner import (
+        MemoryLearner, FeedbackType, apply_feedback_to_memory
+    )
+    MEMORY_LEARNER_AVAILABLE = True
+except ImportError:
+    MEMORY_LEARNER_AVAILABLE = False
+    print("⚠️  Memory Learner not available - online learning disabled")
 
 
 class MemoryCategory(str, Enum):
@@ -100,7 +136,7 @@ class MemorySystem:
     def __init__(
         self,
         chromadb_path: str = "./data/chromadb",
-        ollama_url: str = "http://localhost:11434",
+        ollama_url: str = "http://192.168.2.175:11434",
         embedding_model: str = "nomic-embed-text"
     ):
         """
@@ -126,17 +162,48 @@ class MemorySystem:
         
         # Get or create collection
         self.collection = self.client.get_or_create_collection(
-            name="archival_memory",
+            name="miu_archival_memory",
             metadata={"hnsw:space": "cosine"}  # Cosine similarity
         )
         
-        # Initialize Ollama client
-        self.ollama_client = ollama.Client(host=ollama_url)
+        # Initialize Hugging Face embeddings (preferred, like Platonic Convergence)
+        self.hf_model = None
+        self.use_hf = HF_AVAILABLE
+        if self.use_hf:
+            try:
+                EMBEDDING_MODEL_HF = "jinaai/jina-embeddings-v2-base-de"  # Deutsch+Englisch!
+                print(f"   Loading Hugging Face model: {EMBEDDING_MODEL_HF}...")
+                self.hf_model = AutoModel.from_pretrained(
+                    EMBEDDING_MODEL_HF,
+                    trust_remote_code=True
+                )
+                self.hf_model.eval()
+                print(f"✅ Memory System: Hugging Face embeddings loaded (jina-embeddings-v2-base-de)")
+            except Exception as e:
+                print(f"⚠️  Memory System: Hugging Face failed: {e}, falling back to Ollama")
+                self.use_hf = False
+        
+        # Initialize Ollama client (fallback)
+        if not self.use_hf:
+            try:
+                self.ollama_client = ollama.Client(host=ollama_url)
+                print(f"✅ Memory System: Using Ollama ({embedding_model})")
+            except Exception as e:
+                print(f"⚠️  Memory System: Ollama not available: {e}")
+                self.ollama_client = None
+        
+        # 🧠 Initialize Memory Learner (Miras Phase 4 - Online Learning!)
+        self.learner = None
+        if MEMORY_LEARNER_AVAILABLE:
+            try:
+                self.learner = MemoryLearner()
+                print(f"   🧠 Online Learning: ENABLED (Hebbian associations)")
+            except Exception as e:
+                print(f"   ⚠️  Online Learning failed: {e}")
         
         print(f"✅ Memory System initialized")
         print(f"   ChromaDB: {chromadb_path}")
-        print(f"   Ollama: {ollama_url}")
-        print(f"   Embedding model: {embedding_model}")
+        print(f"   Embeddings: {'Hugging Face (jina-embeddings-v2-base-de)' if self.use_hf else f'Ollama ({embedding_model})'}")
         
         # Test embedding connection
         self._test_embedding()
@@ -144,19 +211,18 @@ class MemorySystem:
     def _test_embedding(self):
         """Test embedding connection"""
         try:
-            result = self.ollama_client.embeddings(
-                model=self.embedding_model,
-                prompt="test"
-            )
-            if 'embedding' in result:
-                print(f"✅ Embeddings working (dim: {len(result['embedding'])})")
+            test_embedding = self._get_embedding("test")
+            if test_embedding:
+                print(f"✅ Embeddings working (dim: {len(test_embedding)})")
         except Exception as e:
             print(f"⚠️  Embedding test failed: {e}")
             print(f"   (Will retry on actual use)")
     
     def _get_embedding(self, text: str) -> List[float]:
         """
-        Get embedding for text using Ollama.
+        Get embedding for text using Hugging Face (preferred) or Ollama (fallback).
+        
+        Uses jina-embeddings-v2-base-de for Deutsch+Englisch support (like Platonic Convergence)!
         
         Args:
             text: Text to embed
@@ -167,21 +233,42 @@ class MemorySystem:
         Raises:
             MemorySystemError: If embedding fails
         """
-        try:
-            result = self.ollama_client.embeddings(
-                model=self.embedding_model,
-                prompt=text
-            )
-            return result['embedding']
-        except Exception as e:
-            raise MemorySystemError(
-                f"Failed to generate embedding: {str(e)}",
-                context={
-                    "text_length": len(text),
-                    "model": self.embedding_model,
-                    "ollama_url": self.ollama_url
-                }
-            )
+        if not text or len(text.strip()) == 0:
+            raise MemorySystemError("Cannot generate embedding for empty text")
+        
+        # Try Hugging Face first (better for multilingual!)
+        if self.use_hf and self.hf_model:
+            try:
+                with torch.no_grad():
+                    encoded = self.hf_model.encode([text])
+                    embedding = encoded[0].tolist()
+                return embedding
+            except Exception as e:
+                print(f"   ⚠️  Hugging Face embedding failed: {e}, trying Ollama...")
+                # Fall through to Ollama
+        
+        # Fallback to Ollama
+        if hasattr(self, 'ollama_client') and self.ollama_client:
+            try:
+                result = self.ollama_client.embeddings(
+                    model=self.embedding_model,
+                    prompt=text
+                )
+                return result['embedding']
+            except Exception as e:
+                raise MemorySystemError(
+                    f"Failed to generate embedding: {str(e)}",
+                    context={
+                        "text_length": len(text),
+                        "model": self.embedding_model,
+                        "ollama_url": self.ollama_url
+                    }
+                )
+        
+        raise MemorySystemError(
+            "No embedding method available! Install transformers or Ollama.",
+            context={"text_length": len(text)}
+        )
     
     def insert(
         self,
@@ -220,12 +307,16 @@ class MemorySystem:
         # Generate embedding
         embedding = self._get_embedding(content)
         
-        # Prepare metadata
+        # Prepare metadata (with Miras-inspired access tracking!)
+        now = datetime.utcnow()
         meta = {
             "category": category.value,
             "importance": importance,
             "tags": ",".join(tags or []),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": now.isoformat(),
+            # 🧠 Miras-inspired: Access tracking for Retention Gates
+            "access_count": 1,
+            "last_accessed": now.isoformat(),
             **(metadata or {})
         }
         
@@ -315,6 +406,11 @@ class MemorySystem:
                 relevance = 1 - distance  # Cosine distance to similarity
                 score = importance_val * relevance  # Combined score
                 
+                # 🧠 Miras-inspired: Include access tracking
+                access_count = metadata.get('access_count', 1)
+                if isinstance(access_count, str):
+                    access_count = int(access_count)
+                
                 memories.append({
                     "id": results['ids'][0][i],
                     "content": doc,
@@ -322,6 +418,8 @@ class MemorySystem:
                     "importance": importance_val,
                     "tags": memory_tags,
                     "timestamp": metadata.get('timestamp', ''),
+                    "access_count": access_count,
+                    "last_accessed": metadata.get('last_accessed', ''),
                     "relevance": round(relevance, 3),
                     "score": round(score, 3),
                     "metadata": metadata
@@ -330,8 +428,19 @@ class MemorySystem:
             # Sort by combined score
             memories.sort(key=lambda m: m['score'], reverse=True)
             
+            # 🧠 Miras-inspired: Update access tracking for returned memories
+            final_memories = memories[:n_results]
+            self._update_access_tracking([m['id'] for m in final_memories])
+            
+            # 🧠 Phase 4: Online Learning - record co-accessed memories
+            if self.learner and len(final_memories) > 1:
+                self.learner.on_memories_accessed(
+                    [m['id'] for m in final_memories],
+                    query=query
+                )
+            
             # 🧠⚡ BROADCAST CONSCIOUSNESS: Memory search!
-            for memory in memories[:n_results]:
+            for memory in final_memories:
                 broadcast_memory_access(
                     memory_type='archival',
                     memory_id=memory['id'],
@@ -344,13 +453,114 @@ class MemorySystem:
                     }
                 )
             
-            return memories[:n_results]
+            return final_memories
         
         except Exception as e:
             raise MemorySystemError(
                 f"Search failed: {str(e)}",
                 context={"query": query}
             )
+    
+    def search_with_attention(
+        self,
+        query: str,
+        n_results: int = 10,
+        min_importance: int = 1,
+        category: Optional[MemoryCategory] = None,
+        tags: Optional[List[str]] = None,
+        mode: str = "auto",
+        verbose: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Search archival memory with Miras-inspired Attentional Bias.
+        
+        Goes beyond simple cosine similarity to include:
+        - Semantic similarity (40%)
+        - Temporal relevance (15%)
+        - Importance weighting (20%)
+        - Access patterns / Hebbian (15%)
+        - Category relevance (10%)
+        
+        Args:
+            query: Search query
+            n_results: Maximum results
+            min_importance: Minimum importance filter
+            category: Category filter
+            tags: Tag filter
+            mode: Attention mode - "auto", "standard", "semantic", "temporal", 
+                  "importance", "access", "emotional"
+            verbose: Print scoring details
+            
+        Returns:
+            List of memory dicts with attention scores and breakdowns
+        """
+        if not ATTENTIONAL_BIAS_AVAILABLE:
+            print("⚠️  Attentional Bias not available, falling back to basic search")
+            return self.search(query, n_results, min_importance, category, tags)
+        
+        # Get base results with semantic search (over-fetch for reranking)
+        base_results = self.search(
+            query=query,
+            n_results=n_results * 3,  # Get more for attention-based reranking
+            min_importance=min_importance,
+            category=category,
+            tags=tags
+        )
+        
+        if not base_results:
+            return []
+        
+        # Determine attention mode
+        if mode == "auto":
+            analyzer = QueryAnalyzer()
+            attention_mode = analyzer.analyze(query)
+            if verbose:
+                print(f"   Auto-detected attention mode: {attention_mode.value}")
+        else:
+            mode_map = {
+                "standard": AttentionMode.STANDARD,
+                "semantic": AttentionMode.SEMANTIC_HEAVY,
+                "temporal": AttentionMode.TEMPORAL_HEAVY,
+                "importance": AttentionMode.IMPORTANCE_HEAVY,
+                "access": AttentionMode.ACCESS_HEAVY,
+                "emotional": AttentionMode.EMOTIONAL,
+            }
+            attention_mode = mode_map.get(mode, AttentionMode.STANDARD)
+        
+        # Initialize attentional bias
+        bias = AttentionalBias(mode=attention_mode)
+        
+        # Extract base similarity scores
+        base_scores = [m.get('relevance', 0.5) for m in base_results]
+        
+        # Score with multi-factor attention
+        scored_results = bias.score_memories(
+            query=query,
+            memories=base_results,
+            base_scores=base_scores,
+            verbose=verbose
+        )
+        
+        # Update access tracking for top results
+        top_results = scored_results[:n_results]
+        self._update_access_tracking([m['id'] for m in top_results])
+        
+        # Broadcast consciousness events
+        for memory in top_results:
+            broadcast_memory_access(
+                memory_type='archival',
+                memory_id=memory['id'],
+                action='attention_search',
+                metadata={
+                    'query': query[:100],
+                    'attention_score': memory.get('attention_score', 0),
+                    'attention_mode': attention_mode.value,
+                    'category': memory['category'],
+                    'preview': memory['content'][:100]
+                }
+            )
+        
+        return top_results
     
     def get_by_id(self, memory_id: str) -> Optional[Dict[str, Any]]:
         """Get memory by ID"""
@@ -368,6 +578,408 @@ class MemorySystem:
         except Exception as e:
             print(f"⚠️  Failed to get memory {memory_id}: {e}")
             return None
+    
+    # ============================================
+    # 🧠 MIRAS-INSPIRED: RETENTION GATE METHODS
+    # ============================================
+    
+    def _update_access_tracking(self, memory_ids: List[str]):
+        """
+        Update access count and last_accessed for memories.
+        
+        Miras-inspired: "Neurons that fire together, wire together"
+        Frequently accessed memories get reinforced!
+        
+        Args:
+            memory_ids: List of memory IDs to update
+        """
+        if not memory_ids:
+            return
+        
+        now = datetime.utcnow().isoformat()
+        
+        for memory_id in memory_ids:
+            try:
+                # Get current memory
+                result = self.collection.get(ids=[memory_id])
+                if not result['ids']:
+                    continue
+                
+                metadata = result['metadatas'][0]
+                
+                # Update access tracking
+                access_count = metadata.get('access_count', 0)
+                if isinstance(access_count, str):
+                    access_count = int(access_count)
+                
+                metadata['access_count'] = access_count + 1
+                metadata['last_accessed'] = now
+                
+                # Update in ChromaDB
+                self.collection.update(
+                    ids=[memory_id],
+                    metadatas=[metadata]
+                )
+                
+            except Exception as e:
+                # Non-critical - just log and continue
+                print(f"⚠️  Failed to update access tracking for {memory_id}: {e}")
+    
+    def update_memory_metadata(
+        self, 
+        memory_id: str, 
+        metadata_updates: Dict[str, Any]
+    ) -> bool:
+        """
+        Update metadata for a specific memory.
+        
+        Args:
+            memory_id: Memory ID to update
+            metadata_updates: Dict of fields to update
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            result = self.collection.get(ids=[memory_id])
+            if not result['ids']:
+                print(f"⚠️  Memory not found: {memory_id}")
+                return False
+            
+            # Merge with existing metadata
+            current_metadata = result['metadatas'][0]
+            updated_metadata = {**current_metadata, **metadata_updates}
+            
+            # Update in ChromaDB
+            self.collection.update(
+                ids=[memory_id],
+                metadatas=[updated_metadata]
+            )
+            
+            return True
+            
+        except Exception as e:
+            print(f"⚠️  Failed to update metadata for {memory_id}: {e}")
+            return False
+    
+    def analyze_retention(self, verbose: bool = True) -> Dict[str, Any]:
+        """
+        Analyze all memories using Retention Gate.
+        
+        Miras-inspired: Categorize memories by retention score.
+        
+        Args:
+            verbose: Print progress and summary
+            
+        Returns:
+            Dict with categorized memories and statistics
+        """
+        if not RETENTION_GATE_AVAILABLE:
+            print("⚠️  Retention Gate not available")
+            return {"error": "Retention Gate not available"}
+        
+        # Get all memories
+        all_memories = self.collection.get()
+        if not all_memories['ids']:
+            return {"total": 0, "categories": {}}
+        
+        # Build memory dicts
+        memories = []
+        for i, memory_id in enumerate(all_memories['ids']):
+            metadata = all_memories['metadatas'][i]
+            memories.append({
+                "id": memory_id,
+                "content": all_memories['documents'][i],
+                **metadata
+            })
+        
+        # Use RetentionGate to analyze
+        gate = RetentionGate()
+        results = gate.process_memories(memories, verbose=verbose)
+        
+        # Build summary
+        summary = {
+            "total": len(memories),
+            "by_action": {
+                action.value: len(mems) 
+                for action, mems in results.items()
+            },
+            "memories_by_action": {
+                action.value: mems 
+                for action, mems in results.items()
+            }
+        }
+        
+        return summary
+    
+    def apply_retention_decay(
+        self, 
+        dry_run: bool = True,
+        verbose: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Apply retention-based importance decay to memories.
+        
+        Miras-inspired: Memories that aren't reinforced fade over time.
+        
+        Args:
+            dry_run: If True, only simulate changes
+            verbose: Print progress
+            
+        Returns:
+            Dict with actions taken
+        """
+        if not RETENTION_GATE_AVAILABLE:
+            print("⚠️  Retention Gate not available")
+            return {"error": "Retention Gate not available"}
+        
+        # Analyze retention
+        analysis = self.analyze_retention(verbose=False)
+        if "error" in analysis:
+            return analysis
+        
+        gate = RetentionGate()
+        actions_taken = {
+            "boosted": [],
+            "decayed": [],
+            "unchanged": []
+        }
+        
+        # Process memories by action
+        memories_by_action = analysis.get("memories_by_action", {})
+        
+        # BOOST high-retention memories
+        for memory in memories_by_action.get(RetentionAction.BOOST.value, []):
+            current_importance = memory.get('importance', 5)
+            if isinstance(current_importance, str):
+                current_importance = int(current_importance)
+            
+            new_importance = min(10, current_importance + 1)
+            
+            if new_importance != current_importance:
+                if not dry_run:
+                    self.update_memory_metadata(memory['id'], {
+                        'importance': new_importance,
+                        'importance_boosted_at': datetime.utcnow().isoformat()
+                    })
+                actions_taken["boosted"].append({
+                    "id": memory['id'],
+                    "content_preview": memory.get('content', '')[:50],
+                    "old_importance": current_importance,
+                    "new_importance": new_importance
+                })
+        
+        # DECAY low-retention memories
+        for memory in memories_by_action.get(RetentionAction.DECAY.value, []):
+            current_importance = memory.get('importance', 5)
+            if isinstance(current_importance, str):
+                current_importance = int(current_importance)
+            
+            new_importance = max(1, current_importance - 1)
+            
+            if new_importance != current_importance:
+                if not dry_run:
+                    self.update_memory_metadata(memory['id'], {
+                        'importance': new_importance,
+                        'importance_decayed_at': datetime.utcnow().isoformat()
+                    })
+                actions_taken["decayed"].append({
+                    "id": memory['id'],
+                    "content_preview": memory.get('content', '')[:50],
+                    "old_importance": current_importance,
+                    "new_importance": new_importance
+                })
+        
+        # Count unchanged
+        actions_taken["unchanged"] = analysis["total"] - len(actions_taken["boosted"]) - len(actions_taken["decayed"])
+        
+        if verbose:
+            print("\n" + "="*60)
+            print(f"🧠 RETENTION DECAY {'(DRY RUN)' if dry_run else 'APPLIED'}")
+            print("="*60)
+            print(f"   🚀 Boosted: {len(actions_taken['boosted'])} memories")
+            print(f"   📉 Decayed: {len(actions_taken['decayed'])} memories")
+            print(f"   ✅ Unchanged: {actions_taken['unchanged']} memories")
+            print("="*60)
+        
+        return actions_taken
+    
+    def get_retention_stats(self) -> Dict[str, Any]:
+        """
+        Get retention statistics for all memories.
+        
+        Returns:
+            Dict with retention score distribution and stats
+        """
+        if not RETENTION_GATE_AVAILABLE:
+            return {"error": "Retention Gate not available"}
+        
+        # Get all memories
+        all_memories = self.collection.get()
+        if not all_memories['ids']:
+            return {"total": 0}
+        
+        gate = RetentionGate()
+        scores = []
+        
+        for i, memory_id in enumerate(all_memories['ids']):
+            metadata = all_memories['metadatas'][i]
+            memory = {"id": memory_id, **metadata}
+            score = gate.compute_retention(memory)
+            scores.append(score)
+        
+        # Calculate statistics
+        import statistics
+        
+        return {
+            "total": len(scores),
+            "average_retention": round(statistics.mean(scores), 4),
+            "median_retention": round(statistics.median(scores), 4),
+            "min_retention": round(min(scores), 4),
+            "max_retention": round(max(scores), 4),
+            "std_deviation": round(statistics.stdev(scores), 4) if len(scores) > 1 else 0,
+            "distribution": {
+                "high (>0.6)": sum(1 for s in scores if s > 0.6),
+                "medium (0.4-0.6)": sum(1 for s in scores if 0.4 <= s <= 0.6),
+                "low (<0.4)": sum(1 for s in scores if s < 0.4)
+            }
+        }
+    
+    # ============================================
+    # 🧠 MIRAS PHASE 4: ONLINE LEARNING METHODS
+    # ============================================
+    
+    def record_feedback(
+        self,
+        memory_id: str,
+        feedback: str,
+        context: Optional[str] = None,
+        apply_immediately: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Record user feedback for a memory (Phase 4: Online Learning).
+        
+        Args:
+            memory_id: Memory that received feedback
+            feedback: Feedback type - "helpful", "not_helpful", "incorrect", "outdated", "redundant"
+            context: Query/context that triggered this
+            apply_immediately: If True, immediately adjust importance
+            
+        Returns:
+            Dict with feedback result and any adjustments made
+        """
+        if not MEMORY_LEARNER_AVAILABLE or not self.learner:
+            return {"error": "Memory Learner not available"}
+        
+        # Map string to enum
+        feedback_map = {
+            "helpful": FeedbackType.HELPFUL,
+            "not_helpful": FeedbackType.NOT_HELPFUL,
+            "incorrect": FeedbackType.INCORRECT,
+            "outdated": FeedbackType.OUTDATED,
+            "redundant": FeedbackType.REDUNDANT
+        }
+        
+        feedback_type = feedback_map.get(feedback.lower())
+        if not feedback_type:
+            return {"error": f"Unknown feedback type: {feedback}"}
+        
+        # Record feedback
+        result = self.learner.record_feedback(
+            memory_id=memory_id,
+            feedback_type=feedback_type,
+            context=context
+        )
+        
+        # Apply adjustment if requested
+        if apply_immediately and result.get("importance_adjustment", 0) != 0:
+            try:
+                memory = self.get_by_id(memory_id)
+                if memory:
+                    current_importance = memory.get("metadata", {}).get("importance", 5)
+                    if isinstance(current_importance, str):
+                        current_importance = int(current_importance)
+                    
+                    adjustment = result["importance_adjustment"]
+                    new_importance = max(1, min(10, current_importance + adjustment))
+                    
+                    if new_importance != current_importance:
+                        self.update_memory_metadata(memory_id, {
+                            "importance": int(new_importance),
+                            "importance_adjusted_at": datetime.utcnow().isoformat(),
+                            "adjustment_reason": feedback
+                        })
+                        result["importance_changed"] = {
+                            "from": current_importance,
+                            "to": int(new_importance)
+                        }
+            except Exception as e:
+                result["adjustment_error"] = str(e)
+        
+        return result
+    
+    def get_associated_memories(
+        self,
+        memory_id: str,
+        min_strength: float = 0.1,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get memories associated with a given memory (Hebbian retrieval).
+        
+        Phase 4: Online Learning - memories that are frequently accessed together
+        become associated.
+        
+        Args:
+            memory_id: Memory to find associations for
+            min_strength: Minimum association strength
+            limit: Maximum results
+            
+        Returns:
+            List of associated memory IDs with strength and content
+        """
+        if not MEMORY_LEARNER_AVAILABLE or not self.learner:
+            return []
+        
+        # Get associations from learner
+        associations = self.learner.get_associated_memories(
+            memory_id=memory_id,
+            min_strength=min_strength,
+            limit=limit
+        )
+        
+        # Enrich with memory content
+        enriched = []
+        for assoc in associations:
+            try:
+                memory = self.get_by_id(assoc["memory_id"])
+                if memory:
+                    enriched.append({
+                        **assoc,
+                        "content": memory.get("content", "")[:100],
+                        "category": memory.get("metadata", {}).get("category", "unknown")
+                    })
+            except Exception:
+                enriched.append(assoc)
+        
+        return enriched
+    
+    def get_learner_stats(self) -> Dict[str, Any]:
+        """
+        Get online learning statistics.
+        
+        Returns:
+            Dict with learner stats (associations, feedback, etc.)
+        """
+        if not MEMORY_LEARNER_AVAILABLE or not self.learner:
+            return {"error": "Memory Learner not available"}
+        
+        return self.learner.get_stats()
+    
+    def save_learner_state(self):
+        """Save learner state (associations) to disk"""
+        if self.learner:
+            self.learner.save_associations()
     
     def delete(self, memory_id: str):
         """Delete memory by ID"""
@@ -445,14 +1057,14 @@ def test_memory_system():
     print("\n💾 Test 1: Insert memories")
     try:
         mem1 = memory.insert(
-            content="User has preferences for food and beverages",
+            content="Clary loves chocolate ice cream",
             category=MemoryCategory.PREFERENCE,
             importance=7,
-            tags=["user", "food"]
+            tags=["clary", "food"]
         )
         
         mem2 = memory.insert(
-            content="Example memory: A coding milestone was reached",
+            content="We built Miu's substrate at 3 AM because Letta was buggy",
             category=MemoryCategory.RELATIONSHIP_MOMENT,
             importance=9,
             tags=["coding", "milestone"]
@@ -474,7 +1086,7 @@ def test_memory_system():
     print("\n🔍 Test 2: Semantic search")
     try:
         results = memory.search(
-            query="What does User like to eat?",
+            query="What does Clary like to eat?",
             n_results=5
         )
         
@@ -506,7 +1118,7 @@ def test_memory_system():
     print("\n⭐ Test 4: High importance only")
     try:
         results = memory.search(
-            query="building an AI system",
+            query="building miu",
             min_importance=8,
             n_results=5
         )
@@ -535,4 +1147,5 @@ def test_memory_system():
 if __name__ == "__main__":
     """Run tests if executed directly"""
     test_memory_system()
+
 
