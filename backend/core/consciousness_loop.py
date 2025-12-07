@@ -101,6 +101,9 @@ class ConsciousnessLoop:
         self.code_executor = code_executor  # 🔥 Code Execution!
         self.mcp_client = mcp_client  # 🔥 MCP Client!
         
+        # Track if we have a valid API key
+        self.api_key_configured = openrouter_client is not None
+        
         # Get real agent UUID from state manager
         agent_state = state_manager.get_agent_state()
         self.agent_id = agent_state.get('id', 'default')
@@ -109,6 +112,8 @@ class ConsciousnessLoop:
         print(f"   Agent ID: {self.agent_id[:8]}...")
         print(f"   Model: {default_model}")
         print(f"   Max tool calls: {max_tool_calls_per_turn}")
+        if not openrouter_client:
+            print(f"   ⚠️  No API key - user will be prompted to enter one")
         if message_manager:
             print(f"   🐘 PostgreSQL message persistence: ENABLED!")
         if memory_engine:
@@ -803,6 +808,17 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         Returns:
             Dict with response, tool_calls, metadata, and vision_description (if media present)
         """
+        # Check if API key is configured
+        if not self.api_key_configured:
+            return {
+                "response": "🔑 **API Key Required**\n\nPlease add your OpenRouter API key to get started!\n\n1. Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys)\n2. Enter it in the welcome modal\n3. Or add it to `backend/.env` and restart the server\n\nOnce configured, I'll be ready to chat! 🚀",
+                "tool_calls": [],
+                "metadata": {
+                    "needs_setup": True,
+                    "error": "api_key_not_configured"
+                }
+            }
+        
         model = model or self.default_model
         
         print(f"\n{'='*60}")
@@ -1322,6 +1338,21 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         - {"type": "tool_call", "data": {...}}
         - {"type": "done", "result": {...}}
         """
+        # Check if API key is configured
+        if not self.api_key_configured:
+            yield {
+                "type": "content",
+                "chunk": "🔑 **API Key Required**\n\nPlease add your OpenRouter API key to get started!\n\n1. Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys)\n2. Enter it in the welcome modal\n3. Or add it to `backend/.env` and restart the server\n\nOnce configured, I'll be ready to chat! 🚀"
+            }
+            yield {
+                "type": "done",
+                "result": {
+                    "response": "API key required",
+                    "needs_setup": True
+                }
+            }
+            return
+        
         model = model or self.default_model
         
         # Build context (same as regular process_message)

@@ -122,19 +122,33 @@ cost_tracker = CostTracker(
 
 # OpenRouter Real Cost Monitor (GROUND TRUTH!)
 from core.openrouter_cost_monitor import OpenRouterCostMonitor
-openrouter_monitor = OpenRouterCostMonitor(
-    api_key=os.getenv("OPENROUTER_API_KEY")
-)
-logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
-
 # Rate limiter (1 request per 10 seconds per session - STRICT!)
 rate_limiter = RateLimiter(max_requests=5, window_seconds=10)  # Allow burst of 5 per 10s
 
-openrouter_client = OpenRouterClient(
-    api_key=os.getenv("OPENROUTER_API_KEY"),
-    default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
-    cost_tracker=cost_tracker
-)
+# Initialize OpenRouter components (may fail if no valid API key yet)
+openrouter_monitor = None
+openrouter_client = None
+
+api_key = os.getenv("OPENROUTER_API_KEY", "")
+has_valid_key = api_key and api_key.startswith("sk-or-v1-")
+
+if has_valid_key:
+    try:
+        openrouter_monitor = OpenRouterCostMonitor(api_key=api_key)
+        logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
+        
+        openrouter_client = OpenRouterClient(
+            api_key=api_key,
+            default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
+            cost_tracker=cost_tracker
+        )
+    except Exception as e:
+        logger.warning(f"⚠️  OpenRouter client init failed: {e}")
+        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
+else:
+    logger.warning("⚠️  No valid OpenRouter API key found")
+    logger.info("   Server starting in setup mode - user will be prompted for API key")
+    logger.info("   Add key via welcome modal or edit backend/.env directly")
 
 memory_system = None  # Optional - only if Ollama is available
 try:
@@ -1046,12 +1060,16 @@ def get_stats():
     """Get database statistics"""
     try:
         db_stats = state_manager.get_stats()
-        openrouter_stats = openrouter_client.get_stats()
         
         stats = {
             "database": db_stats,
-            "openrouter": openrouter_stats
         }
+        
+        # OpenRouter stats (if available)
+        if openrouter_client:
+            stats["openrouter"] = openrouter_client.get_stats()
+        else:
+            stats["openrouter"] = {"status": "not_configured", "message": "Add API key via welcome modal"}
         
         if memory_system:
             stats["memory_system"] = memory_system.get_stats()

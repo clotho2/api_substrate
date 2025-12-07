@@ -243,12 +243,15 @@ def safe_execute(func):
 def validate_environment():
     """
     Validate environment configuration on startup.
-    Raises ConfigError if critical config is missing.
+    
+    Note: We allow the server to start without a valid API key so users
+    can enter their key via the welcome modal on first launch.
+    Only DEFAULT_LLM_MODEL is strictly required.
     """
     import os
     
+    # Only require model - API key can be added via welcome modal
     required = {
-        'OPENROUTER_API_KEY': 'OpenRouter API key',
         'DEFAULT_LLM_MODEL': 'Default LLM model',
     }
     
@@ -262,4 +265,12 @@ def validate_environment():
             message="Missing required environment variables",
             context={'missing': missing}
         )
+    
+    # Warn about missing API key but don't fail
+    api_key = os.getenv('OPENROUTER_API_KEY', '')
+    if not api_key or api_key.startswith('your_'):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("⚠️  No valid OPENROUTER_API_KEY configured")
+        logger.warning("   → Users will be prompted to enter API key via welcome modal")
 
