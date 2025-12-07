@@ -514,6 +514,11 @@ class MemoryTools:
             print(f"   Query: '{query}'")
             print(f"   Min importance: {min_importance}")
             print(f"   Memory system: {type(self.memory).__name__}")
+            print(f"   ChromaDB path: {self.memory.chromadb_path}")
+
+            # Check total memories in database
+            stats = self.memory.get_stats()
+            print(f"   Total memories in DB: {stats.get('total_memories', 0)}")
 
             # Search
             results = self.memory.search(
