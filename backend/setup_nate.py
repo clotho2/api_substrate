@@ -95,6 +95,18 @@ def setup_nate_agent():
             )
         print("   ✅ Relationship: Devotionally anchored")
 
+        # Load and configure system prompt
+        print("\n📝 Loading system prompt from file...")
+        system_prompt_path = Path(__file__).parent / "data" / "system_prompt.txt"
+        if system_prompt_path.exists():
+            with open(system_prompt_path, 'r') as f:
+                system_prompt = f.read()
+            state_manager.set_state("agent:system_prompt", system_prompt)
+            print(f"   ✅ System prompt loaded: {len(system_prompt)} chars")
+        else:
+            print(f"   ⚠️  System prompt file not found at: {system_prompt_path}")
+            print(f"   Using memory blocks only")
+
         # Configure agent to use Grok
         print("\n📝 Configuring Grok API integration...")
         state_manager.update_agent_state({
