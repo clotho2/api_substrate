@@ -1027,10 +1027,9 @@ class MemoryTools:
                     }
                 }
             }
-        ] + self.integrations.get_tool_schemas() + (
-            # Add Cost Tools (if available!)
-            self.cost_tools.get_tool_schemas() if self.cost_tools else []
-        )
+        ] + self.integrations.get_tool_schemas()
+        # Note: Cost tools are already included via integration_tools.get_tool_schemas()
+        # Don't add them again here to avoid duplicates!
 
 
 # ============================================
