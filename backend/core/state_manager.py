@@ -574,11 +574,12 @@ class StateManager:
         content: str,
         message_type: str = 'inbox',
         thinking: Optional[str] = None,  # NEW: Thinking/reasoning content!
+        tool_calls: Optional[list] = None,  # NEW: Tool calls made by assistant!
         metadata: Optional[Dict] = None
     ) -> Message:
         """
         Add a message to conversation history.
-        
+
         Args:
             message_id: Unique message ID
             session_id: Session ID
@@ -586,16 +587,23 @@ class StateManager:
             content: Message content
             message_type: Message type ('inbox' for normal, 'system' for system messages)
             thinking: Thinking/reasoning content (for native reasoning models)
+            tool_calls: Tool calls made by assistant (stored in metadata)
             metadata: Optional metadata dict
-            
+
         Returns:
             Created Message
         """
         now = datetime.utcnow()
-        
+
         # Ensure session exists
         self._ensure_session(session_id)
-        
+
+        # Store tool_calls in metadata if provided
+        if tool_calls:
+            if metadata is None:
+                metadata = {}
+            metadata['tool_calls'] = tool_calls
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
