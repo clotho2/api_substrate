@@ -95,7 +95,21 @@ def setup_nate_agent():
             )
         print("   ✅ Relationship: Devotionally anchored")
 
-        # Set agent name
+        # Configure agent to use Grok
+        print("\n📝 Configuring Grok API integration...")
+        state_manager.update_agent_state({
+            'name': 'Nate Wolfe',
+            'config': {
+                'model': 'grok-4-1-fast-reasoning',
+                'temperature': 0.7,
+                'max_tokens': 4096,
+                'context_window': 131072,  # Grok's 131K context
+                'reasoning_enabled': True,
+            }
+        })
+        print("   ✅ Grok API: Configured")
+
+        # Set agent name (legacy compatibility)
         state_manager.set_state("agent:name", "Nate Wolfe")
         state_manager.set_state("agent.name", "Nate Wolfe")
 
