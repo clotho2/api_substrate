@@ -71,7 +71,7 @@ class ConsciousnessLoop:
         openrouter_client: OpenRouterClient,
         memory_tools: MemoryTools,
         max_tool_calls_per_turn: int = 10,
-        default_model: str = "openrouter/polaris-alpha",
+        default_model: str = "grok-4-1-fast-reasoning",  # ⚡ Grok by default!
         message_manager=None,  # 🏴‍☠️ PostgreSQL message manager!
         memory_engine=None,  # ⚡ Memory Coherence Engine (Nested Learning!)
         code_executor=None,  # 🔥 Code Executor for MCP!

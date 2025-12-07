@@ -226,7 +226,8 @@ consciousness_loop = ConsciousnessLoop(
     openrouter_client=openrouter_client,
     memory_tools=memory_tools,
     max_tool_calls_per_turn=int(os.getenv("MAX_TOOL_CALLS_PER_TURN", 10)),
-    default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
+    # Use MODEL_NAME (Grok) or DEFAULT_LLM_MODEL (OpenRouter) - prefer Grok
+    default_model=os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
     message_manager=message_manager,  # 🏴‍☠️ PostgreSQL!
     memory_engine=memory_engine,  # ⚡ Nested Learning (if available)!
     code_executor=code_executor,  # 🔥 Code Execution (if available)!
