@@ -1371,11 +1371,20 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
             session_id=session_id,
             model=model
         )
-        
-        # Add user message
-        user_msg_id = f"msg-{uuid.uuid4()}"
+
+        # Determine message role
         msg_role = 'system' if message_type == 'system' else 'user'
-        
+
+        # Add user message TO CONTEXT (CRITICAL: must be in messages sent to API!)
+        messages.append({
+            "role": msg_role,
+            "content": user_message
+        })
+        print(f"✅ User message added to context\n")
+
+        # Store user message to database
+        user_msg_id = f"msg-{uuid.uuid4()}"
+
         # Log full message for debugging
         print(f"\n{'='*60}")
         print(f"📨 PROCESSING MESSAGE (STREAMING)")
@@ -1386,7 +1395,7 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         print(f"Message Length: {len(user_message)} chars")
         print(f"Full Message: {user_message}")
         print(f"{'='*60}\n")
-        
+
         # 🏴‍☠️ Save to PostgreSQL or SQLite
         self._save_message(
             agent_id=self.agent_id,
