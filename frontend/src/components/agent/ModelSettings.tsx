@@ -222,7 +222,7 @@ const CAPABILITY_CONFIG: Record<ModelCapability, { icon: string; label: string; 
     icon: '🛠️',
     label: 'Tools',
     color: 'text-purple-400',
-    description: 'Unterstützt Function Calling (Memory, Discord, etc.)'
+    description: 'Supports Function Calling (Memory, Discord, etc.)'
   },
   reasoning: {
     icon: '🧠',
@@ -234,13 +234,13 @@ const CAPABILITY_CONFIG: Record<ModelCapability, { icon: string; label: string; 
     icon: '⚡',
     label: 'Stream',
     color: 'text-yellow-400',
-    description: 'Echtzeit-Streaming von Antworten'
+    description: 'Real-time response streaming'
   },
   'long-context': {
     icon: '📚',
     label: 'Long Context',
     color: 'text-green-400',
-    description: 'Große Context Windows (128k+)'
+    description: 'Large context windows (128k+)'
   },
   fast: {
     icon: '🚀',
@@ -302,7 +302,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     inputCostPer1M: 2.70,
     outputCostPer1M: 2.70,
     rating: 'moderate',
-    notes: 'Größtes Llama Model'
+    notes: 'Largest Llama model'
   },
   'meta-llama/llama-3.2-90b-vision-instruct': {
     inputCostPer1M: 0.90,
@@ -316,7 +316,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     inputCostPer1M: 3.00,
     outputCostPer1M: 15.00,
     rating: 'moderate',
-    notes: 'Gutes Preis-Leistungs-Verhältnis'
+    notes: 'Great price-performance ratio'
   },
   'anthropic/claude-3.5-sonnet:beta': {
     inputCostPer1M: 3.00,
@@ -464,7 +464,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     inputCostPer1M: 0.65,
     outputCostPer1M: 0.65,
     rating: 'cheap',
-    notes: 'Größeres MoE Model'
+    notes: 'Larger MoE model'
   },
   
   // ========== X.AI GROK ==========
@@ -1104,35 +1104,35 @@ export default function ModelSettings({ agentId = 'default' }: ModelSettingsProp
                 bg: 'bg-green-500/10',
                 text: 'text-green-400',
                 border: 'border-green-500/20',
-                label: 'KOSTENLOS',
+                label: 'FREE',
                 icon: '🎉'
               },
               'cheap': {
                 bg: 'bg-emerald-500/10',
                 text: 'text-emerald-400',
                 border: 'border-emerald-500/20',
-                label: 'GÜNSTIG',
+                label: 'CHEAP',
                 icon: '💚'
               },
               'moderate': {
                 bg: 'bg-yellow-500/10',
                 text: 'text-yellow-400',
                 border: 'border-yellow-500/20',
-                label: 'MITTEL',
+                label: 'MODERATE',
                 icon: '💛'
               },
               'expensive': {
                 bg: 'bg-orange-500/10',
                 text: 'text-orange-400',
                 border: 'border-orange-500/20',
-                label: 'TEUER',
+                label: 'EXPENSIVE',
                 icon: '🧡'
               },
               'very-expensive': {
                 bg: 'bg-red-500/10',
                 text: 'text-red-400',
                 border: 'border-red-500/20',
-                label: 'SEHR TEUER',
+                label: 'VERY EXPENSIVE',
                 icon: '🔴'
               }
             };
@@ -1200,7 +1200,7 @@ export default function ModelSettings({ agentId = 'default' }: ModelSettingsProp
                     {/* 🎯 CAPABILITIES */}
                     {capabilities && capabilities.capabilities.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-gray-700/50">
-                        <div className="text-xs font-medium text-gray-400 mb-1.5">Fähigkeiten:</div>
+                        <div className="text-xs font-medium text-gray-400 mb-1.5">Capabilities:</div>
                         <div className="flex flex-wrap gap-2">
                           {capabilities.capabilities.map((cap) => {
                             const capConfig = CAPABILITY_CONFIG[cap];

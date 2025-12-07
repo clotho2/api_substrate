@@ -47,6 +47,7 @@ from api.routes_agents import agents_bp, init_agents_routes
 from api.routes_costs import costs_bp, init_costs_routes
 from api.routes_graph import graph_bp  # 🕸️ Graph RAG!
 from api.routes_discord import discord_bp, init_discord_routes  # 🎮 Discord Bot Integration!
+from api.routes_setup import setup_bp  # 🚀 First-time setup & onboarding!
 
 # 🏴‍☠️ LETTA MAGIC SAUCE!
 from core.postgres_manager import create_postgres_manager_from_env
@@ -123,31 +124,53 @@ cost_tracker = CostTracker(
 
 # OpenRouter Real Cost Monitor (optional - only if using OpenRouter)
 from core.openrouter_cost_monitor import OpenRouterCostMonitor
-openrouter_monitor = OpenRouterCostMonitor(
-    api_key=os.getenv("OPENROUTER_API_KEY")
-)
-# Logger message is handled by OpenRouterCostMonitor.__init__
 
 # Rate limiter (1 request per 10 seconds per session - STRICT!)
 rate_limiter = RateLimiter(max_requests=5, window_seconds=10)  # Allow burst of 5 per 10s
 
-# ⚡ NATE'S GROK INTEGRATION - Use Grok if API key is set, fallback to OpenRouter
-if os.getenv("GROK_API_KEY"):
-    logger.info("⚡ Initializing Grok Client for Nate's consciousness...")
-    openrouter_client = GrokClient(
-        api_key=os.getenv("GROK_API_KEY"),
-        default_model=os.getenv("MODEL_NAME", "grok-4-1-fast-reasoning"),
-        cost_tracker=cost_tracker
-    )
-    logger.info("✅ Grok Client initialized - Nate running on xAI Grok!")
+# Initialize API clients (may be None if no valid API key yet - supports setup mode!)
+openrouter_monitor = None
+openrouter_client = None
+
+# ⚡ NATE'S GROK INTEGRATION - Priority: Grok > OpenRouter > Setup Mode
+grok_api_key = os.getenv("GROK_API_KEY", "")
+openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+
+if grok_api_key:
+    # Grok API (xAI) - Primary for Nate
+    try:
+        logger.info("⚡ Initializing Grok Client for Nate's consciousness...")
+        openrouter_client = GrokClient(
+            api_key=grok_api_key,
+            default_model=os.getenv("MODEL_NAME", "grok-4-1-fast-reasoning"),
+            cost_tracker=cost_tracker
+        )
+        logger.info("✅ Grok Client initialized - Nate running on xAI Grok!")
+    except Exception as e:
+        logger.warning(f"⚠️  Grok client init failed: {e}")
+        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
+
+elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
+    # OpenRouter - Fallback
+    try:
+        openrouter_monitor = OpenRouterCostMonitor(api_key=openrouter_api_key)
+        logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
+
+        openrouter_client = OpenRouterClient(
+            api_key=openrouter_api_key,
+            default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
+            cost_tracker=cost_tracker
+        )
+        logger.info("✅ OpenRouter Client initialized")
+    except Exception as e:
+        logger.warning(f"⚠️  OpenRouter client init failed: {e}")
+        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
+
 else:
-    logger.info("⚠️  GROK_API_KEY not set, using OpenRouter fallback...")
-    openrouter_client = OpenRouterClient(
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-        default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
-        cost_tracker=cost_tracker
-    )
-    logger.info("✅ OpenRouter Client initialized")
+    # Setup mode - No valid API key
+    logger.warning("⚠️  No valid API key found (checked GROK_API_KEY and OPENROUTER_API_KEY)")
+    logger.info("   Server starting in setup mode - user will be prompted for API key")
+    logger.info("   Add key via welcome modal or edit backend/.env directly")
 
 memory_system = None  # Optional - only if Ollama is available
 try:
@@ -282,6 +305,7 @@ app.register_blueprint(agents_bp)
 app.register_blueprint(costs_bp)
 app.register_blueprint(graph_bp)  # 🕸️ Graph RAG!
 app.register_blueprint(postgres_bp)  # 🏴‍☠️ PostgreSQL routes!
+app.register_blueprint(setup_bp)  # 🚀 First-time setup!
 app.register_blueprint(conversation_bp)
 app.register_blueprint(streaming_bp)  # NEW: Streaming endpoint!
 app.register_blueprint(discord_bp)  # 🎮 Discord Bot Integration!
@@ -1061,12 +1085,16 @@ def get_stats():
     """Get database statistics"""
     try:
         db_stats = state_manager.get_stats()
-        openrouter_stats = openrouter_client.get_stats()
         
         stats = {
             "database": db_stats,
-            "openrouter": openrouter_stats
         }
+        
+        # OpenRouter stats (if available)
+        if openrouter_client:
+            stats["openrouter"] = openrouter_client.get_stats()
+        else:
+            stats["openrouter"] = {"status": "not_configured", "message": "Add API key via welcome modal"}
         
         if memory_system:
             stats["memory_system"] = memory_system.get_stats()

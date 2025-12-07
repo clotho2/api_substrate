@@ -1,53 +1,78 @@
 # Substrate AI Framework - Dependencies
+# Install with: pip install -r requirements.txt
 
-# Core Framework
+# ============================================
+# CORE FRAMEWORK (Required)
+# ============================================
 Flask==3.0.0
 Flask-CORS==4.0.0
 Flask-SocketIO==5.3.5      # WebSocket support for streaming
 python-socketio==5.10.0    # SocketIO core
+eventlet==0.36.1           # Async server for Flask-SocketIO
+gevent==24.2.1             # Alternative async (fallback)
 
-# OpenRouter API Client
+# ============================================
+# API CLIENTS (Required)
+# ============================================
 openai==1.54.3              # OpenAI-compatible client for OpenRouter
 aiohttp==3.9.1              # Async HTTP for streaming
+httpx>=0.25.0               # Modern HTTP client (async support)
 requests==2.31.0            # Sync HTTP for simple calls
 
-# Memory & Storage
+# ============================================
+# MEMORY & STORAGE (Required)
+# ============================================
 chromadb==0.4.18            # Vector database for archival memory
 numpy<2.0                   # ChromaDB 0.4.18 requires NumPy < 2.0
 
 # Ollama Integration (for local embeddings)
 ollama==0.1.7               # Official Ollama Python client
 
-# Data Processing
+# ============================================
+# DATA PROCESSING (Required)
+# ============================================
 pydantic==2.5.0             # Data validation
 python-dotenv==1.0.0        # Environment variable management
 demjson3==3.0.6             # Robust JSON parsing
-tiktoken==0.5.2             # Token counting for context window management
+tiktoken==0.5.2             # Token counting for context window
 
-# MCP Integration (Model Context Protocol) - Optional
-mcp==0.1.0                  # MCP client for tool servers
+# ============================================
+# SYSTEM UTILITIES (Required)
+# ============================================
+psutil>=5.9.0               # System monitoring (health checks)
 
-# Optional Tool Integrations
+# ============================================
+# DATABASE (Optional but Recommended)
+# ============================================
+psycopg2-binary==2.9.9      # PostgreSQL support
+neo4j==5.14.1               # Neo4j Graph DB (for Graph RAG)
+
+# ============================================
+# MCP INTEGRATION (Optional)
+# ============================================
+# mcp==0.1.0                # MCP client for tool servers
+
+# ============================================
+# TOOL INTEGRATIONS (Optional)
+# ============================================
 # Uncomment if you want to use these features:
 # discord.py==2.3.2         # For Discord tool
 # spotipy==2.23.0           # For Spotify control
 
-# Database Utilities
-psycopg2-binary==2.9.9      # PostgreSQL support (optional)
-
-# Development
+# ============================================
+# DEVELOPMENT (Optional)
+# ============================================
 pytest==7.4.3               # Testing
 pytest-asyncio==0.21.1      # Async testing
-black==23.11.0              # Code formatting
-ipython==8.17.2             # Interactive shell
 
-# Logging & Monitoring
+# ============================================
+# LOGGING & MONITORING
+# ============================================
 colorama==0.4.6             # Colored terminal output
 python-json-logger==2.0.7   # Structured logging
 
-# Type Checking (optional but recommended)
-mypy==1.7.1
-
-# Production Server (optional, for deployment)
+# ============================================
+# PRODUCTION (Optional)
+# ============================================
 gunicorn==21.2.0            # WSGI HTTP Server
 

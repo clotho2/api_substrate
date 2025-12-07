@@ -27,7 +27,7 @@ const SessionSwitcher: React.FC = () => {
         <button
           onClick={() => {
             const current = sessions.find((s) => s.id === activeSessionId);
-            const next = window.prompt('Neuer Chat-Name:', current?.title || '');
+            const next = window.prompt('New chat name:', current?.title || '');
             if (next !== null) renameSession(activeSessionId, next);
           }}
           className="p-2 rounded-lg bg-zinc-700 hover:bg-zinc-600 text-white"
@@ -40,8 +40,8 @@ const SessionSwitcher: React.FC = () => {
         <button
           onClick={createSession}
           className="p-2 rounded-lg bg-gradient-to-r from-limeGlow to-aquaGlow text-background"
-          aria-label="Neue Session"
-          title="Neue Session"
+          aria-label="New session"
+          title="New session"
         >
           <Plus size={16} />
         </button>
@@ -49,15 +49,15 @@ const SessionSwitcher: React.FC = () => {
         <button
           onClick={() => deleteSession(activeSessionId)}
           className="p-2 rounded-lg bg-red-600/80 hover:bg-red-600 text-white"
-          aria-label="Session löschen"
-          title="Session löschen"
+          aria-label="Delete session"
+          title="Delete session"
         >
           <Trash2 size={16} />
         </button>
       </div>
       {startedText && (
         <div className="ml-1 mt-1 text-[10px] text-white/60">
-          Begonnen: {startedText}
+          Started: {startedText}
         </div>
       )}
     </div>

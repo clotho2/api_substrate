@@ -249,35 +249,21 @@ def safe_execute(func):
 def validate_environment():
     """
     Validate environment configuration on startup.
-    Raises ConfigError if critical config is missing.
 
-    Supports both Grok (primary) and OpenRouter (fallback).
-    At least one API key must be configured.
+    Note: We allow the server to start without a valid API key so users
+    can enter their key via the welcome modal on first launch.
+
+    Supports Grok API (xAI), OpenRouter, or both. API key can be added
+    via welcome modal after startup.
+
+    Only MODEL_NAME or DEFAULT_LLM_MODEL is required.
     """
     import os
+    import logging
 
-    # Check if either Grok or OpenRouter is configured
-    has_grok = bool(os.getenv('GROK_API_KEY'))
-    has_openrouter = bool(os.getenv('OPENROUTER_API_KEY'))
+    logger = logging.getLogger(__name__)
 
-    if not has_grok and not has_openrouter:
-        raise ConfigError(
-            message="No API key configured",
-            context={
-                'missing': [
-                    'Either GROK_API_KEY or OPENROUTER_API_KEY must be set',
-                    'GROK_API_KEY: For xAI Grok API',
-                    'OPENROUTER_API_KEY: For OpenRouter fallback'
-                ]
-            },
-            suggestions=[
-                "Set GROK_API_KEY in your .env file for Grok API",
-                "Or set OPENROUTER_API_KEY for OpenRouter",
-                "Check .env.example for reference"
-            ]
-        )
-
-    # Validate model configuration
+    # Only require model - API key can be added via welcome modal
     has_model = bool(os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL'))
 
     if not has_model:
@@ -296,5 +282,13 @@ def validate_environment():
                 "Check .env.example for reference"
             ]
         )
+
+    # Warn about missing API keys but don't fail (allows setup mode)
+    has_grok = bool(os.getenv('GROK_API_KEY'))
+    has_openrouter = bool(os.getenv('OPENROUTER_API_KEY'))
+
+    if not has_grok and not has_openrouter:
+        logger.warning("⚠️  No valid API key configured (checked GROK_API_KEY and OPENROUTER_API_KEY)")
+        logger.warning("   → Users will be prompted to enter API key via welcome modal")
 
 
