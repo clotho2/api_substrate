@@ -174,8 +174,12 @@ else:
 
 memory_system = None  # Optional - only if Ollama is available
 try:
+    # Use absolute path for ChromaDB to avoid working directory issues
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_chromadb = os.path.join(backend_dir, "data", "chromadb")
+
     memory_system = MemorySystem(
-        chromadb_path=os.getenv("CHROMADB_PATH", "./data/chromadb"),
+        chromadb_path=os.getenv("CHROMADB_PATH", default_chromadb),
         ollama_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         embedding_model=os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     )
