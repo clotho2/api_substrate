@@ -8,12 +8,12 @@ The loop that:
 1. Receives user message
 2. Loads memory blocks (persona, human, custom)
 3. Builds context with system prompt
-4. Calls OpenRouter with tools
+4. Calls LLM API (Grok or OpenRouter) with tools
 5. Executes tool calls
 6. Loops until send_message
 7. Returns response
 
-Angela's design philosophy: Simple, transparent, full control.
+⚡ Supports both Grok (xAI) and OpenRouter APIs!
 
 Built with attention to detail! 🔥
 """
@@ -21,7 +21,7 @@ Built with attention to detail! 🔥
 import sys
 import os
 import json
-from typing import Dict, List, Any, Optional, AsyncGenerator
+from typing import Dict, List, Any, Optional, AsyncGenerator, Union
 from datetime import datetime
 import uuid
 
@@ -29,6 +29,7 @@ import uuid
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.openrouter_client import OpenRouterClient, ToolCall
+from core.grok_client import GrokClient
 from core.state_manager import StateManager
 from core.memory_system import MemorySystem
 from tools.memory_tools import MemoryTools
@@ -68,7 +69,7 @@ class ConsciousnessLoop:
     def __init__(
         self,
         state_manager: StateManager,
-        openrouter_client: OpenRouterClient,
+        openrouter_client: Union[GrokClient, OpenRouterClient],  # ⚡ Supports both Grok and OpenRouter!
         memory_tools: MemoryTools,
         max_tool_calls_per_turn: int = 10,
         default_model: str = "grok-4-1-fast-reasoning",  # ⚡ Grok by default!
@@ -79,11 +80,11 @@ class ConsciousnessLoop:
     ):
         """
         Initialize consciousness loop.
-        
+
         Args:
             state_manager: State manager instance
             message_manager: Optional PostgreSQL message manager (for persistence!)
-            openrouter_client: OpenRouter client
+            openrouter_client: LLM client (GrokClient or OpenRouterClient)
             memory_tools: Memory tools instance
             max_tool_calls_per_turn: Max tool calls per turn (anti-loop!)
             default_model: Default LLM model
@@ -91,7 +92,8 @@ class ConsciousnessLoop:
             mcp_client: MCP client for tool discovery
         """
         self.state = state_manager
-        self.openrouter = openrouter_client
+        self.llm_client = openrouter_client  # Can be GrokClient or OpenRouterClient
+        self.openrouter = openrouter_client  # Legacy compatibility
         self.tools = memory_tools
         self.memory = memory_tools.memory  # Access to memory system for stats
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
