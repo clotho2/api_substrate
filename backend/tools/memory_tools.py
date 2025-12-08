@@ -33,7 +33,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.state_manager import StateManager, StateManagerError
 from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError
 from tools.integration_tools import IntegrationTools
-from tools.memory import memory as _memory_tool
+import tools.memory as memory_module
 
 
 class MemoryToolError(Exception):
@@ -711,11 +711,11 @@ class MemoryTools:
     def memory(self, **kwargs) -> Dict[str, Any]:
         """
         Memory tool - alternative API for memory management.
-        
+
         Sub-commands: create, str_replace, insert, delete, rename
         """
         try:
-            result = _memory_tool(**kwargs)
+            result = memory_module.memory(**kwargs)
             return result
         except Exception as e:
             return {
