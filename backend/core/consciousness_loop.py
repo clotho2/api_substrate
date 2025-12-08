@@ -771,7 +771,11 @@ send_message: false
             
             elif tool_name == "memory":
                 result = self.tools.memory(**arguments)
-            
+
+            elif tool_name == "conversation_summarize":
+                # Conversation summarization - archive old messages to free context
+                result = self.tools.conversation_summarize(session_id=session_id, **arguments)
+
             elif tool_name == "cost_tracker":
                 # NEW: Cost tracking tool (agent can check budget!)
                 if self.tools.cost_tools:

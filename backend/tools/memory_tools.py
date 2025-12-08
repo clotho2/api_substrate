@@ -608,7 +608,7 @@ class MemoryTools:
     # CONVERSATION SUMMARIZATION
     # ============================================
     
-    async def conversation_summarize(
+    def conversation_summarize(
         self,
         summary: str,
         importance: int = 5,
@@ -617,50 +617,55 @@ class MemoryTools:
     ) -> Dict[str, Any]:
         """
         Summarize old conversation messages and archive them.
-        
+
         This is used when context window is getting full (>80%).
         The AI creates a summary, pushes it to archival memory,
         and marks old messages as summarized so they can be removed from context.
-        
+
         Args:
             summary: The AI's summary of the old conversation
             importance: Importance rating (1-10)
             category: Category of summary
             session_id: Session to summarize
-            
+
         Returns:
             Result dict with status, summary_id, and message count
         """
         try:
             # 1. Push summary to archival memory
             if self.memory_system:
-                summary_id = await self.memory_system.insert(
+                # Parse category to MemoryCategory enum
+                try:
+                    cat = MemoryCategory(category)
+                except ValueError:
+                    cat = MemoryCategory.FACT
+
+                summary_id = self.memory_system.insert(
                     content=summary,
-                    category=category,
+                    category=cat,
                     importance=importance,
-                    tags=["conversation_summary", session_id],
-                    metadata={"session_id": session_id, "summarized_at": "now"}
+                    tags=["conversation_summary", session_id]
                 )
             else:
                 # Fallback: No archival memory available
                 # Just mark messages as summarized in DB
                 summary_id = f"local_{session_id}_{hash(summary)}"
-            
+
             # 2. Get conversation history to count messages
             messages = self.state.get_conversation(session_id, limit=1000)
             message_count = len(messages)
-            
+
             # 3. Mark messages as summarized (for future cleanup)
             # This doesn't delete them yet - consciousness loop handles that
             # We just return the count so the AI knows what got archived
-            
+
             return {
                 "status": "OK",
                 "summary_id": summary_id,
                 "messages_summarized": message_count,
                 "message": f"Archived summary to archival memory. {message_count} messages can now be cleared from context."
             }
-        
+
         except Exception as e:
             return {
                 "status": "error",
@@ -713,6 +718,20 @@ class MemoryTools:
                 "status": "error",
                 "message": f"Memory tool error: {str(e)}"
             }
+
+    def deep_research(self, **kwargs) -> Dict[str, Any]:
+        """
+        Deep research tool (wrapper).
+        Multi-step research combining web search, Wikipedia, and ArXiv.
+        """
+        return self.integrations.deep_research(**kwargs)
+
+    def search_places(self, **kwargs) -> Dict[str, Any]:
+        """
+        Search places tool (wrapper).
+        Search for locations using OpenStreetMap.
+        """
+        return self.integrations.search_places(**kwargs)
     
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT
