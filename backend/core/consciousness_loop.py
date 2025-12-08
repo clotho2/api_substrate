@@ -1299,6 +1299,15 @@ send_message: false
         thinking = None
         clean_response = final_response
         reasoning_time = 0
+
+        # CLEAN: Remove "Assistant:" labels if model hallucinated multi-turn format
+        # Some models incorrectly add role labels to their own responses
+        import re
+        if clean_response:
+            # Remove "Assistant:" at the start or in the middle (with optional whitespace)
+            clean_response = re.sub(r'\s*Assistant:\s*', ' ', clean_response, flags=re.IGNORECASE)
+            # Clean up any double spaces created by removal
+            clean_response = re.sub(r'\s{2,}', ' ', clean_response).strip()
         
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
