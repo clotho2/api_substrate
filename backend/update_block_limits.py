@@ -24,12 +24,6 @@ def update_block_limits(new_limit: int = 5000):
     skipped_count = 0
 
     for block in blocks:
-        # Skip system blocks with small limits (those are intentionally small)
-        if block.label in ["persona", "human", "relationship"] and block.limit <= 500:
-            print(f"   ⏭️  Skipping '{block.label}' (system block, keeping limit={block.limit})")
-            skipped_count += 1
-            continue
-
         # Skip blocks that already have the new limit or higher
         if block.limit >= new_limit:
             print(f"   ✓ '{block.label}' already has limit={block.limit}")
