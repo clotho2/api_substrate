@@ -507,7 +507,7 @@ class MemoryTools:
             }
 
         try:
-            page_size = 5
+            page_size = 15  # Increased from 5 for 6,700+ memories
 
             # DEBUG logging
             print(f"🔍 archival_memory_search DEBUG:")
