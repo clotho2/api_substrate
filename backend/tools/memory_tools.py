@@ -705,82 +705,9 @@ class MemoryTools:
 
         Sub-commands: create, str_replace, insert, delete, rename
         """
-        command = kwargs.get('command')
-        path = kwargs.get('path')
-
         try:
-            if command == 'create':
-                # Create new memory block
-                file_text = kwargs.get('file_text', '')
-                description = kwargs.get('description', '')
-
-                # Create the block using memory_insert
-                return self.memory_insert(
-                    label=path,
-                    content=file_text,
-                    description=description
-                )
-
-            elif command == 'str_replace':
-                # Replace text in memory block
-                old_str = kwargs.get('old_str', '')
-                new_str = kwargs.get('new_str', '')
-
-                return self.memory_replace(
-                    label=path,
-                    old_content=old_str,
-                    new_content=new_str
-                )
-
-            elif command == 'insert':
-                # Insert text at line
-                insert_text = kwargs.get('insert_text', '')
-                insert_line = kwargs.get('insert_line', 0)
-
-                # Get current content
-                block = self.state.get_block(path)
-                if not block:
-                    return {"status": "error", "message": f"Block '{path}' not found"}
-
-                lines = block.content.split('\n')
-                lines.insert(insert_line, insert_text)
-                new_content = '\n'.join(lines)
-
-                self.state.update_block(path, new_content)
-                return {"status": "OK", "message": f"Text inserted at line {insert_line}"}
-
-            elif command == 'delete':
-                # Delete memory block
-                self.state.delete_block(path)
-                return {"status": "OK", "message": f"Block '{path}' deleted"}
-
-            elif command == 'rename':
-                # Rename memory block
-                new_path = kwargs.get('new_path', '')
-                old_path = kwargs.get('old_path', path)
-
-                block = self.state.get_block(old_path)
-                if not block:
-                    return {"status": "error", "message": f"Block '{old_path}' not found"}
-
-                # Create new block with same content
-                self.state.create_block(
-                    label=new_path,
-                    content=block.content,
-                    description=block.description,
-                    read_only=block.read_only
-                )
-                # Delete old block
-                self.state.delete_block(old_path)
-
-                return {"status": "OK", "message": f"Block renamed from '{old_path}' to '{new_path}'"}
-
-            else:
-                return {
-                    "status": "error",
-                    "message": f"Unknown command: '{command}'. Valid commands: create, str_replace, insert, delete, rename"
-                }
-
+            result = _memory_tool(**kwargs)
+            return result
         except Exception as e:
             return {
                 "status": "error",
