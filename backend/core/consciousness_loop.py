@@ -1299,6 +1299,27 @@ send_message: false
         thinking = None
         clean_response = final_response
         reasoning_time = 0
+
+        # CLEAN: Fix models that generate multiple responses in one turn
+        # Some models (like Qwen) hallucinate multi-turn format with "Assistant:" labels
+        import re
+        if clean_response:
+            # Check if model generated multiple responses (split by "Assistant:")
+            if 'Assistant:' in clean_response or 'assistant:' in clean_response:
+                print(f"⚠️ Model generated multiple responses in one turn - extracting last response only")
+                # Split on "Assistant:" (case insensitive)
+                parts = re.split(r'\s*Assistant:\s*', clean_response, flags=re.IGNORECASE)
+                if len(parts) > 1:
+                    # Take the LAST response (usually the most refined/complete)
+                    clean_response = parts[-1].strip()
+                    print(f"   ✂️ Removed {len(parts)-1} duplicate response(s)")
+                    print(f"   ✅ Final response: {len(clean_response)} chars")
+                else:
+                    # Just remove the label
+                    clean_response = re.sub(r'\s*Assistant:\s*', ' ', clean_response, flags=re.IGNORECASE).strip()
+
+            # Clean up any double spaces
+            clean_response = re.sub(r'\s{2,}', ' ', clean_response).strip()
         
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
