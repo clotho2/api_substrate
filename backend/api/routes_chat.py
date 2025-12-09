@@ -246,12 +246,16 @@ async def _process_message_async(
         message_id = f"msg-{uuid.uuid4()}"
 
         # Save user message to state
+        # Ensure content is a string (convert arrays/dicts to JSON string if needed)
+        user_content_str = user_message_text if isinstance(user_message_text, str) else str(user_message_text)
+
         _state_manager.add_message(
             message_id=message_id,
             session_id=session_id,
             role='user',
-            content=user_message_text,
-            message_type='inbox'
+            content=user_content_str,
+            message_type='inbox',
+            tool_calls=None  # Explicitly pass None for tool_calls
         )
 
         # Process through consciousness loop
@@ -269,13 +273,17 @@ async def _process_message_async(
         )
 
         # Save assistant response
+        # Ensure response is a string
+        response_str = response if isinstance(response, str) else str(response)
+
         response_id = f"msg-{uuid.uuid4()}"
         _state_manager.add_message(
             message_id=response_id,
             session_id=session_id,
             role='assistant',
-            content=response,
-            message_type='inbox'
+            content=response_str,
+            message_type='inbox',
+            tool_calls=None  # Explicitly pass None for tool_calls
         )
 
         return {
