@@ -263,7 +263,7 @@ async def _process_message_async(
         # which takes a simple string. In the future, this can be enhanced
         # to pass the full multimodal content to the Grok API.
 
-        response = await _consciousness_loop.process_message(
+        result = await _consciousness_loop.process_message(
             user_message=user_message_text,
             session_id=session_id,
             model=None,  # Use default model
@@ -272,22 +272,28 @@ async def _process_message_async(
             message_type='inbox'
         )
 
-        # Save assistant response
-        # Ensure response is a string
-        response_str = response if isinstance(response, str) else str(response)
+        # Extract the actual response text from the result
+        # consciousness_loop returns a dict with 'response', 'model', 'usage', etc.
+        if isinstance(result, dict):
+            response_text = result.get('response', str(result))
+            tool_calls_data = result.get('tool_calls', [])
+        else:
+            response_text = str(result)
+            tool_calls_data = []
 
+        # Save assistant response
         response_id = f"msg-{uuid.uuid4()}"
         _state_manager.add_message(
             message_id=response_id,
             session_id=session_id,
             role='assistant',
-            content=response_str,
+            content=response_text,
             message_type='inbox',
-            tool_calls=None  # Explicitly pass None for tool_calls
+            tool_calls=tool_calls_data if tool_calls_data else None
         )
 
         return {
-            "response": response,
+            "response": response_text,
             "message_id": response_id,
             "session_id": session_id
         }
