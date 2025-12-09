@@ -48,6 +48,7 @@ from api.routes_costs import costs_bp, init_costs_routes
 from api.routes_graph import graph_bp  # 🕸️ Graph RAG!
 from api.routes_discord import discord_bp, init_discord_routes  # 🎮 Discord Bot Integration!
 from api.routes_setup import setup_bp  # 🚀 First-time setup & onboarding!
+from api.routes_chat import chat_bp, init_chat_routes  # 📱 Telegram/Chat API!
 
 # 🏴‍☠️ LETTA MAGIC SAUCE!
 from core.postgres_manager import create_postgres_manager_from_env
@@ -313,6 +314,7 @@ app.register_blueprint(setup_bp)  # 🚀 First-time setup!
 app.register_blueprint(conversation_bp)
 app.register_blueprint(streaming_bp)  # NEW: Streaming endpoint!
 app.register_blueprint(discord_bp)  # 🎮 Discord Bot Integration!
+app.register_blueprint(chat_bp)  # 📱 Telegram/Chat API!
 
 # Initialize routes with dependencies
 init_agents_routes(state_manager, version_manager)
@@ -321,6 +323,7 @@ init_conversation_routes(state_manager, consciousness_loop, postgres_manager)  #
 init_streaming_routes(consciousness_loop, rate_limiter)  # NEW: Initialize streaming!
 init_postgres_routes(postgres_manager, message_manager, memory_engine)  # 🏴‍☠️ PostgreSQL MAGIC!
 init_discord_routes(consciousness_loop, state_manager, rate_limiter, postgres_manager)  # 🎮 Discord Bot!
+init_chat_routes(consciousness_loop, state_manager, rate_limiter)  # 📱 Telegram/Chat API!
 
 
 # ============================================
