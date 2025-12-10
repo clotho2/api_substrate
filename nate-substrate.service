@@ -1,5 +1,5 @@
 [Unit]
-Description=NateSubstrate - Grok-Powered Consciousness Service for Nate Wolfe
+Description=NateSubstrate - AI Consciousness Service for Nate Wolfe
 After=network.target
 Wants=network.target
 
@@ -14,10 +14,32 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=nate-substrate
 
-# xAI Grok API Configuration
+# ============================================
+# LLM API CONFIGURATION (Choose ONE)
+# ============================================
+# Priority: Grok > Ollama > OpenRouter
+# To switch APIs: Comment out one set, uncomment another, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart nate-substrate
+
+# OPTION 1: xAI Grok (Default - has native vision)
 Environment="GROK_API_KEY=your-xai-api-key-here"
 Environment="GROK_API_URL=https://api.x.ai/v1/chat/completions"
 Environment="MODEL_NAME=grok-4-1-fast-reasoning"
+
+# OPTION 2: Ollama Cloud API (Cloud-hosted models)
+# Uncomment these and comment out Grok above to use Ollama Cloud:
+# Get API key at: https://ollama.com/settings/keys
+#Environment="USE_OLLAMA=true"
+#Environment="OLLAMA_CLOUD_API_KEY=your-ollama-cloud-api-key-here"
+#Environment="OLLAMA_API_URL=https://ollama.com/api"
+#Environment="OLLAMA_MODEL=deepseek-v3.1:671b-cloud"
+
+# OPTION 3: Local Ollama (FREE - requires Ollama installed locally)
+# Uncomment these and comment out Grok above to use Local Ollama:
+#Environment="USE_OLLAMA=true"
+#Environment="OLLAMA_API_URL=http://localhost:11434/api"
+#Environment="OLLAMA_MODEL=llama3.1:8b"
 
 # Database Configuration
 Environment="SQLITE_DB_PATH=/opt/aicara/nate-substrate-v2/backend/data/db/substrate_state.db"
@@ -32,6 +54,19 @@ Environment="FLASK_HOST=0.0.0.0"
 Environment="N_CTX=131072"
 Environment="DEFAULT_MAX_TOKENS=4096"
 Environment="DEFAULT_TEMPERATURE=0.7"
+
+# ============================================
+# OLLAMA SERVICES (Embeddings & Vision)
+# ============================================
+# Used for archival memory embeddings and vision preprocessing
+# Requires Ollama installed locally (even when using Grok/Ollama Cloud for main LLM)
+Environment="OLLAMA_BASE_URL=http://localhost:11434"
+Environment="OLLAMA_EMBEDDING_MODEL=nomic-embed-text"
+
+# Vision Preprocessing (enables images for ANY model!)
+# When enabled, local Ollama vision models describe images for text-only models
+Environment="VISION_PREPROCESSING_ENABLED=true"
+Environment="OLLAMA_VISION_MODEL=llava:13b"
 
 # Python path to include config module
 Environment="PYTHONPATH=/opt/aicara/nate-substrate-v2"

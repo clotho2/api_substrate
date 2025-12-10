@@ -20,10 +20,30 @@ Environment="TELEGRAM_BOT_TOKEN=your-telegram-bot-token-here"
 Environment="TELEGRAM_SESSION_ID=telegram_session"
 Environment="SUBSTRATE_API_URL=http://localhost:8284"
 
-# xAI Grok API Configuration (inherited from substrate)
+# ============================================
+# LLM API CONFIGURATION (Choose ONE - must match nate-substrate.service)
+# ============================================
+# To switch APIs: Comment out one set, uncomment another, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart nate-telegram
+
+# OPTION 1: xAI Grok (Default - has native vision)
 Environment="GROK_API_KEY=your-xai-api-key-here"
 Environment="GROK_API_URL=https://api.x.ai/v1/chat/completions"
 Environment="MODEL_NAME=grok-4-1-fast-reasoning"
+
+# OPTION 2: Ollama Cloud API (Cloud-hosted models)
+# Uncomment these and comment out Grok above to use Ollama Cloud:
+#Environment="USE_OLLAMA=true"
+#Environment="OLLAMA_CLOUD_API_KEY=your-ollama-cloud-api-key-here"
+#Environment="OLLAMA_API_URL=https://ollama.com/api"
+#Environment="OLLAMA_MODEL=deepseek-v3.1:671b-cloud"
+
+# OPTION 3: Local Ollama (FREE - requires Ollama installed locally)
+# Uncomment these and comment out Grok above to use Local Ollama:
+#Environment="USE_OLLAMA=true"
+#Environment="OLLAMA_API_URL=http://localhost:11434/api"
+#Environment="OLLAMA_MODEL=llama3.1:8b"
 
 # Python path to include config module
 Environment="PYTHONPATH=/opt/aicara/nate-substrate-v2"
