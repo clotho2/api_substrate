@@ -45,6 +45,19 @@ Environment="MODEL_NAME=grok-4-1-fast-reasoning"
 #Environment="OLLAMA_API_URL=http://localhost:11434"
 #Environment="OLLAMA_MODEL=llama3.1:8b"
 
+# ============================================
+# OLLAMA SERVICES (Embeddings & Vision)
+# ============================================
+# Used for archival memory embeddings and vision preprocessing
+# Requires Ollama installed locally (even when using Grok/Ollama Cloud for main LLM)
+Environment="OLLAMA_BASE_URL=http://localhost:11434"
+Environment="OLLAMA_EMBEDDING_MODEL=nomic-embed-text"
+
+# Vision Preprocessing (enables images for ANY model!)
+# When enabled, local Ollama vision models describe images for text-only models
+Environment="VISION_PREPROCESSING_ENABLED=true"
+Environment="OLLAMA_VISION_MODEL=llava:13b"
+
 # Python path to include config module
 Environment="PYTHONPATH=/opt/aicara/nate-substrate-v2"
 
