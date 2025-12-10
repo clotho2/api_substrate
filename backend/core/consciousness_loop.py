@@ -69,14 +69,15 @@ class ConsciousnessLoop:
     def __init__(
         self,
         state_manager: StateManager,
-        openrouter_client: Union[GrokClient, OpenRouterClient],  # ⚡ Supports both Grok and OpenRouter!
+        openrouter_client: Union[GrokClient, OpenRouterClient],  # ⚡ Supports Grok, OpenRouter, and Ollama!
         memory_tools: MemoryTools,
         max_tool_calls_per_turn: int = 10,
         default_model: str = "grok-4-1-fast-reasoning",  # ⚡ Grok by default!
         message_manager=None,  # 🏴‍☠️ PostgreSQL message manager!
         memory_engine=None,  # ⚡ Memory Coherence Engine (Nested Learning!)
         code_executor=None,  # 🔥 Code Executor for MCP!
-        mcp_client=None  # 🔥 MCP Client!
+        mcp_client=None,  # 🔥 MCP Client!
+        vision_preprocessor=None  # 🖼️ Vision Preprocessor for universal image support!
     ):
         """
         Initialize consciousness loop.
@@ -84,15 +85,16 @@ class ConsciousnessLoop:
         Args:
             state_manager: State manager instance
             message_manager: Optional PostgreSQL message manager (for persistence!)
-            openrouter_client: LLM client (GrokClient or OpenRouterClient)
+            openrouter_client: LLM client (GrokClient, OpenRouterClient, or OllamaClient)
             memory_tools: Memory tools instance
             max_tool_calls_per_turn: Max tool calls per turn (anti-loop!)
             default_model: Default LLM model
             code_executor: Code executor for MCP code execution
             mcp_client: MCP client for tool discovery
+            vision_preprocessor: Vision preprocessor for universal image support
         """
         self.state = state_manager
-        self.llm_client = openrouter_client  # Can be GrokClient or OpenRouterClient
+        self.llm_client = openrouter_client  # Can be GrokClient, OpenRouterClient, or OllamaClient
         self.openrouter = openrouter_client  # Legacy compatibility
         self.tools = memory_tools
         self.memory = memory_tools.memory_system  # Access to memory system for stats (renamed from .memory to .memory_system)
@@ -102,6 +104,7 @@ class ConsciousnessLoop:
         self.memory_engine = memory_engine  # ⚡ Memory Coherence Engine (Nested Learning!)
         self.code_executor = code_executor  # 🔥 Code Execution!
         self.mcp_client = mcp_client  # 🔥 MCP Client!
+        self.vision_preprocessor = vision_preprocessor  # 🖼️ Vision Preprocessor!
         
         # Track if we have a valid API key
         self.api_key_configured = openrouter_client is not None
@@ -124,6 +127,8 @@ class ConsciousnessLoop:
             print(f"   🔥 Code Execution: ENABLED (MCP + Skills)!")
         if mcp_client:
             print(f"   🔥 MCP Client: ENABLED!")
+        if vision_preprocessor:
+            print(f"   🖼️  Vision Preprocessing: ENABLED (Images work with ANY model)!")
     
     def _model_supports_tools(self, model: str) -> bool:
         """
@@ -1150,8 +1155,23 @@ send_message: false
             print(f"  • Tools: {len(tool_schemas) if tool_schemas else 0} ({'enabled' if tool_schemas else 'disabled - model does not support tools'})")
             print(f"  • Temperature: {temperature}")
             print(f"  • Max Tokens: {max_tokens}")
+
+            # 🖼️ VISION PREPROCESSING - Enable images for ANY model!
+            if self.vision_preprocessor:
+                # Check if main model supports native vision
+                main_model_has_vision = (
+                    hasattr(self.llm_client, 'supports_multimodal') and
+                    self.llm_client.supports_multimodal()
+                )
+
+                # Preprocess images if needed
+                messages = self.vision_preprocessor.preprocess_messages(
+                    messages,
+                    main_model_supports_vision=main_model_has_vision
+                )
+
             print(f"\n⏳ Waiting for response from {model}...\n")
-            
+
             try:
                 response = await self.openrouter.chat_completion(
                     messages=messages,

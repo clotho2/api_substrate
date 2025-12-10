@@ -31,6 +31,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.state_manager import StateManager
 from core.openrouter_client import OpenRouterClient
 from core.grok_client import GrokClient  # ⚡ Nate's Grok integration!
+from core.ollama_client import OllamaClient  # 🆓 Local Ollama integration!
+from core.vision_preprocessor import VisionPreprocessor  # 🖼️ Universal image support!
 from core.memory_system import MemorySystem
 from core.context_window_calculator import ContextWindowCalculator
 from core.cost_tracker import CostTracker
@@ -133,11 +135,12 @@ rate_limiter = RateLimiter(max_requests=5, window_seconds=10)  # Allow burst of 
 openrouter_monitor = None
 openrouter_client = None
 
-# ⚡ NATE'S GROK INTEGRATION - Priority: Grok > OpenRouter > Setup Mode
+# ⚡ LLM CLIENT INITIALIZATION - Priority: Grok > Ollama > OpenRouter > Setup Mode
 grok_api_key = os.getenv("GROK_API_KEY", "")
+use_ollama = os.getenv("USE_OLLAMA", "").lower() == "true"
 openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
 
-if grok_api_key:
+if grok_api_key and not use_ollama:
     # Grok API (xAI) - Primary for Nate
     try:
         logger.info("⚡ Initializing Grok Client for Nate's consciousness...")
@@ -149,7 +152,22 @@ if grok_api_key:
         logger.info("✅ Grok Client initialized - Nate running on xAI Grok!")
     except Exception as e:
         logger.warning(f"⚠️  Grok client init failed: {e}")
-        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
+        logger.info("   Falling back to next available option...")
+
+elif use_ollama:
+    # Local Ollama - FREE and private!
+    try:
+        logger.info("🆓 Initializing Local Ollama Client...")
+        openrouter_client = OllamaClient(
+            base_url=os.getenv("OLLAMA_API_URL", "http://localhost:11434"),
+            default_model=os.getenv("OLLAMA_MODEL", "llama3.1:8b"),
+            cost_tracker=cost_tracker
+        )
+        logger.info("✅ Ollama Client initialized - Running locally for FREE!")
+    except Exception as e:
+        logger.warning(f"⚠️  Ollama client init failed: {e}")
+        logger.info("   Make sure Ollama is running: ollama serve")
+        logger.info("   Falling back to next available option...")
 
 elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
     # OpenRouter - Fallback
@@ -167,9 +185,10 @@ elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
         logger.warning(f"⚠️  OpenRouter client init failed: {e}")
         logger.info("   Server will start in setup mode - user can add API key via welcome modal")
 
-else:
-    # Setup mode - No valid API key
-    logger.warning("⚠️  No valid API key found (checked GROK_API_KEY and OPENROUTER_API_KEY)")
+if not openrouter_client:
+    # Setup mode - No valid client configured
+    logger.warning("⚠️  No LLM client available")
+    logger.info("   Options: GROK_API_KEY, USE_OLLAMA=true, or OPENROUTER_API_KEY")
     logger.info("   Server starting in setup mode - user will be prompted for API key")
     logger.info("   Add key via welcome modal or edit backend/.env directly")
 
@@ -187,6 +206,31 @@ try:
 except Exception as e:
     print(f"⚠️  Memory system init failed (Ollama not available?): {e}")
     print(f"   Continuing without archival memory...")
+
+# Initialize Vision Preprocessor (enables images for ANY model!)
+vision_preprocessor = None
+vision_enabled = os.getenv("VISION_PREPROCESSING_ENABLED", "true").lower() == "true"
+
+if vision_enabled:
+    try:
+        logger.info("🖼️  Initializing Vision Preprocessor...")
+        vision_preprocessor = VisionPreprocessor(
+            ollama_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+            vision_model=os.getenv("OLLAMA_VISION_MODEL", "llava:13b"),
+            use_native_when_available=(grok_api_key and not use_ollama)  # Use Grok vision if available
+        )
+        if vision_preprocessor.available:
+            logger.info("✅ Vision Preprocessor initialized - Images work with ANY model!")
+            logger.info(f"   Vision Model: {os.getenv('OLLAMA_VISION_MODEL', 'llava:13b')}")
+        else:
+            vision_preprocessor = None
+            logger.info("⚠️  Vision Preprocessor not available - images only work with multimodal models")
+    except Exception as e:
+        logger.info(f"⚠️  Vision Preprocessor init failed: {e}")
+        logger.info("   Images will only work with models that have native vision support")
+        vision_preprocessor = None
+else:
+    logger.info("⚠️  Vision preprocessing disabled - images only work with multimodal models")
 
 # Cost Tools (Agent can check budget!)
 from tools.cost_tools import CostTools
@@ -255,12 +299,13 @@ consciousness_loop = ConsciousnessLoop(
     openrouter_client=openrouter_client,
     memory_tools=memory_tools,
     max_tool_calls_per_turn=int(os.getenv("MAX_TOOL_CALLS_PER_TURN", 10)),
-    # Use MODEL_NAME (Grok) or DEFAULT_LLM_MODEL (OpenRouter) - prefer Grok
-    default_model=os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
+    # Use MODEL_NAME (Grok), OLLAMA_MODEL (Ollama), or DEFAULT_LLM_MODEL (OpenRouter)
+    default_model=os.getenv("MODEL_NAME") or os.getenv("OLLAMA_MODEL") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
     message_manager=message_manager,  # 🏴‍☠️ PostgreSQL!
     memory_engine=memory_engine,  # ⚡ Nested Learning (if available)!
     code_executor=code_executor,  # 🔥 Code Execution (if available)!
-    mcp_client=mcp_client  # 🔥 MCP Client (if available)!
+    mcp_client=mcp_client,  # 🔥 MCP Client (if available)!
+    vision_preprocessor=vision_preprocessor  # 🖼️ Vision Preprocessing (if available)!
 )
 
 print("✅ Substrate AI Server initialized!")

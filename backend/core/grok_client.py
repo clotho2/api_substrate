@@ -408,6 +408,35 @@ class GrokClient:
             "provider": "xAI Grok"
         }
 
+    def supports_multimodal(self) -> bool:
+        """
+        Check if current model supports multimodal input (vision).
+
+        Grok models with vision support:
+        - grok-4-1-fast-reasoning (has vision)
+        - grok-4 (has vision)
+        - grok-vision-beta (has vision)
+        - grok-2-vision-1212 (has vision)
+
+        Text-only models:
+        - grok-beta
+        - older grok models
+
+        Returns:
+            True if model supports images, False otherwise
+        """
+        MULTIMODAL_MODELS = {
+            "grok-4-1-fast-reasoning",
+            "grok-4",
+            "grok-vision-beta",
+            "grok-2-vision-1212",
+            "grok-vision"
+        }
+
+        # Check if model name matches any known multimodal model
+        model_lower = self.default_model.lower()
+        return any(vm in model_lower for vm in MULTIMODAL_MODELS)
+
 
 # ============================================
 # TESTING
