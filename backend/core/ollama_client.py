@@ -338,14 +338,14 @@ class OllamaClient:
         Args:
             messages: List of message dicts
             model: Model to use (defaults to default_model)
-            tools: Tool definitions
+            tools: Tool definitions (OpenAI format)
             tool_choice: Tool choice mode ("auto", "none", or specific tool)
             temperature: Sampling temperature
             max_tokens: Max tokens to generate
             **kwargs: Additional parameters
 
         Yields:
-            Delta dicts from streaming response
+            Delta dicts from streaming response (OpenAI format)
 
         Raises:
             OllamaError: If request fails
@@ -358,16 +358,48 @@ class OllamaClient:
             if max_tokens:
                 options["num_predict"] = max_tokens
 
+            # Build chat request parameters
+            chat_params = {
+                "model": model,
+                "messages": messages,
+                "options": options,
+                "stream": True
+            }
+
+            # Only add tools if provided and not empty
+            if tools:
+                chat_params["tools"] = tools
+
             # Stream from Ollama
-            stream = self.ollama_client.chat(
-                model=model,
-                messages=messages,
-                tools=tools if tools else None,
-                options=options,
-                stream=True
-            )
+            stream = self.ollama_client.chat(**chat_params)
+
+            # Accumulate partial responses
+            accumulated_content = ""
+            accumulated_thinking = ""
+            accumulated_tool_calls = []
 
             for chunk in stream:
+                message = chunk.get('message', {})
+                delta_content = {}
+
+                # Handle content
+                if 'content' in message and message['content']:
+                    accumulated_content += message['content']
+                    delta_content['content'] = message['content']
+
+                # Handle thinking (for reasoning models)
+                if 'thinking' in message and message['thinking']:
+                    accumulated_thinking += message['thinking']
+                    # Store thinking in delta for transparency
+                    if 'thinking' not in delta_content:
+                        delta_content['thinking'] = message['thinking']
+
+                # Handle tool calls
+                if 'tool_calls' in message and message['tool_calls']:
+                    # Ollama sends complete tool calls, not deltas
+                    accumulated_tool_calls = message['tool_calls']
+                    delta_content['tool_calls'] = message['tool_calls']
+
                 # Convert to OpenAI-style delta format
                 delta = {
                     "id": f"ollama-{datetime.now().timestamp()}",
@@ -377,10 +409,7 @@ class OllamaClient:
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {
-                                "role": "assistant",
-                                "content": chunk.get('message', {}).get('content', '')
-                            },
+                            "delta": delta_content if delta_content else {},
                             "finish_reason": None
                         }
                     ]
@@ -388,7 +417,32 @@ class OllamaClient:
 
                 # Check if done
                 if chunk.get('done', False):
-                    delta['choices'][0]['finish_reason'] = "stop"
+                    # Determine finish reason
+                    if accumulated_tool_calls:
+                        delta['choices'][0]['finish_reason'] = "tool_calls"
+                    else:
+                        delta['choices'][0]['finish_reason'] = "stop"
+
+                    # Add usage stats if available
+                    if 'prompt_eval_count' in chunk or 'eval_count' in chunk:
+                        delta['usage'] = {
+                            "prompt_tokens": chunk.get('prompt_eval_count', 0),
+                            "completion_tokens": chunk.get('eval_count', 0),
+                            "total_tokens": chunk.get('prompt_eval_count', 0) + chunk.get('eval_count', 0)
+                        }
+
+                        # Update cost tracking (always $0.00 for local!)
+                        self.total_prompt_tokens += chunk.get('prompt_eval_count', 0)
+                        self.total_completion_tokens += chunk.get('eval_count', 0)
+
+                        if self.cost_tracker:
+                            self.cost_tracker.log_request(
+                                model=model,
+                                input_tokens=chunk.get('prompt_eval_count', 0),
+                                output_tokens=chunk.get('eval_count', 0),
+                                input_cost=0.0,  # FREE!
+                                output_cost=0.0  # FREE!
+                            )
 
                 yield delta
 
@@ -397,7 +451,8 @@ class OllamaClient:
                 f"Ollama streaming failed: {str(e)}",
                 context={
                     "model": model,
-                    "message_count": len(messages)
+                    "message_count": len(messages),
+                    "has_tools": tools is not None
                 }
             )
 
