@@ -98,9 +98,10 @@ class VisionPreprocessor:
         try:
             models = self.ollama_client.list()
             # Check if vision model is available
-            model_names = [m['name'] for m in models.get('models', [])]
+            model_list = models.get('models', [])
+            model_names = [m.get('name', m.get('model', '')) for m in model_list if isinstance(m, dict)]
 
-            if not any(self.vision_model in name for name in model_names):
+            if not any(self.vision_model in name for name in model_names if name):
                 print(f"   ⚠️  Vision model {self.vision_model} not found")
                 print(f"   💡 Pull it with: ollama pull {self.vision_model}")
             else:

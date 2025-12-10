@@ -81,7 +81,7 @@ class OllamaClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:11434/api",
+        base_url: str = "http://localhost:11434",
         default_model: str = "llama3.1:8b",
         api_key: Optional[str] = None,
         app_name: str = "NateSubstrate",
@@ -93,9 +93,9 @@ class OllamaClient:
         Initialize Ollama client (supports both local and cloud).
 
         Args:
-            base_url: Ollama API URL
-                     - Local: http://localhost:11434/api (default)
-                     - Cloud: https://ollama.com/api
+            base_url: Ollama base URL (SDK adds /api automatically)
+                     - Local: http://localhost:11434 (default)
+                     - Cloud: https://ollama.com
             default_model: Default model to use
                           - Local: llama3.1:8b, qwen2.5:7b, etc.
                           - Cloud: deepseek-v3.1:671b-cloud, gpt-oss:120b-cloud, etc.
@@ -106,6 +106,7 @@ class OllamaClient:
             timeout: Request timeout in seconds
             cost_tracker: Optional CostTracker instance
         """
+        # Store original URL for display
         self.base_url = base_url.rstrip('/')
         self.default_model = default_model
         self.api_key = api_key
@@ -122,6 +123,12 @@ class OllamaClient:
         self.total_cost = 0.0
         self.cost_tracker = cost_tracker
 
+        # Prepare host URL for ollama.Client()
+        # The SDK automatically adds /api, so we need to strip it if present
+        ollama_host = base_url.rstrip('/')
+        if ollama_host.endswith('/api'):
+            ollama_host = ollama_host[:-4]  # Remove /api suffix
+
         # Initialize Ollama client with proper headers
         try:
             if self.is_cloud:
@@ -135,12 +142,12 @@ class OllamaClient:
                     )
                 # Cloud: Use API key in headers
                 self.ollama_client = ollama.Client(
-                    host=base_url,
+                    host=ollama_host,
                     headers={'Authorization': f'Bearer {api_key}'}
                 )
             else:
                 # Local: No auth needed
-                self.ollama_client = ollama.Client(host=base_url)
+                self.ollama_client = ollama.Client(host=ollama_host)
 
             # Test connection
             self._test_connection()
@@ -168,9 +175,10 @@ class OllamaClient:
         """Test Ollama connection and verify model availability"""
         try:
             models = self.ollama_client.list()
-            model_names = [m['name'] for m in models.get('models', [])]
+            model_list = models.get('models', [])
+            model_names = [m.get('name', m.get('model', '')) for m in model_list if isinstance(m, dict)]
 
-            if not any(self.default_model in name for name in model_names):
+            if not any(self.default_model in name for name in model_names if name):
                 print(f"   ⚠️  Model {self.default_model} not found")
                 print(f"   💡 Pull it with: ollama pull {self.default_model}")
             else:

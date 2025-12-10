@@ -157,7 +157,7 @@ if grok_api_key and not use_ollama:
 elif use_ollama:
     # Ollama - Cloud or Local
     try:
-        ollama_api_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api")
+        ollama_api_url = os.getenv("OLLAMA_API_URL", "http://localhost:11434")
         ollama_api_key = os.getenv("OLLAMA_CLOUD_API_KEY", "")
         is_cloud = 'ollama.com' in ollama_api_url.lower()
 

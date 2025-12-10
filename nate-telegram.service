@@ -36,13 +36,13 @@ Environment="MODEL_NAME=grok-4-1-fast-reasoning"
 # Uncomment these and comment out Grok above to use Ollama Cloud:
 #Environment="USE_OLLAMA=true"
 #Environment="OLLAMA_CLOUD_API_KEY=your-ollama-cloud-api-key-here"
-#Environment="OLLAMA_API_URL=https://ollama.com/api"
+#Environment="OLLAMA_API_URL=https://ollama.com"
 #Environment="OLLAMA_MODEL=deepseek-v3.1:671b-cloud"
 
 # OPTION 3: Local Ollama (FREE - requires Ollama installed locally)
 # Uncomment these and comment out Grok above to use Local Ollama:
 #Environment="USE_OLLAMA=true"
-#Environment="OLLAMA_API_URL=http://localhost:11434/api"
+#Environment="OLLAMA_API_URL=http://localhost:11434"
 #Environment="OLLAMA_MODEL=llama3.1:8b"
 
 # Python path to include config module
