@@ -253,31 +253,38 @@ def validate_environment():
     Note: We allow the server to start without a valid API key so users
     can enter their key via the welcome modal on first launch.
 
-    Supports Grok API (xAI), OpenRouter, or both. API key can be added
-    via welcome modal after startup.
+    Supports Grok API (xAI), Ollama (Cloud/Local), or OpenRouter.
+    API key can be added via welcome modal after startup.
 
-    Only MODEL_NAME or DEFAULT_LLM_MODEL is required.
+    Only one of: MODEL_NAME, OLLAMA_MODEL, or DEFAULT_LLM_MODEL is required.
     """
     import os
     import logging
 
     logger = logging.getLogger(__name__)
 
-    # Only require model - API key can be added via welcome modal
-    has_model = bool(os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL'))
+    # Check for any model configuration
+    has_grok_model = bool(os.getenv('MODEL_NAME'))
+    has_ollama_model = bool(os.getenv('OLLAMA_MODEL'))
+    has_openrouter_model = bool(os.getenv('DEFAULT_LLM_MODEL'))
+    use_ollama = os.getenv('USE_OLLAMA', '').lower() == 'true'
+
+    has_model = has_grok_model or has_ollama_model or has_openrouter_model
 
     if not has_model:
         raise ConfigError(
             message="No model configured",
             context={
                 'missing': [
-                    'Either MODEL_NAME or DEFAULT_LLM_MODEL must be set',
-                    'MODEL_NAME: For Grok model (e.g., grok-4-1-fast-reasoning)',
-                    'DEFAULT_LLM_MODEL: For OpenRouter model'
+                    'One of these must be set:',
+                    '  MODEL_NAME: For Grok model (e.g., grok-4-1-fast-reasoning)',
+                    '  OLLAMA_MODEL: For Ollama model (e.g., llama3.1:8b or deepseek-v3.1:671b-cloud)',
+                    '  DEFAULT_LLM_MODEL: For OpenRouter model'
                 ]
             },
             suggestions=[
                 "Set MODEL_NAME in your .env file for Grok",
+                "Or set USE_OLLAMA=true and OLLAMA_MODEL for Ollama",
                 "Or set DEFAULT_LLM_MODEL for OpenRouter",
                 "Check .env.example for reference"
             ]
@@ -285,10 +292,14 @@ def validate_environment():
 
     # Warn about missing API keys but don't fail (allows setup mode)
     has_grok = bool(os.getenv('GROK_API_KEY'))
+    has_ollama_cloud = bool(os.getenv('OLLAMA_CLOUD_API_KEY'))
     has_openrouter = bool(os.getenv('OPENROUTER_API_KEY'))
 
-    if not has_grok and not has_openrouter:
-        logger.warning("⚠️  No valid API key configured (checked GROK_API_KEY and OPENROUTER_API_KEY)")
+    # Local Ollama doesn't need API key
+    is_local_ollama = use_ollama and 'localhost' in os.getenv('OLLAMA_API_URL', '')
+
+    if not has_grok and not has_openrouter and not has_ollama_cloud and not is_local_ollama:
+        logger.warning("⚠️  No valid API key configured (checked GROK_API_KEY, OLLAMA_CLOUD_API_KEY, and OPENROUTER_API_KEY)")
         logger.warning("   → Users will be prompted to enter API key via welcome modal")
 
 
