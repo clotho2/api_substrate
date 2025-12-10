@@ -176,13 +176,13 @@ class APIError(SubstrateAIError):
 
 class ConfigError(SubstrateAIError):
     """Configuration errors"""
-    def __init__(self, message: str, context=None, original_error=None):
+    def __init__(self, message: str, context=None, suggestions=None, original_error=None):
         super().__init__(
             message=message,
             component="Configuration",
             context=context,
             original_error=original_error,
-            suggestions=[
+            suggestions=suggestions or [
                 "Check .env file exists",
                 "Verify all required variables are set",
                 "Check variable formats (URLs, keys, etc.)",
