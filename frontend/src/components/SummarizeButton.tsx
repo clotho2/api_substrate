@@ -29,7 +29,7 @@ const SummarizeButton: React.FC<SummarizeButtonProps> = ({ sessionId }) => {
         console.log('🎉 SUMMARY SUCCESS!', data);
         setLastResult({
           success: true,
-          message: `✅ Zusammenfassung erstellt! ${data.message_count} Nachrichten zusammengefasst.`
+          message: `✅ Summary created! ${data.message_count} messages summarized.`
         });
         
         // 🔥 Trigger token counter refresh + reload messages!
@@ -45,14 +45,14 @@ const SummarizeButton: React.FC<SummarizeButtonProps> = ({ sessionId }) => {
       } else {
         setLastResult({
           success: false,
-          message: data.error || data.message || 'Fehler beim Erstellen der Zusammenfassung'
+          message: data.error || data.message || 'Error creating summary'
         });
       }
     } catch (error) {
       console.error('Summary error:', error);
       setLastResult({
         success: false,
-        message: 'Verbindungsfehler zum Backend'
+        message: 'Connection error to backend'
       });
     } finally {
       setIsLoading(false);

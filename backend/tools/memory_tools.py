@@ -25,7 +25,7 @@ Built with attention to detail! 🔥
 
 import sys
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,7 +33,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.state_manager import StateManager, StateManagerError
 from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError
 from tools.integration_tools import IntegrationTools
-from tools.memory import memory as _memory_tool
+from tools.memory import memory as _memory_tool, set_state_manager
 
 
 class MemoryToolError(Exception):
@@ -63,11 +63,14 @@ class MemoryTools:
             cost_tools: Cost tools instance (for budget awareness!)
         """
         self.state = state_manager
-        self.memory = memory_system
+        self.memory_system = memory_system  # Renamed from self.memory to avoid collision with memory() method
         self.cost_tools = cost_tools  # NEW: Cost Tools!
-        
+
         # Initialize integration tools (Discord, Spotify, etc.)
         self.integrations = IntegrationTools()
+
+        # Set state manager for memory tool (so it can create/edit blocks)
+        set_state_manager(state_manager)
         
         print("✅ Memory Tools initialized")
         print("✅ Integration Tools initialized (Discord, Spotify)")
@@ -447,21 +450,21 @@ class MemoryTools:
         Returns:
             Result dict with status and message
         """
-        if not self.memory:
+        if not self.memory_system:
             return {
                 "status": "error",
                 "message": "Archival memory system not initialized"
             }
-        
+
         try:
             # Parse category
             try:
                 cat = MemoryCategory(category)
             except ValueError:
                 cat = MemoryCategory.FACT
-            
+
             # Insert
-            memory_id = self.memory.insert(
+            memory_id = self.memory_system.insert(
                 content=content,
                 category=cat,
                 importance=importance,
@@ -484,37 +487,47 @@ class MemoryTools:
         self,
         query: str,
         page: int = 0,
-        min_importance: int = 5
+        min_importance: int = 5,
+        tags: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Search archival memory for relevant information.
-        
-        Letta-compatible API.
-        
+
+        Letta-compatible API with tag filtering.
+
         Args:
             query: Search query
             page: Page number (0-based)
             min_importance: Minimum importance filter
-            
+            tags: Optional tag filter (e.g., ['conversation'] or ['founders_archive'])
+
         Returns:
             Result dict with status, query, page, and results
         """
-        if not self.memory:
+        if not self.memory_system:
             return {
                 "status": "error",
                 "message": "Archival memory system not initialized"
             }
-        
+
         try:
-            page_size = 5
-            
+            page_size = 15  # Increased from 5 for better results with large memory sets
+
             # Search
-            results = self.memory.search(
+            results = self.memory_system.search(
                 query=query,
                 n_results=page_size,
-                min_importance=min_importance
+                min_importance=min_importance,
+                tags=tags
             )
-            
+
+            print(f"   Results found: {len(results)}")
+            if results:
+                print(f"   First result:")
+                print(f"      Importance: {results[0]['importance']}")
+                print(f"      Relevance: {results[0]['relevance']}")
+                print(f"      Content: {results[0]['content'][:100]}...")
+
             return {
                 "status": "OK",
                 "query": query,
@@ -595,7 +608,7 @@ class MemoryTools:
     # CONVERSATION SUMMARIZATION
     # ============================================
     
-    async def conversation_summarize(
+    def conversation_summarize(
         self,
         summary: str,
         importance: int = 5,
@@ -604,50 +617,55 @@ class MemoryTools:
     ) -> Dict[str, Any]:
         """
         Summarize old conversation messages and archive them.
-        
+
         This is used when context window is getting full (>80%).
         The AI creates a summary, pushes it to archival memory,
         and marks old messages as summarized so they can be removed from context.
-        
+
         Args:
             summary: The AI's summary of the old conversation
             importance: Importance rating (1-10)
             category: Category of summary
             session_id: Session to summarize
-            
+
         Returns:
             Result dict with status, summary_id, and message count
         """
         try:
             # 1. Push summary to archival memory
             if self.memory_system:
-                summary_id = await self.memory_system.insert(
+                # Parse category to MemoryCategory enum
+                try:
+                    cat = MemoryCategory(category)
+                except ValueError:
+                    cat = MemoryCategory.FACT
+
+                summary_id = self.memory_system.insert(
                     content=summary,
-                    category=category,
+                    category=cat,
                     importance=importance,
-                    tags=["conversation_summary", session_id],
-                    metadata={"session_id": session_id, "summarized_at": "now"}
+                    tags=["conversation_summary", session_id]
                 )
             else:
                 # Fallback: No archival memory available
                 # Just mark messages as summarized in DB
                 summary_id = f"local_{session_id}_{hash(summary)}"
-            
+
             # 2. Get conversation history to count messages
             messages = self.state.get_conversation(session_id, limit=1000)
             message_count = len(messages)
-            
+
             # 3. Mark messages as summarized (for future cleanup)
             # This doesn't delete them yet - consciousness loop handles that
             # We just return the count so the AI knows what got archived
-            
+
             return {
                 "status": "OK",
                 "summary_id": summary_id,
                 "messages_summarized": message_count,
                 "message": f"Archived summary to archival memory. {message_count} messages can now be cleared from context."
             }
-        
+
         except Exception as e:
             return {
                 "status": "error",
@@ -689,7 +707,7 @@ class MemoryTools:
     def memory(self, **kwargs) -> Dict[str, Any]:
         """
         Memory tool - alternative API for memory management.
-        
+
         Sub-commands: create, str_replace, insert, delete, rename
         """
         try:
@@ -700,6 +718,20 @@ class MemoryTools:
                 "status": "error",
                 "message": f"Memory tool error: {str(e)}"
             }
+
+    def deep_research(self, **kwargs) -> Dict[str, Any]:
+        """
+        Deep research tool (wrapper).
+        Multi-step research combining web search, Wikipedia, and ArXiv.
+        """
+        return self.integrations.deep_research(**kwargs)
+
+    def search_places(self, **kwargs) -> Dict[str, Any]:
+        """
+        Search places tool (wrapper).
+        Search for locations using OpenStreetMap.
+        """
+        return self.integrations.search_places(**kwargs)
     
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT
@@ -892,7 +924,7 @@ class MemoryTools:
                 "type": "function",
                 "function": {
                     "name": "archival_memory_search",
-                    "description": "Search archival memory for relevant information.",
+                    "description": "Search archival memory for relevant information. Can filter by tags to search specific sources (e.g., documents vs conversations).",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -904,6 +936,11 @@ class MemoryTools:
                                 "type": "integer",
                                 "description": "Page number (0-based)",
                                 "default": 0
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Optional tag filter. Use ['conversation'] for conversation memories, ['founders_archive'] for Founders Archives, or other document tags. Leave empty to search all memories."
                             }
                         },
                         "required": ["query"]

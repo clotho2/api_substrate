@@ -55,47 +55,48 @@ class IntegrationTools:
             self.cost_tools = CostTools(CostTracker())
         
         # Initialize FREE search tools (no API key!)
+        # NOTE: Renamed attributes with _client suffix to avoid shadowing methods
         try:
-            self.free_search = get_free_search()
+            self.free_search_client = get_free_search()
             print("✅ Free Web Search initialized (DuckDuckGo + Wikipedia)")
         except Exception as e:
             print(f"⚠️ Free Web Search init failed: {e}")
-            self.free_search = None
-        
+            self.free_search_client = None
+
         try:
-            self.arxiv_search = get_arxiv_search()
+            self.arxiv_search_client = get_arxiv_search()
             print("✅ ArXiv Search initialized (Academic Papers)")
         except Exception as e:
             print(f"⚠️ ArXiv Search init failed: {e}")
-            self.arxiv_search = None
-        
+            self.arxiv_search_client = None
+
         try:
-            self.deep_research = init_deep_research()
+            self.deep_research_client = init_deep_research()
             print("✅ Deep Research initialized (Multi-Step Research)")
         except Exception as e:
             print(f"⚠️ Deep Research init failed: {e}")
-            self.deep_research = None
-        
+            self.deep_research_client = None
+
         try:
-            self.jina_reader = get_jina_reader()
+            self.jina_reader_client = get_jina_reader()
             print("✅ Jina AI Reader initialized (FREE Webpage Fetcher)")
         except Exception as e:
             print(f"⚠️ Jina Reader init failed: {e}")
-            self.jina_reader = None
-        
+            self.jina_reader_client = None
+
         try:
-            self.pdf_reader = get_pdf_reader()
+            self.pdf_reader_client = get_pdf_reader()
             print("✅ PDF Reader initialized (ArXiv LaTeX + PyMuPDF)")
         except Exception as e:
             print(f"⚠️ PDF Reader init failed: {e}")
-            self.pdf_reader = None
-        
+            self.pdf_reader_client = None
+
         try:
-            self.places_search = get_places_search()
+            self.places_search_client = get_places_search()
             print("✅ Places Search initialized (OpenStreetMap FREE!)")
         except Exception as e:
             print(f"⚠️ Places Search init failed: {e}")
-            self.places_search = None
+            self.places_search_client = None
         
         print("✅ Integration Tools initialized")
     
@@ -167,11 +168,11 @@ class IntegrationTools:
     def web_search(self, query: str, max_results: int = 10, **kwargs) -> Dict[str, Any]:
         """
         Search the web using DuckDuckGo (FREE!).
-        
+
         Args:
             query: Search query
             max_results: Max results to return (default: 10)
-        
+
         Returns:
             {
                 'status': 'OK' or 'error',
@@ -180,14 +181,14 @@ class IntegrationTools:
                 'total_results': int
             }
         """
-        if not self.free_search:
+        if not self.free_search_client:
             return {
                 "status": "error",
                 "message": "Free web search not available"
             }
-        
+
         try:
-            result = self.free_search.search(query, max_results=max_results, **kwargs)
+            result = self.free_search_client.search(query, max_results=max_results, **kwargs)
             return result
         except Exception as e:
             return {
@@ -202,11 +203,11 @@ class IntegrationTools:
     def arxiv_search(self, query: str, max_results: int = 10, **kwargs) -> Dict[str, Any]:
         """
         Search ArXiv for academic papers (FREE!).
-        
+
         Args:
             query: Search query
             max_results: Max results to return (default: 10)
-        
+
         Returns:
             {
                 'status': 'OK' or 'error',
@@ -215,12 +216,12 @@ class IntegrationTools:
                 'total_results': int
             }
         """
-        if not self.arxiv_search:
+        if not self.arxiv_search_client:
             return {
                 "status": "error",
                 "message": "ArXiv search not available"
             }
-        
+
         try:
             result = _arxiv_search(query, max_results=max_results, **kwargs)
             return result
@@ -237,17 +238,17 @@ class IntegrationTools:
     def deep_research(self, query: str, depth: int = 2, **kwargs) -> Dict[str, Any]:
         """
         Perform deep multi-step research (FREE!).
-        
+
         Combines:
         - DuckDuckGo web search
         - Wikipedia for factual knowledge
         - ArXiv for academic papers
         - Multi-step analysis
-        
+
         Args:
             query: Research question
             depth: Number of sub-questions (1-5)
-        
+
         Returns:
             {
                 'status': 'OK' or 'error',
@@ -258,14 +259,14 @@ class IntegrationTools:
                 'total_sources': int
             }
         """
-        if not self.deep_research:
+        if not self.deep_research_client:
             return {
                 "status": "error",
                 "message": "Deep research not available"
             }
-        
+
         try:
-            result = self.deep_research.research(query, depth=depth, **kwargs)
+            result = self.deep_research_client.research(query, depth=depth, **kwargs)
             return result
         except Exception as e:
             return {
@@ -280,11 +281,11 @@ class IntegrationTools:
     def fetch_webpage(self, url: str, max_chars: int = 10000, **kwargs) -> Dict[str, Any]:
         """
         Fetch webpage and convert to Markdown using Jina AI (FREE!).
-        
+
         Args:
             url: URL to fetch
             max_chars: Max characters to return (default: 10000 to save context)
-        
+
         Returns:
             {
                 'status': 'OK' or 'error',
@@ -294,14 +295,14 @@ class IntegrationTools:
                 'length': int
             }
         """
-        if not self.jina_reader:
+        if not self.jina_reader_client:
             return {
                 "status": "error",
                 "message": "Jina Reader not available"
             }
-        
+
         try:
-            result = self.jina_reader.fetch(url, max_chars=max_chars, **kwargs)
+            result = self.jina_reader_client.fetch(url, max_chars=max_chars, **kwargs)
             return result
         except Exception as e:
             return {
@@ -316,12 +317,12 @@ class IntegrationTools:
     def read_pdf(self, arxiv_id: str = None, file_path: str = None, max_chars: int = 20000, **kwargs) -> Dict[str, Any]:
         """
         Read PDF or ArXiv paper (LaTeX preferred!).
-        
+
         Args:
             arxiv_id: ArXiv ID (e.g., "1706.03762") - uses LaTeX source if available
             file_path: Local PDF file path
             max_chars: Max characters (default: 20000)
-        
+
         Returns:
             {
                 'status': 'OK' or 'error',
@@ -330,17 +331,17 @@ class IntegrationTools:
                 'length': int
             }
         """
-        if not self.pdf_reader:
+        if not self.pdf_reader_client:
             return {"status": "error", "message": "PDF Reader not available"}
-        
+
         try:
             if arxiv_id:
-                result = self.pdf_reader.read_arxiv_paper(arxiv_id, max_chars=max_chars)
+                result = self.pdf_reader_client.read_arxiv_paper(arxiv_id, max_chars=max_chars)
             elif file_path:
-                result = self.pdf_reader.read_pdf_file(file_path, max_chars=max_chars)
+                result = self.pdf_reader_client.read_pdf_file(file_path, max_chars=max_chars)
             else:
                 return {"status": "error", "message": "Must provide arxiv_id or file_path"}
-            
+
             return result
         except Exception as e:
             return {"status": "error", "message": f"PDF read error: {str(e)}"}
@@ -352,12 +353,12 @@ class IntegrationTools:
     def search_places(self, query: str, location: str = None, limit: int = 10, **kwargs) -> Dict[str, Any]:
         """
         Search for places (restaurants, shops, POIs) using OpenStreetMap (FREE!).
-        
+
         Args:
             query: Search query (e.g., "pizza restaurant", "coffee shop", "supermarket")
             location: Location to search near (e.g., "Berlin", "New York")
             limit: Max results (default: 10)
-        
+
         Returns:
             {
                 'status': 'OK' or 'error',
@@ -376,11 +377,11 @@ class IntegrationTools:
                 'total_results': int
             }
         """
-        if not self.places_search:
+        if not self.places_search_client:
             return {"status": "error", "message": "Places Search not available"}
-        
+
         try:
-            result = self.places_search.search(query, location=location, limit=limit)
+            result = self.places_search_client.search(query, location=location, limit=limit)
             return result
         except Exception as e:
             return {"status": "error", "message": f"Places search error: {str(e)}"}

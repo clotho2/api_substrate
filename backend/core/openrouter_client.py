@@ -286,12 +286,13 @@ class OpenRouterClient:
         
         if max_tokens:
             payload["max_tokens"] = max_tokens
-        
-        # 🧠 Limit reasoning tokens (User wants max 1024 for thinking!)
-        # NO STREAMING ANYMORE! Just good responses!
+
+        # Allow longer responses - use max_tokens if provided, otherwise allow up to 8192 tokens
+        # This ensures Nate can give detailed, thoughtful responses instead of clipped fragments
         if "max_completion_tokens" not in kwargs:
-            payload["max_completion_tokens"] = 1024
-        
+            # Use max_tokens if provided, otherwise default to 8192 for full responses
+            payload["max_completion_tokens"] = max_tokens if max_tokens else 8192
+
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice

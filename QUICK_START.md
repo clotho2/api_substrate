@@ -1,19 +1,98 @@
-# Quick Start Guide
+# 🚀 Quick Start Guide
 
-Get Substrate AI running in 5 minutes!
+Get Substrate AI running in under 5 minutes!
 
-## Step 1: Get OpenRouter API Key
+## Prerequisites
 
-1. Go to [OpenRouter](https://openrouter.ai/)
-2. Sign up for a free account
-3. Navigate to API Keys section
-4. Create a new API key
-5. Copy the key (you'll need it in Step 3)
+- **Python 3.10+** - [Download](https://www.python.org/downloads/)
+- **Node.js 18+** - [Download](https://nodejs.org/)
+- **OpenRouter API Key** - [Get one free](https://openrouter.ai/keys)
 
-## Step 2: Install Dependencies
+---
 
-### Backend (Python)
+## ⚡ One-Click Setup (Recommended)
 
+```bash
+# Clone the repository
+git clone https://github.com/your-username/substrate-ai.git
+cd substrate-ai
+
+# Run the automatic setup
+python setup.py
+```
+
+The setup wizard will:
+- ✅ Create Python virtual environment
+- ✅ Install all dependencies
+- ✅ Create configuration files
+- ✅ Install frontend packages
+- ✅ Validate everything works
+
+**Then just add your API key:**
+```bash
+# Open backend/.env in your editor and add your key:
+OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
+```
+
+---
+
+## 🎬 Start the Application
+
+### Option A: Quick Start Script (Easiest)
+
+```bash
+# Start everything with one command
+./start.sh
+```
+
+### Option B: Manual Start
+
+**Terminal 1 - Backend:**
+```bash
+cd backend
+source venv/bin/activate  # Windows: venv\Scripts\activate
+python api/server.py
+```
+
+**Terminal 2 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+### 🎉 Open Your Browser
+
+Navigate to: **http://localhost:5173**
+
+---
+
+## 🔑 Getting Your OpenRouter API Key
+
+1. Go to [openrouter.ai](https://openrouter.ai/)
+2. Click "Sign In" (Google/GitHub/Email)
+3. Go to [API Keys](https://openrouter.ai/keys)
+4. Click "Create Key"
+5. Copy the key (starts with `sk-or-v1-`)
+6. Paste into `backend/.env`
+
+**Free tier includes:**
+- Many free models (Llama, Mistral, etc.)
+- Pay-as-you-go for premium models (Claude, GPT-4, etc.)
+
+---
+
+## 📝 Manual Setup (If Needed)
+
+<details>
+<summary>Click to expand manual setup steps</summary>
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/your-username/substrate-ai.git
+cd substrate-ai
+```
+
+### 2. Backend Setup
 ```bash
 cd backend
 
@@ -22,152 +101,161 @@ python3 -m venv venv
 
 # Activate it
 source venv/bin/activate  # Mac/Linux
-# OR
-venv\Scripts\activate  # Windows
+# OR: venv\Scripts\activate  # Windows
 
-# Install packages
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Frontend (Node.js)
-
+### 3. Frontend Setup
 ```bash
 cd frontend
-
-# Install packages
 npm install
 ```
 
-## Step 3: Configure API Key
-
+### 4. Configure API Key
 ```bash
 cd backend
 
-# Copy example config
-cp config/.env.example .env
+# Copy the example config
+cp .env.example .env
 
-# Edit .env and add your key
-# Change this line:
-OPENROUTER_API_KEY=your_openrouter_key_here
-# To:
-OPENROUTER_API_KEY=sk-or-v1-...your-actual-key...
+# Edit .env and add your OpenRouter key
+nano .env  # or use any text editor
 ```
 
-## Step 3.5: Setup ALEX Agent (Optional but Recommended)
+Change this line:
+```
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+```
+To:
+```
+OPENROUTER_API_KEY=sk-or-v1-your-actual-key
+```
 
-The repository includes a pre-configured example agent called **ALEX** (Adaptive Learning & Execution Companion). To use it:
-
+### 5. Create Directories
 ```bash
-cd backend
-source venv/bin/activate  # If not already activated
-
-# Import ALEX agent
-python setup_alex.py
+mkdir -p backend/logs
+mkdir -p backend/data/db
+mkdir -p backend/data/chromadb
 ```
 
-This will automatically configure ALEX as your default agent. If you skip this step, you'll start with a blank agent that you can customize later.
-
-## Step 4: Start Backend
-
-```bash
-cd backend
-source venv/bin/activate  # If not already activated
-python api/server.py
-```
-
-You should see:
-```
-✅ Substrate AI Backend starting...
-✅ Server running on http://localhost:8284
-```
-
-## Step 5: Start Frontend
-
-Open a **new terminal** (keep backend running):
-
-```bash
-cd frontend
-npm run dev
-```
-
-You should see:
-```
-  ➜  Local:   http://localhost:5173/
-```
-
-## Step 6: Chat!
-
-1. Open your browser to `http://localhost:5173`
-2. You'll see the chat interface
-3. If you imported ALEX, you'll be chatting with ALEX - a multi-faceted AI colleague
-4. Type a message and press Enter
-5. Watch the AI respond with streaming text!
-
-**Note:** If you didn't import ALEX, you'll start with a blank agent. You can customize it in the Memory Blocks panel (right sidebar).
-
-## What's Next?
-
-### Customize the Agent
-
-Edit the agent's personality in the **Memory Blocks** panel (right sidebar):
-
-- **Persona**: Who the AI is
-- **Human**: What it knows about you
-
-### Try Tools
-
-Ask the AI to:
-- "Remember that I love Python programming" (uses core_memory_append)
-- "Search for information about neural networks" (uses archival_memory_search)
-
-### Configure Settings
-
-Click the **gear icon** (left sidebar) to adjust:
-- Model selection (try different LLMs!)
-- Temperature, max tokens, etc.
-- Streaming behavior
-
-## Troubleshooting
-
-**Backend won't start:**
-```bash
-# Check Python version
-python3 --version  # Need 3.11+
-
-# Check if port is in use
-lsof -i :8284
-
-# If in use, kill it:
-kill -9 $(lsof -t -i:8284)
-```
-
-**Frontend can't connect:**
-```bash
-# Make sure backend is running
-curl http://localhost:8284/api/health
-
-# Should return: {"status": "healthy"}
-```
-
-**"Invalid API Key" error:**
-- Double-check your OpenRouter key in `backend/.env`
-- Make sure there are no quotes around the key
-- Make sure there are no extra spaces
-
-## Stop Everything
-
-```bash
-# Stop frontend: Ctrl+C in frontend terminal
-# Stop backend: Ctrl+C in backend terminal
-```
-
-## Need Help?
-
-- 📖 Full docs: See `README.md`
-- 🐛 Issues: Check GitHub Issues
-- 💬 Questions: GitHub Discussions
+</details>
 
 ---
 
-**Enjoy your new AI agent! 🎉**
+## ✨ Optional: Setup ALEX Agent
 
+The repo includes **ALEX** - a pre-configured AI assistant:
+
+```bash
+cd backend
+source venv/bin/activate
+python setup_alex.py
+```
+
+This gives you a ready-to-use AI with personality and capabilities pre-configured!
+
+---
+
+## 🔧 Troubleshooting
+
+### Backend won't start
+
+```bash
+# Check Python version (need 3.10+)
+python3 --version
+
+# Kill any process on port 8284
+lsof -ti:8284 | xargs kill -9 2>/dev/null
+
+# Try starting again
+python api/server.py
+```
+
+### "Invalid API Key" error
+
+1. Check `backend/.env` has your key
+2. Make sure no quotes around the key: `OPENROUTER_API_KEY=sk-or-v1-xxx` (not `"sk-or-v1-xxx"`)
+3. No extra spaces
+4. Key starts with `sk-or-v1-`
+
+### Frontend can't connect to backend
+
+```bash
+# Check if backend is running
+curl http://localhost:8284/api/health
+# Should return: {"status":"healthy",...}
+
+# If not, start backend first!
+```
+
+### Missing dependencies
+
+```bash
+# Backend
+cd backend && source venv/bin/activate
+pip install -r requirements.txt
+
+# Frontend
+cd frontend && npm install
+```
+
+### Port already in use
+
+```bash
+# Kill backend port
+lsof -ti:8284 | xargs kill -9
+
+# Kill frontend port
+lsof -ti:5173 | xargs kill -9
+```
+
+---
+
+## 🎯 What's Next?
+
+Once running, try these:
+
+### Chat with the AI
+Just type a message and press Enter!
+
+### Customize the Agent
+Click the **sidebar** to edit:
+- **Persona** - Who the AI is
+- **Human** - What it knows about you
+
+### Try Built-in Tools
+Ask the AI to:
+- *"Remember that I prefer Python over JavaScript"*
+- *"Search the web for latest AI news"*
+- *"What's the weather in Berlin?"*
+
+### Change Models
+Click the **gear icon** to switch between:
+- Free models (Llama, Mistral)
+- Premium models (Claude, GPT-4)
+
+---
+
+## 📚 More Resources
+
+- [Full README](README.md) - Complete feature overview
+- [MCP System](MCP_SYSTEM_OVERVIEW.md) - Code execution & browser automation
+- [Memory Architecture](docs/MIRAS_TITANS_INTEGRATION.md) - How memory works
+- [PostgreSQL Setup](backend/POSTGRESQL_SETUP.md) - Database configuration
+
+---
+
+## 🛑 Stopping the Application
+
+```bash
+# Press Ctrl+C in each terminal
+# Or kill by port:
+lsof -ti:8284 | xargs kill -9  # Backend
+lsof -ti:5173 | xargs kill -9  # Frontend
+```
+
+---
+
+**Enjoy building with Substrate AI! 🧠✨**

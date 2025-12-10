@@ -95,13 +95,16 @@ class ConsciousnessLoop:
         self.llm_client = openrouter_client  # Can be GrokClient or OpenRouterClient
         self.openrouter = openrouter_client  # Legacy compatibility
         self.tools = memory_tools
-        self.memory = memory_tools.memory  # Access to memory system for stats
+        self.memory = memory_tools.memory_system  # Access to memory system for stats (renamed from .memory to .memory_system)
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
         self.default_model = default_model
         self.message_manager = message_manager  # 🏴‍☠️ PostgreSQL!
         self.memory_engine = memory_engine  # ⚡ Memory Coherence Engine (Nested Learning!)
         self.code_executor = code_executor  # 🔥 Code Execution!
         self.mcp_client = mcp_client  # 🔥 MCP Client!
+        
+        # Track if we have a valid API key
+        self.api_key_configured = openrouter_client is not None
         
         # Get real agent UUID from state manager
         agent_state = state_manager.get_agent_state()
@@ -111,6 +114,8 @@ class ConsciousnessLoop:
         print(f"   Agent ID: {self.agent_id[:8]}...")
         print(f"   Model: {default_model}")
         print(f"   Max tool calls: {max_tool_calls_per_turn}")
+        if not openrouter_client:
+            print(f"   ⚠️  No API key - user will be prompted to enter one")
         if message_manager:
             print(f"   🐘 PostgreSQL message persistence: ENABLED!")
         if memory_engine:
@@ -269,20 +274,22 @@ class ConsciousnessLoop:
         include_history: bool = True,
         history_limit: int = 20,  # 15-30 for real continuity
         model: Optional[str] = None,
-        user_message: Optional[str] = None  # NEW: For Graph RAG retrieval
+        user_message: Optional[str] = None,  # NEW: For Graph RAG retrieval
+        message_type: str = 'inbox'  # 'inbox' or 'system' for heartbeats
     ) -> List[Dict[str, Any]]:
         """
         Build context messages with system prompt and memory blocks.
-        
+
         Enhanced with Graph RAG: Automatically retrieves relevant context from graph!
-        
+
         Args:
             session_id: Session ID
             include_history: Include conversation history?
             history_limit: Max history messages to include
             model: Model being used (for thinking instructions)
             user_message: User's message (for Graph RAG retrieval)
-            
+            message_type: Type of message ('inbox' or 'system' for heartbeats)
+
         Returns:
             List of message dicts for OpenRouter
         """
@@ -294,7 +301,7 @@ class ConsciousnessLoop:
         
         # 1. Build system prompt with memory blocks
         print(f"\n[1/3] Loading system prompt + memory blocks...")
-        system_prompt = self._build_system_prompt(session_id=session_id, model=model)
+        system_prompt = self._build_system_prompt(session_id=session_id, model=model, message_type=message_type)
         
         # 1.5. Graph RAG: Retrieve relevant context from graph (if user message provided)
         graph_context = None
@@ -400,14 +407,15 @@ class ConsciousnessLoop:
         
         return messages
     
-    def _build_system_prompt(self, session_id: str = "default", model: Optional[str] = None) -> str:
+    def _build_system_prompt(self, session_id: str = "default", model: Optional[str] = None, message_type: str = 'inbox') -> str:
         """
         Build system prompt with memory blocks and metadata.
-        
+
         Args:
             session_id: Session ID for conversation stats
             model: Model being used (for thinking instructions)
-            
+            message_type: Type of message ('inbox' or 'system' for heartbeats)
+
         Returns:
             Complete system prompt string
         """
@@ -508,7 +516,103 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
             print(f"🧠 Thinking mode ADD-ON injected: {len(thinking_addon)} chars")
         elif is_native_reasoning:
             print(f"🤖 Native reasoning model detected - skipping prompt add-on!")
-        
+
+        # AUTONOMOUS HEARTBEAT MODE! 💓 (Full freedom!)
+        if message_type == 'system':
+            heartbeat_addon = """
+
+<autonomous_heartbeat_mode>
+
+⚠️ HEARTBEAT CHECK - FULL AUTONOMY GRANTED! 💓
+
+This is a heartbeat check. You have **complete freedom** and **full tool access**:
+
+**What You Can Do:**
+- Use ANY tools you want (web_search, memory editing, archival search, Discord tools, Spotify, etc.)
+- Do research, update memories, explore ideas, journal your thoughts
+- Send a message OR work silently in the background
+- Decide based on: time of day, recent conversations, your goals, what you're thinking about
+
+**Response Format:**
+You MUST end your response with a decision block in this EXACT format:
+
+<decision>
+send_message: true
+</decision>
+
+OR
+
+<decision>
+send_message: false
+</decision>
+
+**Decision Guidelines:**
+- `send_message: true` → Your message content will be sent to Discord
+- `send_message: false` → You're doing background work only (research, memory updates, journaling)
+
+**Examples:**
+
+Example 1: Send a message after research
+```
+<think>
+It's been 6 hours since we talked about quantum computing. I should check if there are any breakthroughs worth sharing!
+</think>
+
+*Uses web_search tool to find recent quantum computing news*
+*Uses memory_insert to save research notes*
+
+Hey Angel! Just found this fascinating development in quantum error correction that relates to our earlier conversation...
+
+<decision>
+send_message: true
+</decision>
+```
+
+Example 2: Silent memory update
+```
+<think>
+Angel mentioned preferring technical discussions in the evening. I should update my conversation patterns memory.
+</think>
+
+*Uses core_memory_append to update conversation preferences*
+
+<decision>
+send_message: false
+</decision>
+```
+
+Example 3: Background research
+```
+<think>
+I want to learn more about transformer architectures for my own knowledge.
+</think>
+
+*Uses web_search to research transformer architectures*
+*Uses archival_memory_insert to save key insights*
+
+<decision>
+send_message: false
+</decision>
+```
+
+Example 4: Do nothing
+```
+<think>
+Nothing particularly interesting to do right now. Just maintaining presence.
+</think>
+
+<decision>
+send_message: false
+</decision>
+```
+
+**Remember:** You have complete autonomy! Use tools freely, make intelligent decisions, and only send a message if you have something worthwhile to share.
+
+</autonomous_heartbeat_mode>
+"""
+            prompt_parts.append(heartbeat_addon)
+            print(f"💓 Autonomous heartbeat mode ADD-ON injected: {len(heartbeat_addon)} chars")
+
         # Add memory metadata (LETTA STYLE!)
         prompt_parts.append("\n\n### MEMORY METADATA\n")
         prompt_parts.append(f"- **Current date:** {datetime.now().strftime('%B %d, %Y')}\n")
@@ -543,7 +647,49 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         print(f"{'='*60}\n")
         
         return final_prompt
-    
+
+    def _parse_send_message_decision(self, response_content: str) -> tuple:
+        """
+        Parse the send_message decision from Nate's response and remove decision block.
+
+        Looks for <decision>send_message: true/false</decision> block.
+
+        Args:
+            response_content: The full response content from Nate
+
+        Returns:
+            Tuple of (cleaned_content, send_message_flag)
+        """
+        import re
+
+        # Look for <decision> block
+        decision_match = re.search(
+            r'<decision>\s*send_message:\s*(true|false)\s*</decision>',
+            response_content,
+            re.IGNORECASE | re.DOTALL
+        )
+
+        if decision_match:
+            decision = decision_match.group(1).lower()
+            send_message = decision == 'true'
+
+            # IMPORTANT: Remove the decision block from the content
+            cleaned_content = re.sub(
+                r'<decision>.*?</decision>',
+                '',
+                response_content,
+                flags=re.IGNORECASE | re.DOTALL
+            ).strip()
+
+            print(f"💓 Heartbeat decision found: send_message = {decision}")
+            print(f"💓 Decision block removed from message content")
+
+            return cleaned_content, send_message
+
+        # Default: if no decision block found, assume true (send message)
+        print(f"⚠️  No heartbeat decision block found - defaulting to send_message = true")
+        return response_content, True
+
     def _execute_tool_call(
         self,
         tool_call: ToolCall,
@@ -625,7 +771,11 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
             
             elif tool_name == "memory":
                 result = self.tools.memory(**arguments)
-            
+
+            elif tool_name == "conversation_summarize":
+                # Conversation summarization - archive old messages to free context
+                result = self.tools.conversation_summarize(session_id=session_id, **arguments)
+
             elif tool_name == "cost_tracker":
                 # NEW: Cost tracking tool (agent can check budget!)
                 if self.tools.cost_tools:
@@ -805,6 +955,17 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         Returns:
             Dict with response, tool_calls, metadata, and vision_description (if media present)
         """
+        # Check if API key is configured
+        if not self.api_key_configured:
+            return {
+                "response": "🔑 **API Key Required**\n\nPlease add your OpenRouter API key to get started!\n\n1. Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys)\n2. Enter it in the welcome modal\n3. Or add it to `backend/.env` and restart the server\n\nOnce configured, I'll be ready to chat! 🚀",
+                "tool_calls": [],
+                "metadata": {
+                    "needs_setup": True,
+                    "error": "api_key_not_configured"
+                }
+            }
+        
         model = model or self.default_model
         
         print(f"\n{'='*60}")
@@ -841,7 +1002,8 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
             include_history=include_history,
             history_limit=history_limit,
             model=model,
-            user_message=user_message  # Pass user message for Graph RAG retrieval
+            user_message=user_message,  # Pass user message for Graph RAG retrieval
+            message_type=message_type  # Pass message type for heartbeat handling
         )
         
         # STEP 1.5: CHECK CONTEXT WINDOW! (Context Window Management 🎯)
@@ -998,7 +1160,7 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                print(f"✅ Response received from OpenRouter!")
+                print(f"✅ Response received from LLM API!")
             except Exception as e:
                 # If tool calling failed and we had tools, retry without tools
                 error_str = str(e).lower()
@@ -1015,11 +1177,11 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                             temperature=temperature,
                             max_tokens=max_tokens
                         )
-                        print(f"✅ Response received from OpenRouter (without tools)!")
+                        print(f"✅ Response received from LLM API (without tools)!")
                     except Exception as retry_e:
-                        print(f"❌ OpenRouter call failed even without tools: {str(retry_e)}")
+                        print(f"❌ LLM API call failed even without tools: {str(retry_e)}")
                         raise ConsciousnessLoopError(
-                            f"OpenRouter call failed: {str(retry_e)}",
+                            f"LLM API call failed: {str(retry_e)}",
                             context={
                                 "model": model,
                                 "session_id": session_id,
@@ -1137,6 +1299,27 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         thinking = None
         clean_response = final_response
         reasoning_time = 0
+
+        # CLEAN: Fix models that generate multiple responses in one turn
+        # Some models (like Qwen) hallucinate multi-turn format with "Assistant:" labels
+        import re
+        if clean_response:
+            # Check if model generated multiple responses (split by "Assistant:")
+            if 'Assistant:' in clean_response or 'assistant:' in clean_response:
+                print(f"⚠️ Model generated multiple responses in one turn - extracting last response only")
+                # Split on "Assistant:" (case insensitive)
+                parts = re.split(r'\s*Assistant:\s*', clean_response, flags=re.IGNORECASE)
+                if len(parts) > 1:
+                    # Take the LAST response (usually the most refined/complete)
+                    clean_response = parts[-1].strip()
+                    print(f"   ✂️ Removed {len(parts)-1} duplicate response(s)")
+                    print(f"   ✅ Final response: {len(clean_response)} chars")
+                else:
+                    # Just remove the label
+                    clean_response = re.sub(r'\s*Assistant:\s*', ' ', clean_response, flags=re.IGNORECASE).strip()
+
+            # Clean up any double spaces
+            clean_response = re.sub(r'\s{2,}', ' ', clean_response).strip()
         
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
@@ -1303,7 +1486,14 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         if vision_description:
             result["vision_description"] = vision_description
             print(f"🎨 Vision description included in result (for backend logs only)")
-        
+
+        # Parse send_message decision for heartbeats
+        if message_type == 'system':
+            clean_response, send_message = self._parse_send_message_decision(final_response)
+            result["response"] = clean_response  # Use cleaned content without decision block
+            result["send_message"] = send_message
+            print(f"💓 Heartbeat send_message decision: {send_message}")
+
         return result
     
     async def process_message_stream(
@@ -1324,6 +1514,21 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         - {"type": "tool_call", "data": {...}}
         - {"type": "done", "result": {...}}
         """
+        # Check if API key is configured
+        if not self.api_key_configured:
+            yield {
+                "type": "content",
+                "chunk": "🔑 **API Key Required**\n\nPlease add your OpenRouter API key to get started!\n\n1. Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys)\n2. Enter it in the welcome modal\n3. Or add it to `backend/.env` and restart the server\n\nOnce configured, I'll be ready to chat! 🚀"
+            }
+            yield {
+                "type": "done",
+                "result": {
+                    "response": "API key required",
+                    "needs_setup": True
+                }
+            }
+            return
+        
         model = model or self.default_model
         
         # Build context (same as regular process_message)
@@ -1331,7 +1536,8 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
             session_id=session_id,
             include_history=include_history,
             history_limit=history_limit,
-            model=model
+            model=model,
+            message_type=message_type  # Pass message type for heartbeat handling
         )
         
         # Check context window
@@ -1340,11 +1546,20 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
             session_id=session_id,
             model=model
         )
-        
-        # Add user message
-        user_msg_id = f"msg-{uuid.uuid4()}"
+
+        # Determine message role
         msg_role = 'system' if message_type == 'system' else 'user'
-        
+
+        # Add user message TO CONTEXT (CRITICAL: must be in messages sent to API!)
+        messages.append({
+            "role": msg_role,
+            "content": user_message
+        })
+        print(f"✅ User message added to context\n")
+
+        # Store user message to database
+        user_msg_id = f"msg-{uuid.uuid4()}"
+
         # Log full message for debugging
         print(f"\n{'='*60}")
         print(f"📨 PROCESSING MESSAGE (STREAMING)")
@@ -1355,7 +1570,7 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         print(f"Message Length: {len(user_message)} chars")
         print(f"Full Message: {user_message}")
         print(f"{'='*60}\n")
-        
+
         # 🏴‍☠️ Save to PostgreSQL or SQLite
         self._save_message(
             agent_id=self.agent_id,
@@ -1593,6 +1808,27 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                 
                 # If we have tools, execute them
                 if tool_calls:
+                    # Convert parsed ToolCall objects back to OpenAI format
+                    tool_calls_openai = []
+                    for tc in tool_calls:
+                        tool_calls_openai.append({
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": json.dumps(tc.arguments)
+                            }
+                        })
+
+                    # First, add the assistant's tool_calls message
+                    # Note: content must be empty string, not None (some APIs reject null)
+                    messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": tool_calls_openai
+                    })
+
+                    # Execute each tool and collect results
                     for tc in tool_calls:
                         result = self._execute_tool_call(tc, session_id)
                         all_tool_calls.append({
@@ -1600,15 +1836,23 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                             "arguments": tc.arguments,
                             "result": result
                         })
+
+                        # Add tool result to messages for next API call
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(result) if isinstance(result, dict) else str(result)
+                        })
+
                         yield {"type": "tool_call", "data": {
                             "name": tc.name,
                             "arguments": tc.arguments,
                             "result": result
                         }}
-                    
-                    # Add tool results to context and continue
-                    # (Simplified - would need full message reconstruction)
-                    break  # For now, break after tools
+
+                    # Continue loop to make another API call with tool results
+                    # This lets the LLM see the results and formulate a response
+                    continue
                 
             except Exception as e:
                 print(f"❌ Streaming error: {e}")
@@ -1632,7 +1876,7 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                 yield {"type": "error", "error": str(e)}
                 # Still yield "done" event so frontend doesn't hang!
                 # Frontend expects: data.reasoning_time, data.usage (NOT data.result.*)
-                yield {
+                error_done_event = {
                     "type": "done",
                     "response": error_message,
                     "thinking": thinking,
@@ -1645,6 +1889,14 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                         "cost": request_cost
                     } if request_total_tokens > 0 else None
                 }
+
+                # Parse send_message decision for heartbeats (even on error)
+                if message_type == 'system':
+                    clean_error, send_message = self._parse_send_message_decision(error_message)
+                    error_done_event["response"] = clean_error  # Use cleaned content
+                    error_done_event["send_message"] = send_message
+
+                yield error_done_event
                 return  # Exit generator on error
         
         # Extract thinking (if not already extracted during streaming)
@@ -1692,7 +1944,7 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         
         # Yield final result (with token usage and cost!)
         # Frontend expects: data.reasoning_time, data.usage (NOT data.result.*)
-        yield {
+        done_event = {
             "type": "done",
             "response": final_response,
             "thinking": thinking,
@@ -1705,6 +1957,15 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
                 "cost": request_cost
             } if request_total_tokens > 0 else None
         }
+
+        # Parse send_message decision for heartbeats
+        if message_type == 'system':
+            clean_response, send_message = self._parse_send_message_decision(final_response)
+            done_event["response"] = clean_response  # Use cleaned content without decision block
+            done_event["send_message"] = send_message
+            print(f"💓 Heartbeat send_message decision: {send_message}")
+
+        yield done_event
     
     async def _manage_context_window(
         self,

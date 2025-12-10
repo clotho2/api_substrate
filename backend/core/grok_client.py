@@ -354,6 +354,43 @@ class GrokClient:
                 }
             )
 
+    def parse_tool_calls(self, response: Dict[str, Any]) -> List[ToolCall]:
+        """
+        Parse tool calls from Grok API response.
+
+        Grok uses OpenAI-compatible format, so this is identical to OpenRouterClient.
+
+        Args:
+            response: Chat completion response from Grok API
+
+        Returns:
+            List of ToolCall objects
+        """
+        tool_calls = []
+
+        if 'choices' not in response or not response['choices']:
+            return tool_calls
+
+        message = response['choices'][0].get('message', {})
+        raw_calls = message.get('tool_calls', [])
+
+        for call in raw_calls:
+            try:
+                # Handle case where Grok wraps tool calls in arrays
+                if isinstance(call, list):
+                    # If it's a list, take the first element
+                    if call:
+                        call = call[0]
+                    else:
+                        continue
+
+                tool_calls.append(ToolCall.from_openai_format(call))
+            except Exception as e:
+                print(f"⚠️  Failed to parse tool call: {e}")
+                print(f"   Raw: {json.dumps(call, indent=2)}")
+
+        return tool_calls
+
     def get_stats(self) -> Dict[str, Any]:
         """
         Get client statistics (same interface as OpenRouterClient).

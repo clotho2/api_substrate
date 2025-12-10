@@ -229,12 +229,105 @@ curl http://localhost:8091/health  # If you have a health endpoint
 ls -lh /opt/aicara/nate-substrate-v2/nate_substrate.db
 ```
 
+## 📱 Telegram Bot Deployment (Optional)
+
+The Telegram bot provides a multimodal interface to Nate with 4,096 character limit (2x Discord).
+
+### Prerequisites
+
+- Nate substrate service must be running first
+- Telegram bot token from @BotFather
+- python-telegram-bot library installed
+
+### Option 1: Using .env file (RECOMMENDED)
+
+```bash
+# 1. Get Telegram bot token
+# Talk to @BotFather on Telegram, send /newbot
+
+# 2. Add to .env file
+sudo nano /opt/aicara/nate-substrate-v2/.env
+# Add these lines:
+# TELEGRAM_BOT_TOKEN=your_bot_token_here
+# TELEGRAM_SESSION_ID=telegram_session
+# SUBSTRATE_API_URL=http://localhost:8284
+
+# 3. Install python-telegram-bot
+sudo pip3 install python-telegram-bot==20.7
+
+# 4. Install the service file
+sudo cp nate-telegram.service.env /etc/systemd/system/nate-telegram.service
+
+# 5. Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable nate-telegram
+sudo systemctl start nate-telegram
+```
+
+### Option 2: Using inline environment variables
+
+```bash
+# 1. Edit the service file with your tokens
+sudo cp nate-telegram.service /etc/systemd/system/
+sudo nano /etc/systemd/system/nate-telegram.service
+# Replace "your-telegram-bot-token-here" with your actual token
+
+# 2. Install python-telegram-bot
+sudo pip3 install python-telegram-bot==20.7
+
+# 3. Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable nate-telegram
+sudo systemctl start nate-telegram
+```
+
+### Telegram Bot Management
+
+```bash
+# Check status
+sudo systemctl status nate-telegram
+
+# View logs
+sudo journalctl -u nate-telegram -f
+
+# Restart bot
+sudo systemctl restart nate-telegram
+
+# Stop bot
+sudo systemctl stop nate-telegram
+```
+
+### Telegram Bot Features
+
+- ✅ Text conversations (4,096 char limit)
+- ✅ Image analysis (multimodal with Grok 4.1)
+- ✅ Document attachments (PDF, TXT, MD, PY, JSON, CSV, XLSX)
+- ✅ Auto-chunking for long responses
+- ✅ Commands: /start, /session, /clear
+
+### Troubleshooting Telegram Bot
+
+```bash
+# Check if substrate is running
+sudo systemctl status nate-substrate
+
+# Verify API endpoint
+curl http://localhost:8284/api/chat
+
+# Test bot token
+python3 -c "import os; print('Token loaded' if os.getenv('TELEGRAM_BOT_TOKEN') else 'No token')"
+
+# Check logs for errors
+sudo journalctl -u nate-telegram -n 50
+```
+
 ## 📚 Additional Resources
 
 - **Configuration:** See `config.py` for all available settings
 - **Environment Template:** See `.env.example` for variable reference
 - **Setup Script:** Run `python backend/setup_nate.py` to initialize core memory
 - **Testing:** Run `python backend/nate_agent.py` to test the agent
+- **Telegram Setup:** See `backend/TELEGRAM_SETUP.md` for detailed bot configuration
 
 ---
 

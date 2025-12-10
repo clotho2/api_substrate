@@ -39,7 +39,7 @@ function bootstrapSession(): ChatSession {
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
-    title: 'Neue Session',
+    title: 'New Session',
     createdAt: now,
     updatedAt: now,
     messages: [],
@@ -353,7 +353,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               messages: [...updatedMessages, assistantMessage],
               updatedAt: new Date().toISOString(),
             };
-            if (s.title === 'Neue Session' && content) {
+            if (s.title === 'New Session' && content) {
               next.title = content.slice(0, 40);
             }
             return next;
