@@ -310,13 +310,23 @@ except Exception as e:
     logger.warning(f"⚠️  MCP/Code Execution init failed: {e}")
     logger.info("   Continuing without MCP features...")
 
+# Determine default model based on which client was actually initialized
+if use_ollama:
+    # Using Ollama (Cloud or Local)
+    default_model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+elif grok_api_key and not use_ollama:
+    # Using Grok (xAI)
+    default_model = os.getenv("MODEL_NAME", "grok-4-1-fast-reasoning")
+else:
+    # Using OpenRouter or setup mode
+    default_model = os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning")
+
 consciousness_loop = ConsciousnessLoop(
     state_manager=state_manager,
     openrouter_client=openrouter_client,
     memory_tools=memory_tools,
     max_tool_calls_per_turn=int(os.getenv("MAX_TOOL_CALLS_PER_TURN", 10)),
-    # Use MODEL_NAME (Grok), OLLAMA_MODEL (Ollama), or DEFAULT_LLM_MODEL (OpenRouter)
-    default_model=os.getenv("MODEL_NAME") or os.getenv("OLLAMA_MODEL") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
+    default_model=default_model,
     message_manager=message_manager,  # 🏴‍☠️ PostgreSQL!
     memory_engine=memory_engine,  # ⚡ Nested Learning (if available)!
     code_executor=code_executor,  # 🔥 Code Execution (if available)!
