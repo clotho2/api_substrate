@@ -539,7 +539,7 @@ Status: ✅ Connected to substrate
         print("🤖 TELEGRAM BOT STARTING")
         print("="*60)
         print(f"   Substrate: {self.substrate_url}")
-        print(f"   Session: {self.session_id}")
+        print(f"   Base Session: {self.base_session_id}")
         print("="*60 + "\n")
 
         # Create application
