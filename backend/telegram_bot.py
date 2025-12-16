@@ -43,12 +43,58 @@ from telegram.ext import (
     filters,
     ContextTypes
 )
+
+# Transport selection: prefer aiohttp to avoid httpx version/proxy incompatibilities.
+# In httpx 0.28+, the 'proxies' parameter was removed (replaced with 'proxy'),
+# but python-telegram-bot 20.x still uses the old API, causing crashes.
+_request_class = None
+_transport_name = "default"
+_transport_error = None
+
+# First, try aiohttp as the most reliable option (avoids httpx issues entirely)
 try:
-    # Prefer aiohttp transport to avoid httpx version/proxy incompatibilities.
-    # (Some environments ship httpx versions that removed/changed proxy params.)
-    from telegram.request import AiohttpRequest  # type: ignore
-except Exception:  # pragma: no cover
-    AiohttpRequest = None  # type: ignore
+    from telegram.request import AiohttpRequest
+    _request_class = AiohttpRequest
+    _transport_name = "aiohttp"
+except ImportError as e:
+    _transport_error = f"AiohttpRequest not available: {e}"
+except Exception as e:
+    _transport_error = f"AiohttpRequest import error: {e}"
+
+# If aiohttp failed, try to configure httpx properly
+if _request_class is None:
+    try:
+        from telegram.request import HTTPXRequest
+        import httpx
+        import inspect
+        
+        # Get the signature of httpx.AsyncClient.__init__
+        sig = inspect.signature(httpx.AsyncClient.__init__)
+        
+        if 'proxies' in sig.parameters:
+            # Old httpx version - safe to use default HTTPXRequest
+            _request_class = None  # Use library default
+            _transport_name = "httpx (legacy proxies API)"
+        else:
+            # New httpx version (0.28+) - 'proxies' param was removed
+            # Create a custom request class that doesn't pass proxy settings
+            class HTTPXRequestNoProxy(HTTPXRequest):
+                """HTTPXRequest wrapper that avoids proxy parameter issues in httpx 0.28+"""
+                def __init__(self):
+                    # Call parent with explicit no-proxy settings
+                    # In python-telegram-bot 20.x, HTTPXRequest accepts these params
+                    super().__init__(
+                        connection_pool_size=1,
+                        proxy=None,  # Explicitly no proxy
+                    )
+            
+            _request_class = HTTPXRequestNoProxy
+            _transport_name = "httpx (no-proxy wrapper for 0.28+)"
+            
+    except ImportError as e:
+        _transport_error = f"HTTPXRequest not available: {e}"
+    except Exception as e:
+        _transport_error = f"HTTPXRequest setup error: {e}"
 
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -546,20 +592,30 @@ Status: ✅ Connected to substrate
         print("="*60)
         print(f"   Substrate: {self.substrate_url}")
         print(f"   Base Session: {self.base_session_id}")
-        print("="*60 + "\n")
+        print("="*60)
 
         # Create application
         #
         # NOTE: python-telegram-bot defaults to an httpx-based request backend.
         # In some deployments, httpx has breaking changes around proxy parameters
         # (e.g. removing `proxies=`), which can crash the bot at startup.
-        # For robustness, prefer the aiohttp request backend when available.
+        # For robustness, prefer the aiohttp request backend when available,
+        # or configure httpx without proxy settings.
+        
+        print(f"   Transport: {_transport_name}")
+        if _transport_error:
+            print(f"   Note: {_transport_error}")
+        
         builder = Application.builder().token(TELEGRAM_BOT_TOKEN)
-        if AiohttpRequest is not None:
-            builder = builder.request(AiohttpRequest())
-            print("   Transport: aiohttp (forced)")
-        else:
-            print("   Transport: default (httpx)")
+        
+        if _request_class is not None:
+            # Use our configured request class (AiohttpRequest or HTTPXRequestNoProxy)
+            try:
+                builder = builder.request(_request_class())
+            except Exception as e:
+                print(f"   ⚠️ Warning: Failed to initialize {_transport_name}: {e}")
+                print(f"   Falling back to library default...")
+        
         app = builder.build()
 
         # Add handlers

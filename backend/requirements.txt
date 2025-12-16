@@ -16,7 +16,7 @@ gevent==24.2.1             # Alternative async (fallback)
 # ============================================
 openai==1.54.3              # OpenAI-compatible client for OpenRouter
 aiohttp==3.9.1              # Async HTTP for streaming
-httpx>=0.25.0               # Modern HTTP client (async support)
+httpx>=0.25.0,<0.28.0       # Modern HTTP client (pinned to avoid proxies API break in 0.28+)
 requests==2.31.0            # Sync HTTP for simple calls
 
 # ============================================
@@ -58,7 +58,7 @@ neo4j==5.14.1               # Neo4j Graph DB (for Graph RAG)
 # Uncomment if you want to use these features:
 # discord.py==2.3.2         # For Discord tool
 # spotipy==2.23.0           # For Spotify control
-python-telegram-bot==20.7   # For Telegram bot integration
+python-telegram-bot[aiohttp]==20.7   # For Telegram bot integration (with aiohttp transport)
 
 # ============================================
 # DEVELOPMENT (Optional)
