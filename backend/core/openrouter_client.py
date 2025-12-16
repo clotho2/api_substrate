@@ -328,6 +328,20 @@ class OpenRouterClient:
                     # Parse response
                     data = await response.json()
                     
+                    # DEBUG: Log raw response structure for troubleshooting model-specific issues
+                    if 'choices' in data and len(data['choices']) > 0:
+                        msg = data['choices'][0].get('message', {})
+                        print(f"\n🔍 DEBUG OpenRouter Response:")
+                        print(f"   Message keys: {list(msg.keys())}")
+                        if 'content' in msg:
+                            content_val = msg['content']
+                            content_type = type(content_val).__name__
+                            content_preview = str(content_val)[:300] if content_val else 'None'
+                            print(f"   Content type: {content_type}")
+                            print(f"   Content preview: {content_preview}")
+                        if 'tool_calls' in msg:
+                            print(f"   Tool calls: {len(msg['tool_calls'])}")
+                    
                     # Track usage
                     if 'usage' in data:
                         usage = data['usage']

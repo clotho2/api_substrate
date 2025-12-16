@@ -11,6 +11,7 @@ NATIVE_REASONING_MODELS = {
     'openai/o1-mini',
     'deepseek/deepseek-r1',
     'deepseek/deepseek-reasoner',
+    'deepseek/deepseek-v3.2',  # V3.2 has optional reasoning via 'reasoning' parameter
     'moonshotai/kimi-k2-thinking',
     'moonshotai/moonshot-v1-thinking',
 }

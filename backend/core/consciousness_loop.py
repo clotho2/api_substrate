@@ -1221,9 +1221,79 @@ send_message: false
             
             # Get response content and tool calls
             assistant_msg = response['choices'][0]['message']
-            content = assistant_msg.get('content', '').strip()
+            
+            # DEBUG: Log the full assistant message structure
+            print(f"\n🔍 DEBUG: Raw assistant_msg keys: {list(assistant_msg.keys())}")
+            print(f"🔍 DEBUG: assistant_msg content type: {type(assistant_msg.get('content'))}")
+            raw_content = assistant_msg.get('content')
+            if raw_content:
+                content_preview = str(raw_content)[:500] if raw_content else 'None'
+                print(f"🔍 DEBUG: Raw content (first 500 chars): {content_preview}")
+            
+            # Check for reasoning field (DeepSeek V3.2, o1, R1, etc.)
+            if 'reasoning' in assistant_msg:
+                print(f"🧠 DEBUG: Found 'reasoning' field: {str(assistant_msg['reasoning'])[:200]}")
+            if 'reasoning_content' in assistant_msg:
+                print(f"🧠 DEBUG: Found 'reasoning_content' field: {str(assistant_msg['reasoning_content'])[:200]}")
+            
+            # Handle content - some models return string, others return array of content blocks
+            raw_content = assistant_msg.get('content')
+            if raw_content is None:
+                content = ''
+            elif isinstance(raw_content, str):
+                content = raw_content.strip()
+            elif isinstance(raw_content, list):
+                # Some models (like Claude, etc.) return content as array of blocks
+                # Extract text from all text blocks
+                text_parts = []
+                for block in raw_content:
+                    if isinstance(block, dict):
+                        if block.get('type') == 'text':
+                            text_parts.append(block.get('text', ''))
+                        elif 'text' in block:
+                            text_parts.append(block.get('text', ''))
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+                content = '\n'.join(text_parts).strip()
+                print(f"🔍 DEBUG: Converted list content to string: {len(content)} chars")
+            else:
+                # Unknown format - convert to string
+                content = str(raw_content).strip()
+                print(f"⚠️  WARNING: Unknown content type {type(raw_content)}, converted to string")
             # Only parse tool calls if tools were enabled
             tool_calls = self.openrouter.parse_tool_calls(response) if tool_schemas else []
+            
+            # FIX: Detect if content contains tool schema JSON (DeepSeek V3.2 reasoning leak)
+            # Some models output their reasoning about tools (including schemas) as content
+            if content and tool_schemas:
+                # Check for multiple tool schema indicators
+                schema_indicators = ['"parameters":', '"properties":', '"type": "function"', 
+                                     '"description":', '"type": "object"', '"required":']
+                indicator_count = sum(1 for ind in schema_indicators if ind in content)
+                
+                if indicator_count >= 3:
+                    print(f"⚠️  DETECTED: Content contains tool schema JSON (reasoning leak)")
+                    print(f"   This is likely the model's reasoning output, not the actual response.")
+                    
+                    # If we have tool calls, ignore the schema content - it's just reasoning
+                    if tool_calls:
+                        print(f"   ✅ Tool calls present - ignoring schema content as reasoning")
+                        content = ""  # Clear the schema content, let tool calls proceed
+                    else:
+                        # No tool calls but schema in content - try to extract any real content
+                        # Look for text before or after the JSON
+                        import re
+                        # Try to find actual message content (not JSON)
+                        lines = content.split('\n')
+                        real_lines = [l for l in lines if not any(ind in l for ind in schema_indicators)]
+                        filtered = '\n'.join(real_lines).strip()
+                        
+                        if filtered and len(filtered) > 20:
+                            print(f"   ✅ Extracted {len(filtered)} chars of real content")
+                            content = filtered
+                        else:
+                            print(f"   ⚠️  No real content found - will retry without tools")
+                            content = ""  # Force retry without tools
             
             print(f"\n📥 ANALYZING RESPONSE...")
             print(f"  • Content: {'Yes' if content else 'No'} ({len(content)} chars)")
@@ -1240,6 +1310,26 @@ send_message: false
             # 3. No content + No tools = ERROR ❌
             
             print(f"\n🤔 DECISION:")
+            
+            # SPECIAL CASE: No content and no tool calls after schema detection
+            # This means model output was all schema JSON - retry without tools
+            if not content and not tool_calls and tool_schemas:
+                print(f"⚠️  Model only output tool schemas - retrying WITHOUT tools...")
+                tool_schemas = None  # Disable tools for retry
+                try:
+                    response = await self.openrouter.chat_completion(
+                        messages=messages,
+                        model=model,
+                        tools=None,
+                        temperature=temperature,
+                        max_tokens=max_tokens
+                    )
+                    assistant_msg = response['choices'][0]['message']
+                    content = assistant_msg.get('content', '').strip() if isinstance(assistant_msg.get('content'), str) else ''
+                    tool_calls = []
+                    print(f"✅ Retry successful! Got {len(content)} chars of content")
+                except Exception as retry_e:
+                    print(f"❌ Retry failed: {str(retry_e)}")
             
             if content and not tool_calls:
                 # ✅ FINAL ANSWER - model responded naturally!
