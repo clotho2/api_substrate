@@ -146,14 +146,18 @@ class ConsciousnessLoop:
         model_lower = model.lower()
         
         # Models that definitely DON'T support tools (known from OpenRouter errors)
-        # NOTE: Some models support tools natively but OpenRouter doesn't translate the format correctly
         NO_TOOL_SUPPORT = {
             'deepseek/deepseek-chat-v3.1:free',  # Free model doesn't support tools
-            'deepseek/deepseek-v3.2',  # Uses proprietary [[tool_call_begin]] format, not OpenAI format!
             'qwen/qwen-3-coder-480b-a35b-instruct:free',  # Free model doesn't support tools
             'google/gemma-3-27b-it:free',
             'google/gemma-3-27b-it',  # Base model also doesn't support tools
             # Add more as we discover them
+        }
+        
+        # Models that use proprietary tool format (need custom parsing)
+        # DeepSeek V3.2 uses: [[tool_call_begin]]name[[tool_sep]]args[[tool_call_end]]
+        CUSTOM_TOOL_FORMAT = {
+            'deepseek/deepseek-v3.2',
         }
         
         # Models that DO support tools (known good models - especially free ones!)
@@ -189,6 +193,122 @@ class ConsciousnessLoop:
         
         # Default: Assume tools are supported (most models do)
         return True
+    
+    def _uses_custom_tool_format(self, model: str) -> bool:
+        """Check if model uses a proprietary tool calling format."""
+        model_lower = model.lower()
+        CUSTOM_TOOL_FORMAT = {
+            'deepseek/deepseek-v3.2',
+        }
+        return model_lower in CUSTOM_TOOL_FORMAT
+    
+    def _parse_deepseek_tool_calls(self, content: str) -> tuple:
+        """
+        Parse DeepSeek V3.2's proprietary tool format from content.
+        
+        DeepSeek uses: [[tool_call_begin]]tool_name[[tool_sep]]arguments[[tool_call_end]]
+        
+        Args:
+            content: Response content that may contain tool calls
+            
+        Returns:
+            Tuple of (clean_content, tool_calls_list)
+            - clean_content: Content with tool call markers removed
+            - tool_calls_list: List of parsed tool calls in standard format
+        """
+        import re
+        
+        tool_calls = []
+        clean_content = content
+        
+        # First, check if this is just template/placeholder text (not real tool calls)
+        # DeepSeek sometimes outputs its format instructions instead of actual calls
+        if 'tool_name[[tool_sep]]arguments' in content or '[[tool_call_begin]]tool_name' in content:
+            print(f"⚠️  DEEPSEEK: Content contains template placeholders, not real tool calls")
+            # This is template text, not actual tool calls - remove it all
+            # Remove the template patterns
+            clean_content = re.sub(r'\[\[tool_call_begin\]\]tool_name\[\[tool_sep\]\]arguments\[\[tool_call_end\]\]', '', content)
+            clean_content = re.sub(r'_name\[\[tool_sep\]\]arguments', '', clean_content)
+            clean_content = re.sub(r'\[\[tool_call_begin\]\]', '', clean_content)
+            clean_content = re.sub(r'\[\[tool_call_end\]\]', '', clean_content)
+            clean_content = re.sub(r'\[\[tool_sep\]\]', '', clean_content)
+            # Remove Chinese instructions
+            clean_content = re.sub(r'[\d]+\.\s*当.*?(?=\n|$)', '', clean_content)
+            clean_content = re.sub(r'\n{2,}', '\n', clean_content).strip()
+            return clean_content, []  # No actual tool calls
+        
+        # Pattern to match DeepSeek's tool call format
+        # [[tool_call_begin]]tool_name[[tool_sep]]{"arg": "value"}[[tool_call_end]]
+        pattern = r'\[\[tool_call_begin\]\](\w+)\[\[tool_sep\]\](.*?)\[\[tool_call_end\]\]'
+        
+        matches = re.findall(pattern, content, re.DOTALL)
+        
+        # Filter out matches that are just placeholders
+        real_matches = [(name, args) for name, args in matches 
+                        if name != 'tool_name' and args.strip() != 'arguments']
+        
+        if real_matches:
+            print(f"🔧 DEEPSEEK TOOL FORMAT: Found {len(real_matches)} tool call(s)")
+            
+            for i, (tool_name, arguments_str) in enumerate(real_matches):
+                try:
+                    # Parse arguments as JSON
+                    arguments = json.loads(arguments_str.strip()) if arguments_str.strip() else {}
+                    
+                    # Create a ToolCall-compatible object
+                    from core.openrouter_client import ToolCall
+                    tool_call = ToolCall(
+                        id=f"deepseek_call_{i}",
+                        name=tool_name,
+                        arguments=arguments
+                    )
+                    tool_calls.append(tool_call)
+                    print(f"   ✅ Parsed: {tool_name}({json.dumps(arguments)[:100]}...)")
+                    
+                except json.JSONDecodeError as e:
+                    print(f"   ⚠️  Failed to parse arguments for {tool_name}: {e}")
+                    print(f"      Raw args: {arguments_str[:200]}")
+            
+            # Remove tool call markers from content
+            clean_content = re.sub(pattern, '', content, flags=re.DOTALL)
+            
+            # Also remove DeepSeek's Chinese tool instructions if present
+            # These are internal instructions that shouldn't be shown to user
+            chinese_instruction_patterns = [
+                r'[\d]+\.\s*当\s*##?工具列表.*?(?=\n\n|\n[\d]+\.|\Z)',  # Numbered instructions
+                r'##?工具列表.*',  # Tool list header
+                r'当.*禁止返回工具调用格式.*',  # Tool format instructions
+                r'\[\[tool_sep\]\]',  # Leftover separators
+                r'tool_name',  # Literal "tool_name" placeholder
+                r'arguments',  # Literal "arguments" placeholder  
+            ]
+            for cleanup_pattern in chinese_instruction_patterns:
+                clean_content = re.sub(cleanup_pattern, '', clean_content, flags=re.DOTALL)
+            
+            # Clean up any remaining artifacts
+            clean_content = re.sub(r'\[\[tool_call_begin\]\].*', '', clean_content)
+            clean_content = re.sub(r'.*\[\[tool_call_end\]\]', '', clean_content)
+            
+            # Remove excessive whitespace/newlines left after cleaning
+            clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
+            clean_content = clean_content.strip()
+            
+            print(f"   📝 Clean content remaining: {len(clean_content)} chars")
+        elif matches:
+            # We have matches but they were all placeholders - still clean up
+            print(f"⚠️  DEEPSEEK: Found {len(matches)} matches but all were placeholders")
+            clean_content = re.sub(pattern, '', content, flags=re.DOTALL)
+            # Clean Chinese instructions
+            for cleanup_pattern in [
+                r'[\d]+\.\s*当.*?(?=\n|$)',
+                r'\[\[tool_sep\]\]',
+                r'\[\[tool_call_begin\]\]',
+                r'\[\[tool_call_end\]\]',
+            ]:
+                clean_content = re.sub(cleanup_pattern, '', clean_content)
+            clean_content = re.sub(r'\n{2,}', '\n', clean_content).strip()
+        
+        return clean_content, tool_calls
     
     def _build_graph_from_conversation(self, session_id: str):
         """
@@ -1265,6 +1385,16 @@ send_message: false
             # Only parse tool calls if tools were enabled
             tool_calls = self.openrouter.parse_tool_calls(response) if tool_schemas else []
             
+            # DEEPSEEK V3.2: Check for proprietary tool format in content
+            # DeepSeek uses [[tool_call_begin]]name[[tool_sep]]args[[tool_call_end]] format
+            if content and self._uses_custom_tool_format(model) and '[[tool_call_begin]]' in content:
+                print(f"🔧 DEEPSEEK: Detected proprietary tool format in content")
+                clean_content, deepseek_tools = self._parse_deepseek_tool_calls(content)
+                if deepseek_tools:
+                    tool_calls = deepseek_tools  # Use parsed tool calls
+                    content = clean_content  # Use cleaned content
+                    print(f"   ✅ Extracted {len(tool_calls)} tool calls, {len(content)} chars remaining content")
+            
             # FIX: Detect if content contains tool schema JSON (DeepSeek V3.2 reasoning leak)
             # Some models output their reasoning about tools (including schemas) as content
             if content and tool_schemas:
@@ -1857,6 +1987,38 @@ send_message: false
                                         yield {"type": "thinking", "chunk": final_reasoning, "status": "thinking"}
                 
                 print(f"📊 Stream complete: {len(content_chunks)} content chunks, {len(thinking_chunks)} thinking chunks, final_response length: {len(final_response)}")
+                
+                # DEEPSEEK V3.2: Check for proprietary tool format in streamed content
+                if final_response and self._uses_custom_tool_format(model) and '[[tool_call_begin]]' in final_response:
+                    print(f"🔧 DEEPSEEK STREAMING: Detected proprietary tool format")
+                    clean_content, deepseek_tools = self._parse_deepseek_tool_calls(final_response)
+                    if deepseek_tools:
+                        # We found tool calls in the streamed content!
+                        # For streaming, we need to handle this differently - execute tools and continue
+                        print(f"   ✅ Parsed {len(deepseek_tools)} tool calls from stream")
+                        
+                        # Execute each tool call
+                        for tc in deepseek_tools:
+                            print(f"   🔧 Executing: {tc.name}")
+                            result = self._execute_tool_call(tc, session_id)
+                            all_tool_calls.append({
+                                "name": tc.name,
+                                "arguments": tc.arguments,
+                                "result": result
+                            })
+                            # Yield tool call event
+                            yield {
+                                "type": "tool_call",
+                                "data": {
+                                    "name": tc.name,
+                                    "arguments": tc.arguments,
+                                    "result": result
+                                }
+                            }
+                        
+                        # Update final_response to clean content (without tool markers)
+                        final_response = clean_content
+                        print(f"   📝 Clean response: {len(final_response)} chars")
                 
                 # Extract token usage from stream (if available)
                 # NOTE: OpenRouter does NOT send usage info in streams! We need to estimate.
