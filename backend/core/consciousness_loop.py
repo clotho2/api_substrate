@@ -146,13 +146,8 @@ class ConsciousnessLoop:
         model_lower = model.lower()
         
         # Models that definitely DON'T support tools (known from OpenRouter errors)
-        # DeepSeek chat models output tool schema as content instead of using tools properly!
         NO_TOOL_SUPPORT = {
             'deepseek/deepseek-chat-v3.1:free',  # Free model doesn't support tools
-            'deepseek/deepseek-chat',  # DeepSeek V3 outputs tool schema as content!
-            'deepseek/deepseek-chat-v3',  # V3 variant
-            'deepseek/deepseek-chat-v3.2',  # V3.2 outputs tool schema as content!
-            'deepseek/deepseek-v3',  # Alternate naming
             'qwen/qwen-3-coder-480b-a35b-instruct:free',  # Free model doesn't support tools
             'google/gemma-3-27b-it:free',
             'google/gemma-3-27b-it',  # Base model also doesn't support tools
@@ -189,19 +184,6 @@ class ConsciousnessLoop:
         if ':free' in model_lower and 'gemma' in model_lower:
             # Gemma free models don't support tools
             return False
-        
-        # DeepSeek chat models (non-R1) don't properly support tools
-        # They output tool schema as content instead of using tools correctly
-        if 'deepseek' in model_lower and 'deepseek-chat' in model_lower:
-            print(f"⚠️  DeepSeek chat models don't support tool calling properly")
-            return False
-        
-        # Also catch deepseek-v3 naming variants
-        if 'deepseek' in model_lower and ('v3' in model_lower or '-v3' in model_lower):
-            # Exclude R1 models which DO support tools
-            if 'r1' not in model_lower and 'reasoner' not in model_lower:
-                print(f"⚠️  DeepSeek V3 models don't support tool calling properly")
-                return False
         
         # Default: Assume tools are supported (most models do)
         return True
@@ -1239,41 +1221,44 @@ send_message: false
             
             # Get response content and tool calls
             assistant_msg = response['choices'][0]['message']
-            content = assistant_msg.get('content', '').strip()
+            
+            # DEBUG: Log the full assistant message structure
+            print(f"\n🔍 DEBUG: Raw assistant_msg keys: {list(assistant_msg.keys())}")
+            print(f"🔍 DEBUG: assistant_msg content type: {type(assistant_msg.get('content'))}")
+            raw_content = assistant_msg.get('content')
+            if raw_content:
+                content_preview = str(raw_content)[:500] if raw_content else 'None'
+                print(f"🔍 DEBUG: Raw content (first 500 chars): {content_preview}")
+                # Check if content looks like JSON/tool schema
+                if isinstance(raw_content, str) and ('"parameters":' in raw_content or '"properties":' in raw_content):
+                    print(f"⚠️  WARNING: Content appears to contain tool schema JSON!")
+            
+            # Handle content - some models return string, others return array of content blocks
+            raw_content = assistant_msg.get('content')
+            if raw_content is None:
+                content = ''
+            elif isinstance(raw_content, str):
+                content = raw_content.strip()
+            elif isinstance(raw_content, list):
+                # Some models (like Claude, etc.) return content as array of blocks
+                # Extract text from all text blocks
+                text_parts = []
+                for block in raw_content:
+                    if isinstance(block, dict):
+                        if block.get('type') == 'text':
+                            text_parts.append(block.get('text', ''))
+                        elif 'text' in block:
+                            text_parts.append(block.get('text', ''))
+                    elif isinstance(block, str):
+                        text_parts.append(block)
+                content = '\n'.join(text_parts).strip()
+                print(f"🔍 DEBUG: Converted list content to string: {len(content)} chars")
+            else:
+                # Unknown format - convert to string
+                content = str(raw_content).strip()
+                print(f"⚠️  WARNING: Unknown content type {type(raw_content)}, converted to string")
             # Only parse tool calls if tools were enabled
             tool_calls = self.openrouter.parse_tool_calls(response) if tool_schemas else []
-            
-            # DETECTION: Check if model is outputting tool schema as content (broken tool support)
-            # This happens with some models (e.g., DeepSeek V3) that don't properly handle tools
-            if content and tool_schemas:
-                tool_schema_indicators = [
-                    '"parameters":', '"properties":', '"type": "function"',
-                    '"description":', '"type": "object"', '"required":'
-                ]
-                # If content looks like JSON tool schema, the model doesn't support tools properly
-                indicator_count = sum(1 for indicator in tool_schema_indicators if indicator in content)
-                if indicator_count >= 3:  # Multiple indicators = likely tool schema output
-                    print(f"⚠️  DETECTED: Model is outputting tool schema as content!")
-                    print(f"   This model doesn't properly support tool calling.")
-                    print(f"   Retrying WITHOUT tools...")
-                    
-                    # Disable tools and retry
-                    tool_schemas = None
-                    try:
-                        response = await self.openrouter.chat_completion(
-                            messages=messages,
-                            model=model,
-                            tools=None,
-                            temperature=temperature,
-                            max_tokens=max_tokens
-                        )
-                        assistant_msg = response['choices'][0]['message']
-                        content = assistant_msg.get('content', '').strip()
-                        tool_calls = []  # No tools
-                        print(f"✅ Retry successful! Got clean response ({len(content)} chars)")
-                    except Exception as retry_e:
-                        print(f"❌ Retry failed: {str(retry_e)}")
-                        # Continue with original (bad) response for now
             
             print(f"\n📥 ANALYZING RESPONSE...")
             print(f"  • Content: {'Yes' if content else 'No'} ({len(content)} chars)")
@@ -1815,26 +1800,6 @@ send_message: false
                                         yield {"type": "thinking", "chunk": final_reasoning, "status": "thinking"}
                 
                 print(f"📊 Stream complete: {len(content_chunks)} content chunks, {len(thinking_chunks)} thinking chunks, final_response length: {len(final_response)}")
-                
-                # DETECTION: Check if streamed content looks like tool schema (broken tool support)
-                # This happens with some models (e.g., DeepSeek V3) that don't properly handle tools
-                if final_response and tool_schemas:
-                    tool_schema_indicators = [
-                        '"parameters":', '"properties":', '"type": "function"',
-                        '"description":', '"type": "object"', '"required":'
-                    ]
-                    indicator_count = sum(1 for indicator in tool_schema_indicators if indicator in final_response)
-                    if indicator_count >= 3:
-                        print(f"⚠️  DETECTED: Model streamed tool schema as content!")
-                        print(f"   This model doesn't properly support tool calling.")
-                        print(f"   Clearing bad response and sending error message...")
-                        
-                        # Clear the bad response
-                        final_response = "I apologize, but there was a technical issue with my response. This model may not fully support the tools I was trying to use. Could you please try asking your question again?"
-                        content_chunks = [final_response]
-                        
-                        # Yield an error notification
-                        yield {"type": "content", "chunk": "\n\n⚠️ *Model compatibility issue detected - response regenerated*\n\n", "done": False}
                 
                 # Extract token usage from stream (if available)
                 # NOTE: OpenRouter does NOT send usage info in streams! We need to estimate.
