@@ -15,6 +15,9 @@ NATIVE_REASONING_MODELS = {
     'moonshotai/moonshot-v1-thinking',
 }
 
+# NOTE: Models NOT in this list (like Mistral Large 3) are treated as standard models
+# They work perfectly with function calling but don't have native reasoning capabilities
+
 def has_native_reasoning(model: str) -> bool:
     """
     Check if a model has native reasoning capabilities.
