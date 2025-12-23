@@ -11,16 +11,18 @@ import requests
 from typing import Dict, Any
 
 
-def send_voice_message(message: str) -> Dict[str, Any]:
+def send_voice_message(message: str, target: str = None, target_type: str = "auto") -> Dict[str, Any]:
     """
     Send a voice message to Angela via Discord using Eleven Labs TTS.
 
     The Discord bot will:
     1. Convert the text to speech using Eleven Labs
-    2. Send the audio file as a voice message to Angela
+    2. Send the audio file as a voice message to Discord
 
     Args:
-        message: The text message to convert to speech and send
+        message: The text message to convert to speech and send (max 3000 chars)
+        target: Discord user ID or channel ID (optional - uses DEFAULT_USER_ID if not provided)
+        target_type: "user", "channel", or "auto" (default: "auto")
 
     Returns:
         Dict with status and message:
@@ -34,6 +36,15 @@ def send_voice_message(message: str) -> Dict[str, Any]:
     # Default to localhost:3001 since both services run on same machine
     DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://localhost:3001")
 
+    # Get default target (Angela's user ID) if not provided
+    if not target:
+        target = os.getenv("DEFAULT_USER_ID", "")
+        if not target:
+            return {
+                "status": "error",
+                "message": "No target specified and DEFAULT_USER_ID not configured"
+            }
+
     # Validate message
     if not message or not message.strip():
         return {
@@ -41,23 +52,33 @@ def send_voice_message(message: str) -> Dict[str, Any]:
             "message": "Message cannot be empty"
         }
 
-    # Prepare the request to Discord bot
-    endpoint = f"{DISCORD_BOT_URL.rstrip('/')}/send-voice-message"
+    # Check message length (ElevenLabs limit)
+    if len(message) > 3000:
+        return {
+            "status": "error",
+            "message": f"Message too long ({len(message)} chars). Maximum is 3000 characters."
+        }
+
+    # Prepare the request to Discord bot API endpoint
+    endpoint = f"{DISCORD_BOT_URL.rstrip('/')}/api/send-voice-message"
     headers = {
         "Content-Type": "application/json"
     }
 
     payload = {
-        "message": message.strip()
+        "text": message.strip(),
+        "target": target,
+        "target_type": target_type
     }
 
     try:
-        # Send request to Discord bot API
+        # Send request to Discord bot
+        # Timeout is 120s because ElevenLabs can take time for long messages
         response = requests.post(
             endpoint,
             headers=headers,
             json=payload,
-            timeout=30  # TTS can take a few seconds
+            timeout=120
         )
 
         # Handle response
