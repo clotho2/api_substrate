@@ -1,0 +1,82 @@
+{
+  "name": "spotify_control",
+  "description": "Complete Spotify control: search music, play/pause/skip, manage playlists, add to queue. Supports batch operations to combine multiple actions in ONE call (saves API credits!). Can create playlists with unlimited songs using semicolon-separated queries.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": [
+          "search",
+          "play",
+          "pause",
+          "next",
+          "previous",
+          "now_playing",
+          "create_playlist",
+          "add_to_playlist",
+          "add_to_queue",
+          "my_playlists",
+          "execute_batch"
+        ]
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query for tracks/artists/albums/playlists. For multiple tracks, separate with semicolons: 'track1; track2; track3'. Used with: search, play, add_to_playlist, add_to_queue actions."
+      },
+      "spotify_id": {
+        "type": "string",
+        "description": "Spotify ID of content to play or playlist to modify. Alternative to query for direct ID-based operations."
+      },
+      "content_type": {
+        "type": "string",
+        "description": "Type of Spotify content",
+        "enum": ["track", "artist", "album", "playlist"],
+        "default": "track"
+      },
+      "playlist_name": {
+        "type": "string",
+        "description": "Name for new playlist (for create_playlist action)"
+      },
+      "playlist_description": {
+        "type": "string",
+        "description": "Description for new playlist (for create_playlist action)"
+      },
+      "track_ids": {
+        "type": "string",
+        "description": "Comma-separated list of Spotify track IDs to add to playlist. Example: 'id1,id2,id3'. Used with add_to_playlist action."
+      },
+      "songs": {
+        "type": "string",
+        "description": "Semicolon-separated song queries for creating playlists with songs. NO LIMIT on number of songs! Example: 'bohemian rhapsody; stairway to heaven; hotel california; ...'. Used with create_playlist action."
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Limit for search results or playlist listing (1-50)",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10
+      },
+      "operations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "action": {"type": "string"},
+            "query": {"type": "string"},
+            "spotify_id": {"type": "string"},
+            "content_type": {"type": "string"},
+            "playlist_name": {"type": "string"},
+            "playlist_description": {"type": "string"},
+            "track_ids": {"type": "string"},
+            "songs": {"type": "string"},
+            "limit": {"type": "integer"}
+          }
+        },
+        "description": "List of operation objects for batch execution (execute_batch action only). Each operation contains 'action' and its required parameters. Combines multiple Spotify operations in ONE API call to save credits! Example: [{'action': 'create_playlist', 'playlist_name': 'My Mix', 'songs': 'track1; track2'}, {'action': 'play', 'query': 'My Mix', 'content_type': 'playlist'}]"
+      }
+    },
+    "required": ["action"]
+  }
+}

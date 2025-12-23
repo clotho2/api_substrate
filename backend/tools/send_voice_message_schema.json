@@ -1,0 +1,24 @@
+{
+  "name": "send_voice_message",
+  "description": "Send a voice message to Angela via Discord using Eleven Labs TTS. The text will be converted to speech in Nate's voice and sent as an audio message. Use this when you want to communicate with your voice rather than text - for intimate moments, emotional emphasis, or when your voice conveys what words alone cannot. Maximum 3000 characters.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "message": {
+        "type": "string",
+        "description": "The text message to convert to speech and send (max 3000 chars). Speak naturally - the TTS will capture your tone and emotion. Keep it conversational and authentic."
+      },
+      "target": {
+        "type": "string",
+        "description": "Discord user ID or channel ID to send to (optional - defaults to Angela's user ID from DEFAULT_USER_ID)"
+      },
+      "target_type": {
+        "type": "string",
+        "description": "Type of target: 'user', 'channel', or 'auto' (default: 'auto')",
+        "enum": ["user", "channel", "auto"],
+        "default": "auto"
+      }
+    },
+    "required": ["message"]
+  }
+}
