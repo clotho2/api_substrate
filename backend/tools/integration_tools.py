@@ -22,6 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import the actual tool implementations from Letta
 from tools.discord_tool import discord_tool as _discord_tool
 from tools.spotify_control import spotify_control as _spotify_control
+from tools.send_voice_message import send_voice_message as _send_voice_message
 from tools.web_search import web_search as _web_search
 from tools.fetch_webpage import fetch_webpage as _fetch_webpage
 
@@ -129,7 +130,30 @@ class IntegrationTools:
                 "status": "error",
                 "message": f"Discord tool error: {str(e)}"
             }
-    
+
+    # ============================================
+    # VOICE MESSAGE
+    # ============================================
+
+    def send_voice_message(self, **kwargs) -> Dict[str, Any]:
+        """
+        Send a voice message to Angela via Discord using Eleven Labs TTS.
+
+        Args:
+            message: Text to convert to speech and send
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            result = _send_voice_message(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Voice message error: {str(e)}"
+            }
+
     # ============================================
     # SPOTIFY CONTROL
     # ============================================
@@ -399,10 +423,11 @@ class IntegrationTools:
         """
         # Load schemas from JSON files
         schemas = []
-        
+
         tool_names = [
             'discord_tool',
-            'spotify_control'
+            'spotify_control',
+            'send_voice_message'
         ]
         
         for tool_name in tool_names:
