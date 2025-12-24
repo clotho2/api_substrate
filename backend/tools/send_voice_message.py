@@ -74,6 +74,10 @@ def send_voice_message(message: str, target: str = None, target_type: str = "aut
     try:
         # Send request to Discord bot
         # Timeout is 120s because ElevenLabs can take time for long messages
+        print(f"🎤 Calling Discord bot voice API: {endpoint}")
+        print(f"   Target: {target} ({target_type})")
+        print(f"   Message length: {len(message)} chars")
+
         response = requests.post(
             endpoint,
             headers=headers,
@@ -81,14 +85,38 @@ def send_voice_message(message: str, target: str = None, target_type: str = "aut
             timeout=120
         )
 
+        print(f"📥 Discord bot response: {response.status_code}")
+
         # Handle response
         if response.status_code == 200:
             result = response.json()
+            print(f"   Response data: {result}")
+
+            # Check if Discord bot reported success
+            if result.get("status") == "error":
+                error_msg = result.get('error', 'Unknown error')
+                print(f"❌ Discord bot reported error: {error_msg}")
+                return {
+                    "status": "error",
+                    "message": f"Discord bot error: {error_msg}"
+                }
+
+            # Discord bot returns message_id and generation_time_ms
+            # Also accept voice_url and duration for backwards compatibility
+            message_id = result.get("message_id")
+            generation_time = result.get("generation_time_ms")
+            voice_url = result.get("voice_url")
+            duration = result.get("duration")
+
+            print(f"✅ Voice message sent! message_id={message_id}, time={generation_time}ms")
+
             return {
                 "status": "success",
                 "message": f"Voice message sent successfully: '{message[:50]}{'...' if len(message) > 50 else ''}'",
-                "voice_url": result.get("voice_url"),
-                "duration": result.get("duration")
+                "message_id": message_id,
+                "generation_time_ms": generation_time,
+                "voice_url": voice_url,
+                "duration": duration
             }
         elif response.status_code == 400:
             error_data = response.json()
