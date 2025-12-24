@@ -438,8 +438,13 @@ class OpenRouterClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
-        
+
         print(f"\n📡 Streaming from: {model}")
+        print(f"   Tools: {len(tools) if tools else 0}")
+        print(f"   Tool choice: {tool_choice if tools else 'N/A'}")
+        if tools:
+            print(f"   Tool names: {[t.get('function', {}).get('name', 'unknown') for t in tools[:5]]}")
+        print(f"   Payload includes: tools={('tools' in payload)}, tool_choice={('tool_choice' in payload)}")
         
         try:
             # 🌊 STREAMING: No total timeout! Only sock_read timeout (60s between chunks)

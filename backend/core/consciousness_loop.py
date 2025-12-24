@@ -1887,13 +1887,20 @@ send_message: false
                 
                 print(f"📡 Starting stream for model: {model} (native reasoning: {is_native})")
 
+                # For Mistral models, disable parallel tool calls (may help with streaming)
+                stream_kwargs = {}
+                if 'mistral' in model.lower():
+                    stream_kwargs['parallel_tool_calls'] = False
+                    print(f"🔧 Mistral detected - disabling parallel_tool_calls for better streaming")
+
                 async for chunk in self.openrouter.chat_completion_stream(
                     messages=messages,
                     model=model,
                     tools=tool_schemas,
                     tool_choice="auto",
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    **stream_kwargs
                 ):
                     # Parse chunk
                     if 'choices' in chunk and len(chunk['choices']) > 0:
