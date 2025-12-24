@@ -1885,6 +1885,30 @@ send_message: false
             print(f"   Reason: Mistral doesn't support streaming + function calling")
             print(f"   Response will appear instantly instead of streaming\n")
 
+            # Count tokens to check for context size issues
+            from core.token_counter import TokenCounter
+            counter = TokenCounter(model)
+            message_tokens = counter.count_messages(messages)
+            tool_tokens = 0
+            if tool_schemas:
+                # Estimate tool schema tokens
+                import json
+                tool_json = json.dumps(tool_schemas)
+                tool_tokens = counter.count_text(tool_json)
+
+            print(f"🔍 CONTEXT SIZE CHECK:")
+            print(f"   Messages: {len(messages)}")
+            print(f"   Message tokens: {message_tokens:,}")
+            print(f"   Tool schemas: {len(tool_schemas) if tool_schemas else 0}")
+            print(f"   Tool schema tokens: {tool_tokens:,}")
+            print(f"   Total input tokens: {message_tokens + tool_tokens:,}")
+            print(f"   Max tokens for response: {max_tokens}")
+            print(f"   Total capacity needed: {message_tokens + tool_tokens + max_tokens:,}")
+            print(f"   Mistral context window: 256,000 tokens")
+
+            if message_tokens + tool_tokens + max_tokens > 256000:
+                print(f"   ⚠️  WARNING: Context might exceed Mistral's window!")
+
             # Use the regular non-streaming process_message
             # Set streaming=False to get the complete response
             response = await self.openrouter.chat_completion(
