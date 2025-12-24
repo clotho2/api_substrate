@@ -406,35 +406,38 @@ class OpenRouterClient:
         messages: List[Dict[str, Any]],
         model: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
+        tool_choice: str = "auto",
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream chat completion from OpenRouter.
-        
+
         Args:
             messages: List of message dicts
             model: Model to use
             tools: Tool definitions
+            tool_choice: How to handle tools ("auto", "none", or {"type": "function", "function": {"name": "..."}})
             **kwargs: Additional parameters
-            
+
         Yields:
             Delta dicts from streaming response
-            
+
         Raises:
             OpenRouterError: If request fails
         """
         model = model or self.default_model
         url = f"{self.base_url}/chat/completions"
-        
+
         payload = {
             "model": model,
             "messages": messages,
             "stream": True,
             **kwargs
         }
-        
+
         if tools:
             payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
         
         print(f"\n📡 Streaming from: {model}")
         

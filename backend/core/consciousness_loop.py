@@ -1886,11 +1886,12 @@ send_message: false
                 stream_usage = None  # Will contain usage info from final chunk
                 
                 print(f"📡 Starting stream for model: {model} (native reasoning: {is_native})")
-                
+
                 async for chunk in self.openrouter.chat_completion_stream(
                     messages=messages,
                     model=model,
                     tools=tool_schemas,
+                    tool_choice="auto",
                     temperature=temperature,
                     max_tokens=max_tokens
                 ):
