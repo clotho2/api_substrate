@@ -308,6 +308,14 @@ class OpenRouterClient:
         print(f"   Tool choice: {payload.get('tool_choice', 'NOT SET')}")
         print(f"   Stream: {stream}")
         print(f"   Payload keys: {list(payload.keys())}")
+
+        # DEBUG: Show last few messages to compare heartbeat vs interactive
+        if messages and len(messages) > 0:
+            print(f"🔍 Last 3 messages (role check):")
+            for i, msg in enumerate(messages[-3:]):
+                role = msg.get('role', 'unknown')
+                content_preview = str(msg.get('content', ''))[:80]
+                print(f"   [{len(messages)-3+i}] role={role}: {content_preview}...")
         
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
