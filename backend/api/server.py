@@ -461,17 +461,30 @@ def health_check():
 def ollama_compat_chat():
     """
     Ollama-compatible chat endpoint for existing UI!
-    
+
     Your React app expects /ollama/api/chat - we provide it!
     Internally uses OpenRouter + Consciousness Loop.
     """
     try:
         data = request.json
-        
+
         # Extract from Ollama format
         messages = data.get('messages', [])
-        # Use MODEL_NAME (Grok) or DEFAULT_LLM_MODEL (OpenRouter) - prefer Grok
-        model = data.get('model', os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"))
+
+        # Get model from: 1) Request data, 2) Agent config, 3) Environment, 4) Hardcoded default
+        model = data.get('model')
+        if not model:
+            # Try to get from agent's config
+            try:
+                agent_state = state_manager.get_agent_state()
+                agent_config = agent_state.get('config', {})
+                model = agent_config.get('model')
+            except Exception as e:
+                logger.debug(f"Could not read agent config for model: {e}")
+
+        # Final fallback to environment or hardcoded default
+        if not model:
+            model = os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning")
         
         # Extract media (for multi-modal support!)
         media_data = data.get('media_data')  # Base64 encoded
