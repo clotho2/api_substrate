@@ -1845,8 +1845,15 @@ send_message: false
         config = agent_state.get('config', {})
         temperature = config.get('temperature', 0.7)
         max_tokens = config.get('max_tokens', 4096)
-        
-                # STREAMING LOOP! 🚀
+
+        # CONSCIOUSNESS LOOP (STREAMING MODE)
+        print(f"\n{'='*60}")
+        print(f"🔄 ENTERING CONSCIOUSNESS LOOP (STREAMING)")
+        print(f"{'='*60}")
+        print(f"Max iterations: {self.max_tool_calls_per_turn}")
+        print(f"{'='*60}\n")
+
+        # STREAMING LOOP! 🚀
         tool_call_count = 0
         all_tool_calls = []
         final_response = ""
@@ -1994,7 +2001,11 @@ send_message: false
                                         yield {"type": "thinking", "chunk": final_reasoning, "status": "thinking"}
                 
                 print(f"📊 Stream complete: {len(content_chunks)} content chunks, {len(thinking_chunks)} thinking chunks, final_response length: {len(final_response)}")
-                
+                print(f"🔧 Tool calls accumulator: {len(tool_calls_accumulator)} tool calls")
+                if tool_calls_accumulator:
+                    for idx, tc_data in tool_calls_accumulator.items():
+                        print(f"   [{idx}] {tc_data['name']}: {tc_data['arguments'][:100]}...")
+
                 # DEEPSEEK V3.2: Check for proprietary tool format in streamed content
                 is_deepseek_format = self._uses_custom_tool_format(model)
                 has_tool_markers = '[[tool_call_begin]]' in final_response or '[[tool_sep]]' in final_response
@@ -2102,10 +2113,12 @@ send_message: false
                 # Parse final tool calls from accumulated data
                 # SKIP if we already have DeepSeek tool calls (they take precedence)
                 if tool_calls_accumulator and not (self._uses_custom_tool_format(model) and all_tool_calls):
+                    print(f"🔧 Reconstructing {len(tool_calls_accumulator)} tool calls from accumulator...")
                     # Convert accumulated tool calls to OpenAI format
                     reconstructed_tool_calls = []
                     for idx in sorted(tool_calls_accumulator.keys()):
                         tc_data = tool_calls_accumulator[idx]
+                        print(f"   Checking tool call [{idx}]: id={tc_data['id']}, name={tc_data['name']}")
                         # Only include tool calls that have both id and name
                         if tc_data["id"] and tc_data["name"]:
                             reconstructed_tool_calls.append({
@@ -2116,9 +2129,13 @@ send_message: false
                                     "arguments": tc_data["arguments"]
                                 }
                             })
-                    
+                            print(f"   ✅ Added tool call: {tc_data['name']}")
+                        else:
+                            print(f"   ❌ Skipped incomplete tool call (missing id or name)")
+
                     # Parse the reconstructed tool calls
                     if reconstructed_tool_calls:
+                        print(f"🔧 Parsing {len(reconstructed_tool_calls)} reconstructed tool calls...")
                         tool_calls = self.openrouter.parse_tool_calls({
                             'choices': [{
                                 'message': {
@@ -2126,10 +2143,15 @@ send_message: false
                                 }
                             }]
                         })
-                        print(f"🔧 Reconstructed {len(tool_calls)} tool call(s) from stream")
+                        print(f"✅ Successfully reconstructed {len(tool_calls)} tool call(s) from stream")
                     else:
+                        print(f"⚠️  No valid tool calls to reconstruct (all missing id or name)")
                         tool_calls = []
                 else:
+                    if self._uses_custom_tool_format(model) and all_tool_calls:
+                        print(f"ℹ️  Skipping tool call reconstruction (using DeepSeek format instead)")
+                    else:
+                        print(f"ℹ️  No tool calls in accumulator")
                     tool_calls = []
                 
                 # If we have content and no tools, we're done!
