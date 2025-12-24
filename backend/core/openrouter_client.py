@@ -296,16 +296,18 @@ class OpenRouterClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
-        
+
         # Add any extra kwargs (can override max_completion_tokens!)
         payload.update(kwargs)
-        
+
         # Log request (helpful for debugging!)
         print(f"\n📤 OpenRouter Request:")
         print(f"   Model: {model}")
         print(f"   Messages: {len(messages)}")
         print(f"   Tools: {len(tools) if tools else 0}")
+        print(f"   Tool choice: {payload.get('tool_choice', 'NOT SET')}")
         print(f"   Stream: {stream}")
+        print(f"   Payload keys: {list(payload.keys())}")
         
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
