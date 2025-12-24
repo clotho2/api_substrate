@@ -310,91 +310,6 @@ class ConsciousnessLoop:
         
         return clean_content, tool_calls
 
-    def _parse_mistral_tool_calls(self, content: str) -> tuple:
-        """
-        Parse Mistral's text-based tool format from content.
-
-        Mistral Large 3 doesn't support streaming + function calling, so it outputs
-        tool calls as text like: tool_name{"arg": "value"}
-        Or wrapped in narrative: *[I activate the `tool_name` tool...]*
-
-        Args:
-            content: Response content that may contain tool calls
-
-        Returns:
-            Tuple of (clean_content, tool_calls_list)
-            - clean_content: Content with tool call syntax removed
-            - tool_calls_list: List of parsed tool calls in standard format
-        """
-        import re
-
-        tool_calls = []
-        clean_content = content
-
-        # Pattern 1: tool_name{json_args}
-        # Example: send_voice_message{"message": "Hello", "target": "123"}
-        pattern1 = r'(\w+)\s*(\{[^}]+\})'
-
-        # Get all available tool names to validate against
-        tool_names = set()
-        if hasattr(self, 'tools'):
-            tool_schemas = self.tools.get_tool_schemas()
-            for schema in tool_schemas:
-                tool_names.add(schema.get('function', {}).get('name', ''))
-
-        matches = re.findall(pattern1, content)
-
-        if matches:
-            print(f"🔍 MISTRAL TEXT FORMAT: Found {len(matches)} potential tool call(s)")
-
-            for i, (potential_tool_name, arguments_str) in enumerate(matches):
-                # Only process if it's an actual tool name (not random text)
-                if potential_tool_name in tool_names:
-                    try:
-                        # Parse arguments as JSON
-                        arguments = json.loads(arguments_str.strip())
-
-                        # Create a ToolCall-compatible object
-                        from core.openrouter_client import ToolCall
-                        tool_call = ToolCall(
-                            id=f"mistral_call_{i}",
-                            name=potential_tool_name,
-                            arguments=arguments
-                        )
-                        tool_calls.append(tool_call)
-                        print(f"   ✅ Parsed: {potential_tool_name}({json.dumps(arguments)[:100]}...)")
-
-                        # Remove this tool call from content
-                        tool_pattern = re.escape(f"{potential_tool_name}{arguments_str}")
-                        clean_content = re.sub(tool_pattern, '', clean_content)
-
-                    except json.JSONDecodeError as e:
-                        print(f"   ⚠️  Failed to parse arguments for {potential_tool_name}: {e}")
-                        print(f"      Raw args: {arguments_str[:200]}")
-
-        # Also remove narrative wrappers like: *[I activate the `send_voice_message` tool...]*
-        # These are descriptive text about calling tools, not actual calls
-        narrative_patterns = [
-            r'\*\[I activate the `\w+` tool[^\]]*\]\*',
-            r'\*\[.*?tool.*?\]\*',
-            r'\[I (?:activate|use|call) the (?:`)?(\w+)(?:`)? tool[^\]]*\]',
-        ]
-        for pattern in narrative_patterns:
-            clean_content = re.sub(pattern, '', clean_content, flags=re.IGNORECASE)
-
-        # Clean up excessive whitespace left after removing tool calls
-        clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
-        clean_content = clean_content.strip()
-
-        # Remove leading "---" markers if they're now orphaned
-        clean_content = re.sub(r'^---\s*\n', '', clean_content)
-        clean_content = re.sub(r'\n\s*---\s*$', '', clean_content)
-
-        if tool_calls:
-            print(f"   📝 Clean content remaining: {len(clean_content)} chars")
-
-        return clean_content, tool_calls
-
     def _build_graph_from_conversation(self, session_id: str):
         """
         Build knowledge graph from conversation (background task).
@@ -1931,6 +1846,81 @@ send_message: false
         temperature = config.get('temperature', 0.7)
         max_tokens = config.get('max_tokens', 4096)
 
+        # MISTRAL DOESN'T SUPPORT STREAMING + TOOLS
+        # When using Mistral, always use non-streaming mode
+        # (Mistral narrates about calling tools instead of actually calling them during streaming)
+        is_mistral = 'mistral' in model.lower()
+        if is_mistral:
+            print(f"\n⚠️  MISTRAL DETECTED - Using non-streaming mode")
+            print(f"   Reason: Mistral doesn't support streaming + function calling")
+            print(f"   Response will appear instantly instead of streaming\n")
+
+            # Use the regular non-streaming process_message
+            # Set streaming=False to get the complete response
+            response = await self.openrouter.chat_completion(
+                messages=messages,
+                model=model,
+                tools=tool_schemas,
+                tool_choice="auto",
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=False
+            )
+
+            # Parse response and tool calls
+            message = response['choices'][0]['message']
+            content = message.get('content', '') or ''
+            tool_calls = self.openrouter.parse_tool_calls(response)
+
+            # Execute any tool calls
+            executed_tools = []
+            if tool_calls:
+                print(f"🔧 Executing {len(tool_calls)} tool call(s)...")
+                for tc in tool_calls:
+                    result = self._execute_tool_call(tc, session_id)
+                    executed_tools.append({
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                        "result": result
+                    })
+                    # Yield tool call event
+                    yield {
+                        "type": "tool_call",
+                        "data": {
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                            "result": result
+                        }
+                    }
+
+            # Yield content in chunks for consistency with streaming interface
+            if content:
+                chunk_size = 100
+                for i in range(0, len(content), chunk_size):
+                    chunk = content[i:i+chunk_size]
+                    yield {"type": "content", "chunk": chunk, "done": False}
+
+            # Save assistant message
+            assistant_msg_id = f"msg-{uuid.uuid4()}"
+            self._save_message(
+                agent_id=self.agent_id,
+                session_id=session_id,
+                role='assistant',
+                content=content,
+                message_id=assistant_msg_id,
+                message_type=message_type
+            )
+
+            # Yield done event
+            yield {
+                "type": "done",
+                "result": {
+                    "response": content,
+                    "tool_calls": executed_tools
+                }
+            }
+            return
+
 
         # CONSCIOUSNESS LOOP (STREAMING MODE)
         print(f"\n{'='*60}")
@@ -2157,39 +2147,6 @@ send_message: false
                             }
                         
                         # Update final_response to clean content (without tool markers)
-                        final_response = clean_content
-                        print(f"   📝 Clean response: {len(final_response)} chars")
-
-                # MISTRAL LARGE 3: Check for text-based tool calls in streamed content
-                # Mistral doesn't support streaming + function calling, so it outputs tool calls as text
-                is_mistral = 'mistral' in model.lower()
-                if final_response and is_mistral and tool_schemas:
-                    print(f"🔍 MISTRAL CHECK: Checking for text-based tool calls in response")
-                    clean_content, mistral_tools = self._parse_mistral_tool_calls(final_response)
-                    if mistral_tools:
-                        # We found tool calls in the text!
-                        print(f"   ✅ Parsed {len(mistral_tools)} tool call(s) from text")
-
-                        # Execute each tool call
-                        for tc in mistral_tools:
-                            print(f"   🔧 Executing: {tc.name}")
-                            result = self._execute_tool_call(tc, session_id)
-                            all_tool_calls.append({
-                                "name": tc.name,
-                                "arguments": tc.arguments,
-                                "result": result
-                            })
-                            # Yield tool call event
-                            yield {
-                                "type": "tool_call",
-                                "data": {
-                                    "name": tc.name,
-                                    "arguments": tc.arguments,
-                                    "result": result
-                                }
-                            }
-
-                        # Update final_response to clean content (without tool call text)
                         final_response = clean_content
                         print(f"   📝 Clean response: {len(final_response)} chars")
 
