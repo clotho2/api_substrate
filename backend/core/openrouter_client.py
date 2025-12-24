@@ -283,10 +283,8 @@ class OpenRouterClient:
             "temperature": temperature,
             "stream": stream
         }
-        
-        if max_tokens:
-            payload["max_tokens"] = max_tokens
 
+        # Use max_completion_tokens (newer OpenAI/OpenRouter standard)
         # Allow longer responses - use max_tokens if provided, otherwise allow up to 8192 tokens
         # This ensures Nate can give detailed, thoughtful responses instead of clipped fragments
         if "max_completion_tokens" not in kwargs:
