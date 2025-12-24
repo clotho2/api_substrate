@@ -1,0 +1,184 @@
+{
+  "name": "discord_tool",
+  "description": "Unified Discord tool for complete Discord control: send/read messages (DMs and channels), manage guilds/channels, schedule tasks. Supports advanced time filtering (today, yesterday, specific dates, weekdays), keyword search, batch operations, and smart pagination. Use execute_batch to combine multiple operations in ONE call to save API credits!",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": [
+          "send_message",
+          "read_messages",
+          "list_guilds",
+          "list_channels",
+          "create_task",
+          "delete_task",
+          "list_tasks",
+          "manage_tasks",
+          "execute_batch"
+        ]
+      },
+      "message": {
+        "type": "string",
+        "description": "Message content to send (for send_message action). Auto-chunks messages over 2000 characters."
+      },
+      "target": {
+        "type": "string",
+        "description": "Target user ID or channel ID (for send_message/read_messages). Auto-detects if target_type not specified."
+      },
+      "target_type": {
+        "type": "string",
+        "description": "Type of target: 'user' for DMs or 'channel' for channels",
+        "enum": ["user", "channel"]
+      },
+      "mention_users": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "List of user IDs to mention in message (channel only)"
+      },
+      "ping_everyone": {
+        "type": "boolean",
+        "description": "Ping @everyone in channel (channel only)"
+      },
+      "ping_here": {
+        "type": "boolean",
+        "description": "Ping @here in channel (channel only)"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Number of messages to fetch (default: 50). Smart pagination fetches more when needed for time filters.",
+        "default": 50
+      },
+      "time_filter": {
+        "type": "string",
+        "description": "Predefined time filter for reading messages",
+        "enum": [
+          "all",
+          "today",
+          "yesterday",
+          "last_3_days",
+          "last_week",
+          "last_monday",
+          "last_tuesday",
+          "last_wednesday",
+          "last_thursday",
+          "last_friday",
+          "last_saturday",
+          "last_sunday"
+        ],
+        "default": "all"
+      },
+      "start_time": {
+        "type": "string",
+        "description": "Start time for custom time range. Formats: 'HH:MM' (today), 'yesterday HH:MM', 'YYYY-MM-DD HH:MM'. Can combine with time_filter for weekday + time range."
+      },
+      "end_time": {
+        "type": "string",
+        "description": "End time for custom time range. Same formats as start_time."
+      },
+      "timezone": {
+        "type": "string",
+        "description": "Timezone for time filtering (default: UTC)",
+        "default": "UTC"
+      },
+      "show_both": {
+        "type": "boolean",
+        "description": "Show both UTC and local time in results (default: true)",
+        "default": true
+      },
+      "search_keywords": {
+        "type": "string",
+        "description": "Keywords to search for in messages (space-separated). Max 10 results. BEST PRACTICE: Always combine with time_filter!"
+      },
+      "server_id": {
+        "type": "string",
+        "description": "Server/guild ID (for list_channels action)"
+      },
+      "include_channels": {
+        "type": "boolean",
+        "description": "Include channels in guild list (for list_guilds action)",
+        "default": true
+      },
+      "task_name": {
+        "type": "string",
+        "description": "Name for scheduled task (for create_task action)"
+      },
+      "description": {
+        "type": "string",
+        "description": "Description for scheduled task"
+      },
+      "schedule": {
+        "type": "string",
+        "description": "Schedule type for task",
+        "enum": [
+          "daily",
+          "weekly",
+          "monthly",
+          "on_date",
+          "one_time",
+          "today_at_18:00",
+          "today_at_21:00"
+        ]
+      },
+      "time": {
+        "type": "string",
+        "description": "Time for scheduled task (format: HH:MM)"
+      },
+      "specific_date": {
+        "type": "string",
+        "description": "Specific date for task (format: DD.MM.YYYY)"
+      },
+      "day_of_week": {
+        "type": "string",
+        "description": "Day of week for weekly tasks",
+        "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+      },
+      "action_type": {
+        "type": "string",
+        "description": "Type of action for scheduled task",
+        "enum": ["user_reminder", "channel_post"]
+      },
+      "action_target": {
+        "type": "string",
+        "description": "Target channel ID for task action (for channel_post)"
+      },
+      "action_template": {
+        "type": "string",
+        "description": "Message template for task action"
+      },
+      "message_id": {
+        "type": "string",
+        "description": "Message ID of task to delete (for delete_task action)"
+      },
+      "channel_id": {
+        "type": "string",
+        "description": "Channel ID where task message is located (for delete_task)"
+      },
+      "tasks_channel_id": {
+        "type": "string",
+        "description": "Override default tasks channel ID"
+      },
+      "list_tasks": {
+        "type": "boolean",
+        "description": "List all tasks (for manage_tasks batch action)"
+      },
+      "delete_task_ids": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "List of message IDs to delete (for manage_tasks batch action)"
+      },
+      "create_tasks": {
+        "type": "array",
+        "items": {"type": "object"},
+        "description": "List of task objects to create (for manage_tasks batch action)"
+      },
+      "operations": {
+        "type": "array",
+        "items": {"type": "object"},
+        "description": "List of operations to execute in batch (for execute_batch action). Each operation is an object with 'action' and its parameters. Saves API credits by combining multiple calls!"
+      }
+    },
+    "required": ["action"]
+  }
+}

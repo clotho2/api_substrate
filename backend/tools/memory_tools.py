@@ -689,7 +689,14 @@ class MemoryTools:
         Full Spotify control - search, play, queue, playlists.
         """
         return self.integrations.spotify_control(**kwargs)
-    
+
+    def send_voice_message(self, **kwargs) -> Dict[str, Any]:
+        """
+        Send voice message tool (wrapper).
+        Send voice messages via Discord using Eleven Labs TTS.
+        """
+        return self.integrations.send_voice_message(**kwargs)
+
     def web_search(self, **kwargs) -> Dict[str, Any]:
         """
         Web search tool (wrapper).
