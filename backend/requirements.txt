@@ -61,6 +61,13 @@ neo4j==5.14.1               # Neo4j Graph DB (for Graph RAG)
 python-telegram-bot[aiohttp]==20.7   # For Telegram bot integration (with aiohttp transport)
 
 # ============================================
+# FREE WEB SEARCH (DuckDuckGo + Wikipedia)
+# ============================================
+duckduckgo-search>=6.0.0    # DuckDuckGo search (uses primp, not httpx)
+primp>=0.10.0               # HTTP client with browser impersonation (used by duckduckgo-search)
+wikipedia-api>=0.6.0        # Wikipedia API for factual knowledge
+
+# ============================================
 # DEVELOPMENT (Optional)
 # ============================================
 pytest==7.4.3               # Testing

@@ -29,6 +29,48 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _create_ddgs_client():
+    """
+    Create DDGS client with error handling for proxy/httpx compatibility issues.
+    
+    Recent versions of duckduckgo-search use primp or httpx internally,
+    and there can be version conflicts with the 'proxy' parameter.
+    This function handles those gracefully.
+    """
+    if not DDGS_AVAILABLE:
+        return None
+    
+    try:
+        # Try creating DDGS with default settings
+        return DDGS()
+    except TypeError as e:
+        # Handle proxy parameter compatibility issues
+        # This can happen when httpx 0.28+ is installed (removed 'proxy' param)
+        # or when primp version is incompatible
+        if 'proxy' in str(e):
+            logger.warning(f"⚠️ DDGS proxy compatibility issue: {e}")
+            logger.warning("⚠️ Trying alternative initialization...")
+            try:
+                # Try with explicit proxy=None (some versions need this)
+                return DDGS(proxy=None)
+            except TypeError:
+                # If that fails too, try without any kwargs
+                try:
+                    # Last resort: create a minimal wrapper
+                    logger.warning("⚠️ Using fallback DDGS initialization")
+                    # Some versions may accept timeout only
+                    return DDGS(timeout=10)
+                except Exception as e2:
+                    logger.error(f"❌ Could not initialize DDGS: {e2}")
+                    return None
+        else:
+            logger.error(f"❌ DDGS initialization error: {e}")
+            return None
+    except Exception as e:
+        logger.error(f"❌ DDGS initialization error: {e}")
+        return None
+
+
 class FreeWebSearch:
     """
     Free Web Search - DuckDuckGo + Wikipedia.
@@ -38,7 +80,7 @@ class FreeWebSearch:
     
     def __init__(self):
         """Initialize free web search"""
-        self.ddgs = DDGS() if DDGS_AVAILABLE else None
+        self.ddgs = _create_ddgs_client()
         
         # Wikipedia requires a User-Agent (be nice to Wikipedia!)
         if WIKIPEDIA_AVAILABLE:
