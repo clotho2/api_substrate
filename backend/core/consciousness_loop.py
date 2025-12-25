@@ -1794,17 +1794,54 @@ send_message: false
                 
                 # Parse final tool calls
                 if tool_calls_in_response:
-                    # Reconstruct tool calls from chunks
+                    # Reconstruct tool calls from streaming chunks
+                    # Streaming sends incremental deltas that need to be assembled
+                    print(f"🔧 Reconstructing {len(tool_calls_in_response)} tool call chunk(s)")
+
+                    reconstructed_calls = {}
+                    for chunk_list in tool_calls_in_response:
+                        for chunk in chunk_list:
+                            index = chunk.get('index', 0)
+
+                            if index not in reconstructed_calls:
+                                reconstructed_calls[index] = {
+                                    'id': chunk.get('id', ''),
+                                    'type': chunk.get('type', 'function'),
+                                    'function': {
+                                        'name': '',
+                                        'arguments': ''
+                                    }
+                                }
+
+                            # Update ID if present
+                            if 'id' in chunk:
+                                reconstructed_calls[index]['id'] = chunk['id']
+
+                            # Update function data
+                            if 'function' in chunk:
+                                func = chunk['function']
+                                if 'name' in func:
+                                    reconstructed_calls[index]['function']['name'] = func['name']
+                                if 'arguments' in func:
+                                    reconstructed_calls[index]['function']['arguments'] += func['arguments']
+
+                    # Convert to list and parse
+                    reconstructed_list = list(reconstructed_calls.values())
+                    print(f"🔧 Reconstructed {len(reconstructed_list)} tool call(s) from stream")
+
+                    for i, call in enumerate(reconstructed_list):
+                        print(f"   {i+1}. {call['function']['name']}(args: {len(call['function']['arguments'])} chars)")
+
                     tool_calls = self.openrouter.parse_tool_calls({
                         'choices': [{
                             'message': {
-                                'tool_calls': tool_calls_in_response
+                                'tool_calls': reconstructed_list
                             }
                         }]
                     })
                 else:
                     tool_calls = []
-                
+
                 # If we have content and no tools, we're done!
                 if final_response and not tool_calls:
                     print(f"✅ Response complete: {final_response[:100]}...")
