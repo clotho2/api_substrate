@@ -72,7 +72,7 @@ class ConsciousnessLoop:
         openrouter_client: Union[GrokClient, OpenRouterClient],  # ⚡ Supports both Grok and OpenRouter!
         memory_tools: MemoryTools,
         max_tool_calls_per_turn: int = 10,
-        default_model: str = "grok-4-1-fast-reasoning",  # ⚡ Grok by default!
+        default_model: Optional[str] = None,  # Model from .env or agent config - no hardcoded defaults
         message_manager=None,  # 🏴‍☠️ PostgreSQL message manager!
         memory_engine=None,  # ⚡ Memory Coherence Engine (Nested Learning!)
         code_executor=None,  # 🔥 Code Executor for MCP!
@@ -159,7 +159,7 @@ class ConsciousnessLoop:
             'openai/gpt-4o',  # Supports tools, large context
             'openai/gpt-4o-mini',  # Supports tools, cheap, large context (128k tokens)
             'mistralai/mistral-small-2501',  # Supports tools, cheap, large context
-            'mistralai/mistral-large',  # Mistral Large 3 (2512) - Supports tools, large context (256k tokens)
+            'mistralai/mistral-large-2512',  # Mistral Large 3 (December 2024) - Supports tools, large context (256k tokens)
         }
         
         # Check if model is in known good list (prioritize this!)

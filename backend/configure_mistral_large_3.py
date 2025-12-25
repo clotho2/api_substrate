@@ -20,7 +20,7 @@ from core.state_manager import StateManager
 def configure_mistral_large_3():
     """Configure agent to use Mistral Large 3"""
     print("🔧 Configuring Mistral Large 3 via OpenRouter...")
-    print("📚 Model: mistralai/mistral-large (Mistral Large 3 - 2512)")
+    print("📚 Model: mistralai/mistral-large-2512 (Mistral Large 3 - December 2024)")
 
     # Initialize state manager
     state_manager = StateManager()
@@ -37,7 +37,7 @@ def configure_mistral_large_3():
     print(f"  Reasoning: {config.get('reasoning_enabled', 'N/A')}")
 
     # Update to Mistral Large 3 configuration
-    config['model'] = 'mistralai/mistral-large'  # OpenRouter model ID
+    config['model'] = 'mistralai/mistral-large-2512'  # OpenRouter model ID
     config['temperature'] = 0.7
     config['max_tokens'] = 8192  # Allow longer responses
     config['context_window'] = 256000  # 256K context window
