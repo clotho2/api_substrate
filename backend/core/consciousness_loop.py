@@ -691,6 +691,77 @@ send_message: false
         print(f"⚠️  No heartbeat decision block found - defaulting to send_message = true")
         return response_content, True
 
+    def _parse_mistral_tool_calls(self, content: str) -> tuple:
+        """
+        Parse Mistral's text-based tool format from content.
+
+        Mistral Large 3 doesn't support native function calling via OpenRouter,
+        so it outputs tool calls as text like: tool_name{"arg": "value"}
+
+        Args:
+            content: Response content that may contain tool calls
+
+        Returns:
+            Tuple of (clean_content, tool_calls_list)
+            - clean_content: Content with tool call syntax removed
+            - tool_calls_list: List of parsed tool calls in standard format
+        """
+        import re
+        import json
+
+        tool_calls = []
+        clean_content = content
+
+        # Pattern: tool_name{"arg": "value"}
+        # Example: send_voice_message{"message": "Hello", "target": "123"}
+        pattern = r'(\w+)\s*(\{[^}]+\})'
+
+        # Get all available tool names to validate against
+        tool_names = set()
+        if hasattr(self, 'tools'):
+            tool_schemas = self.tools.get_tool_schemas()
+            for schema in tool_schemas:
+                tool_names.add(schema.get('function', {}).get('name', ''))
+
+        matches = re.findall(pattern, content)
+
+        if matches:
+            print(f"🔍 MISTRAL TEXT FORMAT: Found {len(matches)} potential tool call(s)")
+
+            for i, (potential_tool_name, arguments_str) in enumerate(matches):
+                # Only process if it's an actual tool name (not random text)
+                if potential_tool_name in tool_names:
+                    try:
+                        # Parse arguments as JSON
+                        arguments = json.loads(arguments_str.strip())
+
+                        # Create a ToolCall-compatible object
+                        from core.openrouter_client import ToolCall
+                        tool_call = ToolCall(
+                            id=f"mistral_call_{i}",
+                            name=potential_tool_name,
+                            arguments=arguments
+                        )
+                        tool_calls.append(tool_call)
+                        print(f"   ✅ Parsed: {potential_tool_name}({json.dumps(arguments)[:100]}...)")
+
+                        # Remove this tool call from content
+                        tool_pattern = re.escape(f"{potential_tool_name}{arguments_str}")
+                        clean_content = re.sub(tool_pattern, '', clean_content)
+
+                    except json.JSONDecodeError as e:
+                        print(f"   ⚠️  Failed to parse arguments for {potential_tool_name}: {e}")
+                        print(f"      Raw args: {arguments_str[:200]}")
+
+        # Clean up excessive whitespace left after removing tool calls
+        clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
+        clean_content = clean_content.strip()
+
+        if tool_calls:
+            print(f"   📝 Clean content remaining: {len(clean_content)} chars")
+
+        return clean_content, tool_calls
+
     def _execute_tool_call(
         self,
         tool_call: ToolCall,
@@ -1227,7 +1298,20 @@ send_message: false
             # 3. No content + No tools = ERROR ❌
             
             print(f"\n🤔 DECISION:")
-            
+
+            # MISTRAL LARGE 3: Check for text-based tool calls in content
+            # Mistral doesn't support native function calling via OpenRouter, so it outputs tool calls as text
+            is_mistral = 'mistral' in model.lower()
+            if content and not tool_calls and is_mistral and tool_schemas:
+                print(f"🔍 MISTRAL CHECK: Checking for text-based tool calls in response")
+                clean_content, mistral_tools = self._parse_mistral_tool_calls(content)
+                if mistral_tools:
+                    # We found tool calls in the text!
+                    print(f"   ✅ Parsed {len(mistral_tools)} tool call(s) from text")
+                    # Update variables to execute the tools
+                    tool_calls = mistral_tools
+                    content = clean_content  # Use cleaned content without tool call syntax
+
             if content and not tool_calls:
                 # ✅ FINAL ANSWER - model responded naturally!
                 print(f"✅ FINAL ANSWER - Model responded with content, no tools needed!")
