@@ -38,8 +38,9 @@ class FreeWebSearch:
     
     def __init__(self):
         """Initialize free web search"""
-        self.ddgs = DDGS() if DDGS_AVAILABLE else None
-        
+        # Don't create DDGS instance here - create fresh for each search to avoid API issues
+        self.ddgs_available = DDGS_AVAILABLE
+
         # Wikipedia requires a User-Agent (be nice to Wikipedia!)
         if WIKIPEDIA_AVAILABLE:
             self.wiki = wikipediaapi.Wikipedia(
@@ -48,10 +49,10 @@ class FreeWebSearch:
             )
         else:
             self.wiki = None
-        
+
         if not DDGS_AVAILABLE:
             logger.warning("⚠️ DuckDuckGo search not available (library not installed)")
-        
+
         logger.info("✅ Free Web Search initialized (DuckDuckGo + Wikipedia)")
     
     def search(
@@ -88,27 +89,29 @@ class FreeWebSearch:
                 'total_results': int
             }
         """
-        if not self.ddgs:
+        if not self.ddgs_available:
             return {
                 "status": "error",
-                "message": "DuckDuckGo library not installed. Run: pip install duckduckgo-search",
+                "message": "DuckDuckGo library not installed. Run: pip install ddgs",
                 "query": query
             }
-        
+
         try:
             logger.info(f"🦆 DuckDuckGo Search: '{query}' (max={max_results})")
-            
+
             # Perform search
             results = []
-            
-            # Use text search (new DDGS API!)
-            ddgs_results = self.ddgs.text(
-                query,  # Query is now positional argument!
-                region=region,
-                safesearch=safesearch,
-                timelimit=timelimit,
-                max_results=max_results
-            )
+
+            # Create fresh DDGS instance for each search (avoids API compatibility issues)
+            with DDGS() as ddgs:
+                # Use text search (new DDGS API!)
+                ddgs_results = ddgs.text(
+                    query,  # Query is now positional argument!
+                    region=region,
+                    safesearch=safesearch,
+                    timelimit=timelimit,
+                    max_results=max_results
+                )
             
             # Convert to our format
             for r in ddgs_results:
@@ -151,26 +154,28 @@ class FreeWebSearch:
         
         Same as search() but optimized for news with time filtering.
         """
-        if not self.ddgs:
+        if not self.ddgs_available:
             return {
                 "status": "error",
                 "message": "DuckDuckGo library not installed",
                 "query": query
             }
-        
+
         try:
             logger.info(f"📰 DuckDuckGo News: '{query}' (time={timelimit})")
-            
+
             results = []
-            
-            # Use news search (new DDGS API!)
-            ddgs_results = self.ddgs.news(
-                query,  # Query is now positional argument!
-                region=region,
-                safesearch=safesearch,
-                timelimit=timelimit,
-                max_results=max_results
-            )
+
+            # Create fresh DDGS instance for each search (avoids API compatibility issues)
+            with DDGS() as ddgs:
+                # Use news search (new DDGS API!)
+                ddgs_results = ddgs.news(
+                    query,  # Query is now positional argument!
+                    region=region,
+                    safesearch=safesearch,
+                    timelimit=timelimit,
+                    max_results=max_results
+                )
             
             # Convert to our format
             for r in ddgs_results:
