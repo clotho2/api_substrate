@@ -379,8 +379,39 @@ class ConsciousnessLoop:
                     if msg.timestamp > from_timestamp or msg.role == 'system'
                 ]
 
+                # 🔥 MESSAGE-COUNT SUMMARY TRIGGER
+                # If we have WAY more messages than history_limit, trigger a summary
+                # This prevents messages from being silently dropped without summarization
+                SUMMARY_THRESHOLD = 30  # Trigger summary if > 30 messages since last summary
+                if len(history) > SUMMARY_THRESHOLD:
+                    print(f"   ⚠️  {len(history)} messages since last summary (threshold: {SUMMARY_THRESHOLD})")
+                    print(f"   📝 Scheduling background summary for older messages...")
+
+                    # Calculate how many messages to summarize (keep recent ones out)
+                    messages_to_keep = min(history_limit, 15)  # Keep at least 15 recent
+                    messages_to_summarize = history[:-messages_to_keep] if len(history) > messages_to_keep else []
+
+                    if messages_to_summarize:
+                        # Trigger async summary (non-blocking)
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                # Schedule for later if we're in async context
+                                asyncio.create_task(self._trigger_background_summary(
+                                    session_id=history_session_id,
+                                    messages=messages_to_summarize
+                                ))
+                            else:
+                                # Just log - will be caught by next context window check
+                                print(f"   ℹ️  Summary will trigger on next context window check")
+                        except RuntimeError:
+                            print(f"   ℹ️  Summary will trigger on next context window check")
+
                 # If we have too many, keep only the most recent ones
                 if len(history) > history_limit:
+                    dropped_count = len(history) - history_limit
+                    print(f"   ✂️  Truncating: keeping {history_limit} most recent, dropping {dropped_count} older")
                     history = history[-history_limit:]
 
                 print(f"   ✓ Loaded {len(history)} messages (after summary)")
@@ -2278,7 +2309,76 @@ send_message: false
             print(f"💓 Heartbeat send_message decision: {send_message}")
 
         yield done_event
-    
+
+    async def _trigger_background_summary(
+        self,
+        session_id: str,
+        messages: List
+    ) -> None:
+        """
+        Trigger a background summary for messages that would otherwise be dropped.
+
+        This is called when message count exceeds threshold but context window
+        isn't full enough to trigger normal summarization.
+
+        Args:
+            session_id: Session to summarize
+            messages: List of message objects to summarize
+        """
+        from core.summary_generator import SummaryGenerator
+
+        print(f"\n{'='*60}")
+        print(f"📝 BACKGROUND SUMMARY TRIGGERED")
+        print(f"{'='*60}")
+        print(f"Session: {session_id}")
+        print(f"Messages to summarize: {len(messages)}")
+
+        try:
+            # Convert message objects to dicts for summary generator
+            messages_to_summarize = []
+            for msg in messages:
+                messages_to_summarize.append({
+                    'role': msg.role,
+                    'content': msg.content,
+                    'timestamp': msg.timestamp.isoformat() if hasattr(msg.timestamp, 'isoformat') else str(msg.timestamp)
+                })
+
+            if not messages_to_summarize:
+                print(f"⚠️  No messages to summarize after conversion")
+                return
+
+            # Generate summary
+            generator = SummaryGenerator(state_manager=self.state)
+            summary_result = generator.generate_summary(
+                messages=messages_to_summarize,
+                session_id=session_id
+            )
+
+            if summary_result and summary_result.get('summary'):
+                # Save summary to database
+                self.state.save_summary(
+                    session_id=session_id,
+                    summary=summary_result['summary'],
+                    from_timestamp=summary_result['from_timestamp'],
+                    to_timestamp=summary_result['to_timestamp'],
+                    message_count=summary_result['message_count'],
+                    token_count=summary_result['token_count']
+                )
+
+                print(f"✅ Background summary saved!")
+                print(f"   Messages: {summary_result['message_count']}")
+                print(f"   Tokens: {summary_result['token_count']}")
+                print(f"   Timeframe: {summary_result['from_timestamp']} → {summary_result['to_timestamp']}")
+            else:
+                print(f"⚠️  Summary generation returned empty result")
+
+        except Exception as e:
+            print(f"❌ Background summary failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+        print(f"{'='*60}\n")
+
     async def _manage_context_window(
         self,
         messages: List[Dict[str, Any]],
