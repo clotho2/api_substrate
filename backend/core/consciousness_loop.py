@@ -1661,10 +1661,11 @@ send_message: false
         
         # Get tool schemas (only if model supports tools!)
         model_supports_tools = self._model_supports_tools(model)
-        
+
         if model_supports_tools:
             tool_schemas = self.tools.get_tool_schemas()
             print(f"✅ Model {model} supports tool calling (streaming mode)")
+            print(f"  • Tools enabled: {len(tool_schemas)}")
         else:
             tool_schemas = None
             print(f"⚠️  Model {model} does NOT support tool calling (streaming mode - chat-only)")
