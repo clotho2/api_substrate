@@ -32,6 +32,7 @@ from core.openrouter_client import OpenRouterClient, ToolCall
 from core.grok_client import GrokClient
 from core.state_manager import StateManager
 from core.memory_system import MemorySystem
+from core.config import get_model_or_default
 from tools.memory_tools import MemoryTools
 
 
@@ -72,7 +73,7 @@ class ConsciousnessLoop:
         openrouter_client: Union[GrokClient, OpenRouterClient],  # ⚡ Supports both Grok and OpenRouter!
         memory_tools: MemoryTools,
         max_tool_calls_per_turn: int = 10,
-        default_model: str = "grok-4-1-fast-reasoning",  # ⚡ Grok by default!
+        default_model: str = None,  # Will use get_model_or_default() if not specified
         message_manager=None,  # 🏴‍☠️ PostgreSQL message manager!
         memory_engine=None,  # ⚡ Memory Coherence Engine (Nested Learning!)
         code_executor=None,  # 🔥 Code Executor for MCP!
@@ -97,7 +98,7 @@ class ConsciousnessLoop:
         self.tools = memory_tools
         self.memory = memory_tools.memory_system  # Access to memory system for stats (renamed from .memory to .memory_system)
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
-        self.default_model = default_model
+        self.default_model = default_model or get_model_or_default()
         self.message_manager = message_manager  # 🏴‍☠️ PostgreSQL!
         self.memory_engine = memory_engine  # ⚡ Memory Coherence Engine (Nested Learning!)
         self.code_executor = code_executor  # 🔥 Code Execution!

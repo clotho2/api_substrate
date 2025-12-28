@@ -8,7 +8,7 @@ from flask import Blueprint, jsonify, request
 import logging
 import asyncio
 from datetime import datetime
-from core.state_manager import DEFAULT_AGENT_ID
+from core.config import DEFAULT_AGENT_ID
 
 logger = logging.getLogger(__name__)
 

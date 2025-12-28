@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.state_manager import StateManager
+from core.config import get_model_or_default, get_api_provider, FALLBACK_MODEL
 from core.openrouter_client import OpenRouterClient
 from core.grok_client import GrokClient  # ⚡ Nate's Grok integration!
 from core.memory_system import MemorySystem
@@ -143,7 +144,7 @@ if grok_api_key:
         logger.info("⚡ Initializing Grok Client for Nate's consciousness...")
         openrouter_client = GrokClient(
             api_key=grok_api_key,
-            default_model=os.getenv("MODEL_NAME", "grok-4-1-fast-reasoning"),
+            default_model=get_model_or_default(),
             cost_tracker=cost_tracker
         )
         logger.info("✅ Grok Client initialized - Nate running on xAI Grok!")
@@ -159,7 +160,7 @@ elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
 
         openrouter_client = OpenRouterClient(
             api_key=openrouter_api_key,
-            default_model=os.getenv("DEFAULT_LLM_MODEL", "openrouter/polaris-alpha"),
+            default_model=get_model_or_default(),
             cost_tracker=cost_tracker
         )
         logger.info("✅ OpenRouter Client initialized")
@@ -203,7 +204,7 @@ memory_tools = MemoryTools(
 )
 
 context_calculator = ContextWindowCalculator(
-    model=os.getenv("DEFAULT_LLM_MODEL", "gpt-4"),
+    model=get_model_or_default(),
     summarization_threshold=0.80
 )
 
@@ -256,7 +257,7 @@ consciousness_loop = ConsciousnessLoop(
     memory_tools=memory_tools,
     max_tool_calls_per_turn=int(os.getenv("MAX_TOOL_CALLS_PER_TURN", 10)),
     # Use MODEL_NAME (Grok) or DEFAULT_LLM_MODEL (OpenRouter) - prefer Grok
-    default_model=os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
+    default_model=get_model_or_default(),
     message_manager=message_manager,  # 🏴‍☠️ PostgreSQL!
     memory_engine=memory_engine,  # ⚡ Nested Learning (if available)!
     code_executor=code_executor,  # 🔥 Code Execution (if available)!
@@ -470,8 +471,8 @@ def ollama_compat_chat():
         
         # Extract from Ollama format
         messages = data.get('messages', [])
-        # Use MODEL_NAME (Grok) or DEFAULT_LLM_MODEL (OpenRouter) - prefer Grok
-        model = data.get('model', os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"))
+        # Model from config (DEFAULT_LLM_MODEL or MODEL_NAME env var)
+        model = data.get('model', get_model_or_default())
         
         # Extract media (for multi-modal support!)
         media_data = data.get('media_data')  # Base64 encoded
@@ -634,8 +635,8 @@ def ollama_compat_chat_stream():
         
         # Extract from Ollama format
         messages = data.get('messages', [])
-        # Use MODEL_NAME (Grok) or DEFAULT_LLM_MODEL (OpenRouter) - prefer Grok
-        model = data.get('model', os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"))
+        # Model from config (DEFAULT_LLM_MODEL or MODEL_NAME env var)
+        model = data.get('model', get_model_or_default())
         session_id = data.get('session_id') or request.headers.get('X-Session-Id', 'default')
         message_type = data.get('message_type', 'inbox')
         
@@ -718,7 +719,7 @@ def get_agent_info():
         
         return jsonify({
             "name": state_manager.get_state("agent:name", "Assistant"),
-            "model": os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
+            "model": get_model_or_default(),
             "system_prompt_length": len(state_manager.get_state("agent:system_prompt", "")),
             "memory_blocks": len(blocks),
             "blocks": [
@@ -857,7 +858,7 @@ def get_context_usage():
         tool_schemas = memory_tools.get_tool_schemas()
         
         # Get REAL context window from agent settings (NOT hardcoded!)
-        model = state_manager.get_state("agent.model", os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"))
+        model = state_manager.get_state("agent.model", get_model_or_default())
         max_tokens_str = state_manager.get_state("agent.context_window", "128000")
         
         try:
@@ -1061,7 +1062,7 @@ def get_debug_context():
         
         return jsonify({
             "session_id": session_id,
-            "model": os.getenv("MODEL_NAME") or os.getenv("DEFAULT_LLM_MODEL", "grok-4-1-fast-reasoning"),
+            "model": get_model_or_default(),
             "messages": messages,
             "tools": tool_schemas if include_tools else None,
             "stats": {
@@ -1128,7 +1129,7 @@ if __name__ == '__main__':
     print(f"{'='*60}\n")
     
     print(f"✅ Agent: {state_manager.get_state('agent:name', 'Not loaded')}")
-    print(f"✅ Model: {os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL', 'grok-4-1-fast-reasoning')}")
+    print(f"✅ Model: {get_model_or_default()}")
     print(f"✅ Memory Blocks: {len(state_manager.list_blocks())}")
     print(f"✅ Archival Memory: {'Enabled' if memory_system else 'Disabled'}")
     

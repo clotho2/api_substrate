@@ -23,11 +23,7 @@ from dataclasses import dataclass, asdict
 from contextlib import contextmanager
 from enum import Enum
 from core.consciousness_broadcast import broadcast_memory_access
-
-
-# Default agent ID - can be overridden via environment variable
-# This is the "main" agent used when no specific agent_id is provided
-DEFAULT_AGENT_ID = os.getenv('DEFAULT_AGENT_ID', '41dc0e38-bdb6-4563-a3b6-49aa0925ab14')
+from core.config import DEFAULT_AGENT_ID, get_model_or_default
 
 
 class BlockType(str, Enum):
@@ -1000,16 +996,16 @@ class StateManager:
                     return {
                         'id': agent.id,
                         'name': agent.name,
-                        'model': agent.config.get('model', 'qwen/qwen-2.5-72b-instruct') if agent.config else 'qwen/qwen-2.5-72b-instruct',
+                        'model': agent.config.get('model', get_model_or_default()) if agent.config else get_model_or_default(),
                         'created_at': agent.created_at.isoformat() if agent.created_at else '',
                         'config': agent.config or {}
                     }
             except Exception as e:
                 print(f"⚠️  PostgreSQL read failed, falling back to SQLite: {e}")
-        
+
         # 🗄️ PHASE 2: Fallback to SQLite
         config = {
-            'model': self.get_state('agent.model', 'qwen/qwen-2.5-72b-instruct'),
+            'model': self.get_state('agent.model', get_model_or_default()),
             'temperature': self.get_state('agent.temperature', 0.7),
             'max_tokens': self.get_state('agent.max_tokens', None),
             'top_p': self.get_state('agent.top_p', 1.0),

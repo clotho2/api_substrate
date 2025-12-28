@@ -9,7 +9,8 @@ Every config/prompt change creates a version, allowing rollback.
 import os
 import logging
 from flask import Blueprint, jsonify, request
-from core.state_manager import StateManager, DEFAULT_AGENT_ID
+from core.state_manager import StateManager
+from core.config import DEFAULT_AGENT_ID, get_model_or_default, FALLBACK_MODEL
 from core.version_manager import VersionManager
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def list_agents():
             agents = [{
                 'id': agent_state.get('id', 'default'),
                 'name': agent_state.get('name', 'Assistant'),
-                'model': agent_state.get('model', os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL', 'grok-4-1-fast-reasoning')),
+                'model': agent_state.get('model', get_model_or_default()),
                 'created_at': agent_state.get('created_at', ''),
                 'description': 'Substrate AI - Default Agent',
                 'is_active': True
@@ -124,7 +125,7 @@ def create_agent():
 
         data = request.json or {}
         name = data.get('name', 'New Agent')
-        model = data.get('model', os.getenv('MODEL_NAME') or 'grok-4-1-fast-reasoning')
+        model = data.get('model', get_model_or_default())
         system_prompt = data.get('system_prompt', '')
         config = data.get('config', {})
 
@@ -215,7 +216,7 @@ def get_agent(agent_id):
         agent = {
             'id': agent_state.get('id', agent_id),  # Use real UUID from DB!
             'name': agent_state.get('name', 'Assistant'),
-            'model': agent_state.get('model', 'qwen/qwen-2.5-72b-instruct'),
+            'model': agent_state.get('model', get_model_or_default()),
             'created_at': agent_state.get('created_at', ''),
             'description': 'Substrate AI - Default Agent',
             'is_active': True,
@@ -245,7 +246,7 @@ def get_agent_config(agent_id):
         
         # Merge with defaults (for missing fields)
         default_config = {
-            'model': os.getenv('DEFAULT_MODEL', 'qwen/qwen-2.5-72b-instruct'),
+            'model': get_model_or_default(),
             'temperature': 0.7,
             'max_tokens': None,
             'top_p': 1.0,
@@ -763,19 +764,19 @@ def new_chat_with_summary(agent_id):
         cost_tracker = CostTracker(db_path=os.getenv("COST_DB_PATH", "./data/costs.db"))
         client = OpenRouterClient(
             api_key=os.getenv("OPENROUTER_API_KEY"),
-            default_model="qwen/qwen-2.5-72b-instruct",
+            default_model=get_model_or_default(),
             cost_tracker=cost_tracker
         )
-        
-        summary_prompt = f"""Fasse diese Konversation in 2-3 prägnanten Sätzen zusammen. 
-Fokus: Was war der Kern? Was wurde erreicht?
+
+        summary_prompt = f"""Summarize this conversation in 2-3 concise sentences.
+Focus: What was the core topic? What was accomplished?
 
 {conversation_text[:3000]}
 
-Zusammenfassung (kurz & klar):"""
-        
+Summary (brief & clear):"""
+
         response = client.chat_completion(
-            model="qwen/qwen-2.5-72b-instruct",
+            model=get_model_or_default(),
             messages=[{"role": "user", "content": summary_prompt}],
             stream=False
         )
