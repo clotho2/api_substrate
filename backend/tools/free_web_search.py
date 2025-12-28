@@ -13,11 +13,11 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 
 try:
-    from ddgs import DDGS
+    from duckduckgo_search import DDGS
     DDGS_AVAILABLE = True
 except ImportError:
     DDGS_AVAILABLE = False
-    print("⚠️ ddgs not installed. Run: pip install ddgs")
+    print("⚠️ duckduckgo-search not installed. Run: pip install duckduckgo-search")
 
 try:
     import wikipediaapi
@@ -92,7 +92,7 @@ class FreeWebSearch:
         if not self.ddgs_available:
             return {
                 "status": "error",
-                "message": "DuckDuckGo library not installed. Run: pip install ddgs",
+                "message": "DuckDuckGo library not installed. Run: pip install duckduckgo-search",
                 "query": query
             }
 
@@ -102,16 +102,16 @@ class FreeWebSearch:
             # Perform search
             results = []
 
-            # Create fresh DDGS instance for each search (avoids API compatibility issues)
-            with DDGS() as ddgs:
-                # Use text search (new DDGS API!)
-                ddgs_results = ddgs.text(
-                    query,  # Query is now positional argument!
-                    region=region,
-                    safesearch=safesearch,
-                    timelimit=timelimit,
-                    max_results=max_results
-                )
+            # Use DDGS API (v8.x compatible)
+            # Version 8.1.1 uses simple instantiation without context manager
+            ddgs = DDGS()
+            ddgs_results = ddgs.text(
+                keywords=query,
+                region=region,
+                safesearch=safesearch,
+                timelimit=timelimit,
+                max_results=max_results
+            )
             
             # Convert to our format
             for r in ddgs_results:
