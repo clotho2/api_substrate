@@ -1868,11 +1868,57 @@ send_message: false
                 
                 # Parse final tool calls
                 if tool_calls_in_response:
-                    # Reconstruct tool calls from chunks
+                    # Reconstruct tool calls from streaming chunks
+                    # GPT-4o and other models send tool calls in fragments across multiple chunks
+                    # We need to merge chunks with the same index to get complete tool calls
+                    reconstructed_calls = {}
+
+                    for chunk_array in tool_calls_in_response:
+                        # Each chunk_array is a list of tool call deltas
+                        if isinstance(chunk_array, list):
+                            for tool_delta in chunk_array:
+                                idx = tool_delta.get('index', 0)
+
+                                if idx not in reconstructed_calls:
+                                    # Initialize new tool call
+                                    reconstructed_calls[idx] = {
+                                        'id': tool_delta.get('id', ''),
+                                        'type': tool_delta.get('type', 'function'),
+                                        'function': {
+                                            'name': tool_delta.get('function', {}).get('name', ''),
+                                            'arguments': ''
+                                        }
+                                    }
+
+                                # Merge the delta into reconstructed call
+                                if 'id' in tool_delta and tool_delta['id']:
+                                    reconstructed_calls[idx]['id'] = tool_delta['id']
+
+                                if 'type' in tool_delta:
+                                    reconstructed_calls[idx]['type'] = tool_delta['type']
+
+                                if 'function' in tool_delta:
+                                    func_delta = tool_delta['function']
+
+                                    if 'name' in func_delta and func_delta['name']:
+                                        reconstructed_calls[idx]['function']['name'] = func_delta['name']
+
+                                    # Accumulate arguments (streaming sends them in pieces!)
+                                    if 'arguments' in func_delta:
+                                        reconstructed_calls[idx]['function']['arguments'] += func_delta['arguments']
+
+                    # Convert to list and parse
+                    final_tool_calls = list(reconstructed_calls.values())
+
+                    if final_tool_calls:
+                        print(f"🔧 Reconstructed {len(final_tool_calls)} tool call(s) from {len(tool_calls_in_response)} streaming chunks")
+                        for tc in final_tool_calls:
+                            print(f"   • {tc['function']['name']}: {len(tc['function']['arguments'])} chars")
+
                     tool_calls = self.openrouter.parse_tool_calls({
                         'choices': [{
                             'message': {
-                                'tool_calls': tool_calls_in_response
+                                'tool_calls': final_tool_calls
                             }
                         }]
                     })
