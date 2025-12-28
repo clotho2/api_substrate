@@ -523,9 +523,79 @@ class StateManager:
                 )
             
             print(f"✅ Updated memory block: {label}")
-        
+
         return self.get_block(label)
-    
+
+    def update_block_metadata(
+        self,
+        label: str,
+        description: Optional[str] = None,
+        limit: Optional[int] = None,
+        read_only: Optional[bool] = None,
+        hidden: Optional[bool] = None
+    ) -> MemoryBlock:
+        """
+        Update a memory block's metadata (description, limit, read_only, hidden).
+
+        Args:
+            label: Block label
+            description: New description (optional)
+            limit: New character limit (optional)
+            read_only: New read-only status (optional)
+            hidden: New hidden status (optional)
+
+        Returns:
+            Updated MemoryBlock
+
+        Raises:
+            StateManagerError: If block doesn't exist
+        """
+        existing = self.get_block(label)
+        if not existing:
+            raise StateManagerError(
+                f"Memory block '{label}' not found",
+                context={"label": label, "action": "update_metadata"}
+            )
+
+        now = datetime.utcnow()
+        updates = []
+        params = []
+
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+
+        if limit is not None:
+            updates.append('"limit" = ?')
+            params.append(limit)
+
+        if read_only is not None:
+            updates.append("read_only = ?")
+            params.append(1 if read_only else 0)
+
+        if hidden is not None:
+            updates.append("hidden = ?")
+            params.append(1 if hidden else 0)
+
+        if not updates:
+            return existing  # Nothing to update
+
+        updates.append("updated_at = ?")
+        params.append(now.isoformat())
+        params.append(label)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                UPDATE memory_blocks
+                SET {', '.join(updates)}
+                WHERE label = ?
+            """, params)
+
+            print(f"✅ Updated metadata for memory block: {label}")
+
+        return self.get_block(label)
+
     def list_blocks(self, include_hidden: bool = False) -> List[MemoryBlock]:
         """
         List all memory blocks.
