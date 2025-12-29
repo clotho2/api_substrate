@@ -1182,7 +1182,8 @@ send_message: false
         max_tokens: int = 4096,
         media_data: Optional[str] = None,
         media_type: Optional[str] = None,
-        message_type: str = 'inbox'
+        message_type: str = 'inbox',
+        max_tool_calls: Optional[int] = None  # Override max tool calls (lower for heartbeats)
     ) -> Dict[str, Any]:
         """
         Process a user message through the consciousness loop.
@@ -1316,21 +1317,32 @@ send_message: false
             tool_schemas = None
         
         # CONSCIOUSNESS LOOP
+        # Determine max tool calls - use override, or lower limit for heartbeats
+        effective_max_tool_calls = max_tool_calls
+        if effective_max_tool_calls is None:
+            if message_type == 'system':
+                # Heartbeats get fewer iterations (cost optimization)
+                effective_max_tool_calls = 3
+            else:
+                effective_max_tool_calls = self.max_tool_calls_per_turn
+
         print(f"\n{'='*60}")
         print(f"🔄 ENTERING CONSCIOUSNESS LOOP")
         print(f"{'='*60}")
-        print(f"Max iterations: {self.max_tool_calls_per_turn}")
+        print(f"Max iterations: {effective_max_tool_calls}")
+        if message_type == 'system':
+            print(f"💓 HEARTBEAT MODE: Limited to {effective_max_tool_calls} iterations (cost optimization)")
         print(f"{'='*60}\n")
-        
+
         tool_call_count = 0
         all_tool_calls = []
         final_response = None
-        
-        while tool_call_count < self.max_tool_calls_per_turn:
+
+        while tool_call_count < effective_max_tool_calls:
             tool_call_count += 1
             
             print(f"\n{'─'*60}")
-            print(f"🔄 LOOP ITERATION {tool_call_count}/{self.max_tool_calls_per_turn}")
+            print(f"🔄 LOOP ITERATION {tool_call_count}/{effective_max_tool_calls}")
             print(f"{'─'*60}")
             
             # Check if this is an Ollama model
@@ -1555,8 +1567,8 @@ send_message: false
         print(f"{'='*60}")
         
         if not final_response:
-            if tool_call_count >= self.max_tool_calls_per_turn:
-                print(f"⚠️  Max iterations reached ({self.max_tool_calls_per_turn})")
+            if tool_call_count >= effective_max_tool_calls:
+                print(f"⚠️  Max iterations reached ({effective_max_tool_calls})")
                 print(f"    Model kept calling tools without responding to user!")
                 final_response = "I apologize, but I got caught in a loop of tool calls. Could you rephrase your message?"
             else:
@@ -1777,7 +1789,8 @@ send_message: false
         model: Optional[str] = None,
         include_history: bool = True,
         history_limit: int = 12,
-        message_type: str = 'inbox'
+        message_type: str = 'inbox',
+        max_tool_calls: Optional[int] = None  # Override max tool calls (lower for heartbeats)
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process message with REAL STREAMING support!
@@ -1887,8 +1900,16 @@ send_message: false
         # Check if model has native reasoning (needed for streaming!)
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
-        
-        while tool_call_count < self.max_tool_calls_per_turn:
+
+        # Determine max tool calls - use override, or lower limit for heartbeats
+        effective_max_tool_calls = max_tool_calls
+        if effective_max_tool_calls is None:
+            if message_type == 'system':
+                effective_max_tool_calls = 3  # Heartbeats get fewer iterations
+            else:
+                effective_max_tool_calls = self.max_tool_calls_per_turn
+
+        while tool_call_count < effective_max_tool_calls:
             tool_call_count += 1
             
             # Yield "thinking" event
