@@ -134,26 +134,16 @@ rate_limiter = RateLimiter(max_requests=5, window_seconds=10)  # Allow burst of 
 openrouter_monitor = None
 openrouter_client = None
 
-# ⚡ NATE'S GROK INTEGRATION - Priority: Grok > OpenRouter > Setup Mode
-grok_api_key = os.getenv("GROK_API_KEY", "")
-openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+# API Client Selection - Priority based on which key is set
+# If both are set, prefer OpenRouter (more flexible, supports more models)
+grok_api_key = os.getenv("GROK_API_KEY", "").strip()
+openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
 
-if grok_api_key:
-    # Grok API (xAI) - Primary for Nate
-    try:
-        logger.info("⚡ Initializing Grok Client for Nate's consciousness...")
-        openrouter_client = GrokClient(
-            api_key=grok_api_key,
-            default_model=get_model_or_default(),
-            cost_tracker=cost_tracker
-        )
-        logger.info("✅ Grok Client initialized - Nate running on xAI Grok!")
-    except Exception as e:
-        logger.warning(f"⚠️  Grok client init failed: {e}")
-        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
+# Check for explicit preference (if both keys are set)
+api_preference = os.getenv("API_PREFERENCE", "openrouter").lower()  # 'openrouter' or 'grok'
 
-elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
-    # OpenRouter - Fallback
+if openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
+    # OpenRouter - Preferred for flexibility (supports Mistral, Claude, GPT, etc.)
     try:
         openrouter_monitor = OpenRouterCostMonitor(api_key=openrouter_api_key)
         logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
@@ -166,6 +156,20 @@ elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
         logger.info("✅ OpenRouter Client initialized")
     except Exception as e:
         logger.warning(f"⚠️  OpenRouter client init failed: {e}")
+        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
+
+elif grok_api_key:
+    # Grok API (xAI) - Only if OpenRouter not available
+    try:
+        logger.info("⚡ Initializing Grok Client...")
+        openrouter_client = GrokClient(
+            api_key=grok_api_key,
+            default_model=get_model_or_default(),
+            cost_tracker=cost_tracker
+        )
+        logger.info("✅ Grok Client initialized")
+    except Exception as e:
+        logger.warning(f"⚠️  Grok client init failed: {e}")
         logger.info("   Server will start in setup mode - user can add API key via welcome modal")
 
 else:
