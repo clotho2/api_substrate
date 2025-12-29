@@ -278,8 +278,7 @@ class ConsciousnessLoop:
         history_limit: int = 12,  # Reduced for token efficiency
         model: Optional[str] = None,
         user_message: Optional[str] = None,  # NEW: For Graph RAG retrieval
-        message_type: str = 'inbox',  # 'inbox' or 'system' for heartbeats
-        soma_context: str = ""  # SOMA physical state context
+        message_type: str = 'inbox'  # 'inbox' or 'system' for heartbeats
     ) -> List[Dict[str, Any]]:
         """
         Build context messages with system prompt and memory blocks.
@@ -293,7 +292,6 @@ class ConsciousnessLoop:
             model: Model being used (for thinking instructions)
             user_message: User's message (for Graph RAG retrieval)
             message_type: Type of message ('inbox' or 'system' for heartbeats)
-            soma_context: SOMA physical state context to inject into system prompt
 
         Returns:
             List of message dicts for OpenRouter
@@ -340,12 +338,7 @@ class ConsciousnessLoop:
         if graph_context:
             system_prompt += f"\n\n## 📊 Relevant Context from Knowledge Graph:\n{graph_context}\n"
             # Silent: Don't print context addition
-
-        # Add SOMA physical state context if available
-        if soma_context:
-            system_prompt += f"\n\n## 🧠 Current Physical State (SOMA):\n{soma_context}\n"
-            print(f"   ✅ SOMA context added ({len(soma_context)} chars)")
-
+        
         messages.append({
             "role": "system",
             "content": system_prompt
@@ -1190,18 +1183,17 @@ send_message: false
         media_data: Optional[str] = None,
         media_type: Optional[str] = None,
         message_type: str = 'inbox',
-        max_tool_calls: Optional[int] = None,  # Override max tool calls (lower for heartbeats)
-        soma_context: str = ""  # SOMA physical state context
+        max_tool_calls: Optional[int] = None  # Override max tool calls (lower for heartbeats)
     ) -> Dict[str, Any]:
         """
         Process a user message through the consciousness loop.
-
+        
         This is the MAIN method - where the agent comes alive! 💫
-
+        
         NOW WITH MULTI-MODAL SUPPORT! 🎨✨
         If media is provided, it will be analyzed by a vision model first,
         then the description is injected into the context for the main model.
-
+        
         Args:
             user_message: User's message
             session_id: Session ID
@@ -1212,8 +1204,7 @@ send_message: false
             max_tokens: Max tokens to generate
             media_data: Base64 encoded media (image/video/audio) - optional
             media_type: MIME type of media (e.g., 'image/jpeg') - optional
-            soma_context: SOMA physical state context to inject into system prompt
-
+            
         Returns:
             Dict with response, tool_calls, metadata, and vision_description (if media present)
         """
@@ -1277,8 +1268,7 @@ send_message: false
             history_limit=history_limit,
             model=model,
             user_message=user_message,  # Pass user message for Graph RAG retrieval
-            message_type=message_type,  # Pass message type for heartbeat handling
-            soma_context=soma_context  # SOMA physical state context
+            message_type=message_type  # Pass message type for heartbeat handling
         )
 
         # STEP 1.5: CHECK CONTEXT WINDOW! (Context Window Management 🎯)
