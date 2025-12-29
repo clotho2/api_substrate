@@ -268,7 +268,7 @@ async def _process_message_async(
             session_id=session_id,
             model=None,  # Use default model
             include_history=True,
-            history_limit=20,
+            history_limit=12,
             message_type='inbox'
         )
 

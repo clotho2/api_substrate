@@ -247,7 +247,7 @@ def send_message_to_agent(agent_id):
                     session_id=session_id,
                     message_type='inbox',  # Discord messages are "inbox" type
                     include_history=True,
-                    history_limit=20  # Keep context window reasonable
+                    history_limit=12  # Keep context window reasonable
                 )
             )
         finally:

@@ -175,14 +175,14 @@ class SummaryGenerator:
         
         Args:
             prompt: Summary generation prompt
-            
+
         Returns:
             Summary text (in the agent's voice!)
         """
-        # Use POLARIS for summaries (FREE + consistent!)
-        # BUT with the agent's system prompt for personality! 🎯
-        model = "openrouter/polaris-alpha"
-        
+        # Use fallback model from config for summaries
+        from core.config import get_fallback_model
+        model = get_fallback_model()
+
         if self.state:
             # Get the agent's system prompt (but streamlined for summaries)
             base_prompt = self.state.get_state("agent:system_prompt", "")

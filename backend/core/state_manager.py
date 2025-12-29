@@ -23,6 +23,7 @@ from dataclasses import dataclass, asdict
 from contextlib import contextmanager
 from enum import Enum
 from core.consciousness_broadcast import broadcast_memory_access
+from core.config import DEFAULT_AGENT_ID, get_model_or_default
 
 
 class BlockType(str, Enum):
@@ -523,9 +524,79 @@ class StateManager:
                 )
             
             print(f"✅ Updated memory block: {label}")
-        
+
         return self.get_block(label)
-    
+
+    def update_block_metadata(
+        self,
+        label: str,
+        description: Optional[str] = None,
+        limit: Optional[int] = None,
+        read_only: Optional[bool] = None,
+        hidden: Optional[bool] = None
+    ) -> MemoryBlock:
+        """
+        Update a memory block's metadata (description, limit, read_only, hidden).
+
+        Args:
+            label: Block label
+            description: New description (optional)
+            limit: New character limit (optional)
+            read_only: New read-only status (optional)
+            hidden: New hidden status (optional)
+
+        Returns:
+            Updated MemoryBlock
+
+        Raises:
+            StateManagerError: If block doesn't exist
+        """
+        existing = self.get_block(label)
+        if not existing:
+            raise StateManagerError(
+                f"Memory block '{label}' not found",
+                context={"label": label, "action": "update_metadata"}
+            )
+
+        now = datetime.utcnow()
+        updates = []
+        params = []
+
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
+
+        if limit is not None:
+            updates.append('"limit" = ?')
+            params.append(limit)
+
+        if read_only is not None:
+            updates.append("read_only = ?")
+            params.append(1 if read_only else 0)
+
+        if hidden is not None:
+            updates.append("hidden = ?")
+            params.append(1 if hidden else 0)
+
+        if not updates:
+            return existing  # Nothing to update
+
+        updates.append("updated_at = ?")
+        params.append(now.isoformat())
+        params.append(label)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                UPDATE memory_blocks
+                SET {', '.join(updates)}
+                WHERE label = ?
+            """, params)
+
+            print(f"✅ Updated metadata for memory block: {label}")
+
+        return self.get_block(label)
+
     def list_blocks(self, include_hidden: bool = False) -> List[MemoryBlock]:
         """
         List all memory blocks.
@@ -761,17 +832,21 @@ class StateManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             now = datetime.utcnow()
-            
+
+            # Handle timestamps - could be datetime objects or strings
+            from_ts = from_timestamp.isoformat() if hasattr(from_timestamp, 'isoformat') else str(from_timestamp)
+            to_ts = to_timestamp.isoformat() if hasattr(to_timestamp, 'isoformat') else str(to_timestamp)
+
             cursor.execute("""
-                INSERT INTO conversation_summaries 
+                INSERT INTO conversation_summaries
                 (session_id, summary, created_at, from_timestamp, to_timestamp, message_count, token_count)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 session_id,
                 summary,
                 now.isoformat(),
-                from_timestamp.isoformat(),
-                to_timestamp.isoformat(),
+                from_ts,
+                to_ts,
                 message_count,
                 token_count
             ))
@@ -920,21 +995,49 @@ class StateManager:
         if self.postgres_manager:
             try:
                 # Get main agent from PostgreSQL
-                agent = self.postgres_manager.get_agent('41dc0e38-bdb6-4563-a3b6-49aa0925ab14')
+                agent = self.postgres_manager.get_agent(DEFAULT_AGENT_ID)
                 if agent:
+                    # IMPORTANT: Environment variables ALWAYS take priority over stored config
+                    from core.config import get_default_model
+                    try:
+                        env_model = get_default_model()
+                    except ValueError:
+                        env_model = None
+
+                    stored_model = agent.config.get('model') if agent.config else None
+                    model = env_model or stored_model or get_model_or_default()
+
                     return {
                         'id': agent.id,
                         'name': agent.name,
-                        'model': agent.config.get('model', 'qwen/qwen-2.5-72b-instruct') if agent.config else 'qwen/qwen-2.5-72b-instruct',
+                        'model': model,
                         'created_at': agent.created_at.isoformat() if agent.created_at else '',
                         'config': agent.config or {}
                     }
             except Exception as e:
                 print(f"⚠️  PostgreSQL read failed, falling back to SQLite: {e}")
-        
+
         # 🗄️ PHASE 2: Fallback to SQLite
+        # IMPORTANT: Environment variables ALWAYS take priority over stored state
+        # This allows users to change models without editing the database
+        from core.config import get_default_model
+        try:
+            env_model = get_default_model()  # Raises if not configured
+        except ValueError:
+            env_model = None
+
+        stored_model = self.get_state('agent.model', None)
+
+        # Priority: env var > stored state > fallback
+        if env_model:
+            model = env_model
+        elif stored_model:
+            model = stored_model
+        else:
+            model = get_model_or_default()
+
         config = {
-            'model': self.get_state('agent.model', 'qwen/qwen-2.5-72b-instruct'),
+            'model': model,
             'temperature': self.get_state('agent.temperature', 0.7),
             'max_tokens': self.get_state('agent.max_tokens', None),
             'top_p': self.get_state('agent.top_p', 1.0),

@@ -6,7 +6,7 @@ This tool provides file-like operations on memory blocks:
 - str_replace: Replace text in memory block
 - insert: Insert text at line
 - delete: Delete memory block
-- rename: Rename memory block (not implemented yet)
+- rename: Rename memory block OR update description
 """
 
 import sys
@@ -241,11 +241,85 @@ def memory(
             }
 
         elif command == "rename":
-            # Rename memory block (not implemented yet)
-            return {
-                "status": "error",
-                "message": "rename command is not implemented yet. Use delete + create as a workaround."
-            }
+            # Rename memory block OR update description
+            if new_path:
+                # Rename: old_path -> new_path
+                if not old_path:
+                    return {
+                        "status": "error",
+                        "message": "Parameter 'old_path' is required when using 'new_path' for rename"
+                    }
+
+                # Get existing block
+                block = _state_manager.get_block(old_path)
+                if not block:
+                    return {
+                        "status": "error",
+                        "message": f"Memory block '{old_path}' not found"
+                    }
+
+                # Check if new path already exists
+                existing_new = _state_manager.get_block(new_path)
+                if existing_new:
+                    return {
+                        "status": "error",
+                        "message": f"Memory block '{new_path}' already exists. Delete it first or choose a different name."
+                    }
+
+                # Check if read-only
+                if block.read_only:
+                    return {
+                        "status": "error",
+                        "message": f"Cannot rename read-only block '{old_path}'"
+                    }
+
+                # Create new block with same content
+                new_block = _state_manager.create_block(
+                    label=new_path,
+                    content=block.content,
+                    block_type=block.block_type,
+                    description=description or block.description,
+                    limit=block.limit,
+                    read_only=block.read_only,
+                    metadata=block.metadata
+                )
+
+                # Delete old block
+                _state_manager.delete_block(old_path)
+
+                return {
+                    "status": "OK",
+                    "message": f"Renamed memory block '{old_path}' → '{new_path}'",
+                    "block": {
+                        "label": new_block.label,
+                        "size": len(new_block.content),
+                        "description": new_block.description
+                    }
+                }
+
+            elif path and description:
+                # Update description only
+                block = _state_manager.get_block(path)
+                if not block:
+                    return {
+                        "status": "error",
+                        "message": f"Memory block '{path}' not found"
+                    }
+
+                # Update the block's description via metadata update
+                _state_manager.update_block_metadata(path, description=description)
+
+                return {
+                    "status": "OK",
+                    "message": f"Updated description for '{path}'",
+                    "new_description": description
+                }
+
+            else:
+                return {
+                    "status": "error",
+                    "message": "rename requires either (old_path + new_path) to rename, or (path + description) to update description"
+                }
 
         else:
             return {

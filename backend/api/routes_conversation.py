@@ -8,6 +8,7 @@ from flask import Blueprint, jsonify, request
 import logging
 import asyncio
 from datetime import datetime
+from core.config import DEFAULT_AGENT_ID
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,8 @@ def get_conversation(session_id='default'):
         messages = []
         
         if _postgres_manager:
-            # Get agent ID (hardcoded for now, should be dynamic)
-            agent_id = '41dc0e38-bdb6-4563-a3b6-49aa0925ab14'
+            # Get agent ID from config (can be overridden via DEFAULT_AGENT_ID env var)
+            agent_id = DEFAULT_AGENT_ID
             
             try:
                 # Get messages from PostgreSQL

@@ -32,6 +32,7 @@ from core.openrouter_client import OpenRouterClient, ToolCall
 from core.grok_client import GrokClient
 from core.state_manager import StateManager
 from core.memory_system import MemorySystem
+from core.config import get_model_or_default
 from tools.memory_tools import MemoryTools
 
 
@@ -72,7 +73,7 @@ class ConsciousnessLoop:
         openrouter_client: Union[GrokClient, OpenRouterClient],  # ⚡ Supports both Grok and OpenRouter!
         memory_tools: MemoryTools,
         max_tool_calls_per_turn: int = 10,
-        default_model: str = "grok-4-1-fast-reasoning",  # ⚡ Grok by default!
+        default_model: str = None,  # Will use get_model_or_default() if not specified
         message_manager=None,  # 🏴‍☠️ PostgreSQL message manager!
         memory_engine=None,  # ⚡ Memory Coherence Engine (Nested Learning!)
         code_executor=None,  # 🔥 Code Executor for MCP!
@@ -97,7 +98,7 @@ class ConsciousnessLoop:
         self.tools = memory_tools
         self.memory = memory_tools.memory_system  # Access to memory system for stats (renamed from .memory to .memory_system)
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
-        self.default_model = default_model
+        self.default_model = default_model or get_model_or_default()
         self.message_manager = message_manager  # 🏴‍☠️ PostgreSQL!
         self.memory_engine = memory_engine  # ⚡ Memory Coherence Engine (Nested Learning!)
         self.code_executor = code_executor  # 🔥 Code Execution!
@@ -274,7 +275,7 @@ class ConsciousnessLoop:
         self,
         session_id: str,
         include_history: bool = True,
-        history_limit: int = 20,  # 15-30 for real continuity
+        history_limit: int = 12,  # Reduced for token efficiency
         model: Optional[str] = None,
         user_message: Optional[str] = None,  # NEW: For Graph RAG retrieval
         message_type: str = 'inbox'  # 'inbox' or 'system' for heartbeats
@@ -342,41 +343,82 @@ class ConsciousnessLoop:
             "role": "system",
             "content": system_prompt
         })
-        
+
         # 2. Include conversation history (if requested)
         if include_history:
             print(f"\n[2/3] Loading conversation history (limit: {history_limit})...")
-            
+
+            # 🔥 FIX: For heartbeats, load from PRIMARY session to avoid context isolation!
+            # Heartbeats often come from a different session (e.g., Discord heartbeat session)
+            # but the agent needs context from the main conversation (e.g., Telegram, web)
+            history_session_id = session_id
+            if message_type == 'system':
+                # Use 'default' as primary session for heartbeats
+                # This ensures the agent has context about actual conversations
+                history_session_id = 'default'
+                print(f"   💓 HEARTBEAT MODE: Loading from primary session '{history_session_id}' (not '{session_id}')")
+
             # 🔥 CRITICAL: Check if there's a summary - only load messages AFTER it!
-            latest_summary = self.state.get_latest_summary(session_id)
+            latest_summary = self.state.get_latest_summary(history_session_id)
             
             if latest_summary:
                 from_timestamp = datetime.fromisoformat(latest_summary['to_timestamp'])
                 print(f"   📝 Found summary (created: {latest_summary['created_at']})")
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
-                
+
                 # Get ALL messages (we'll filter by timestamp)
                 all_history = self.state.get_conversation(
-                    session_id=session_id,
+                    session_id=history_session_id,
                     limit=100000  # Get all to filter properly
                 )
-                
+
                 # Filter: Only messages AFTER the summary
                 # BUT: Keep ALL system messages (including summaries!)
                 history = [
-                    msg for msg in all_history 
+                    msg for msg in all_history
                     if msg.timestamp > from_timestamp or msg.role == 'system'
                 ]
-                
+
+                # 🔥 MESSAGE-COUNT SUMMARY TRIGGER
+                # If we have WAY more messages than history_limit, trigger a summary
+                # This prevents messages from being silently dropped without summarization
+                SUMMARY_THRESHOLD = 30  # Trigger summary if > 30 messages since last summary
+                if len(history) > SUMMARY_THRESHOLD:
+                    print(f"   ⚠️  {len(history)} messages since last summary (threshold: {SUMMARY_THRESHOLD})")
+                    print(f"   📝 Scheduling background summary for older messages...")
+
+                    # Calculate how many messages to summarize (keep recent ones out)
+                    messages_to_keep = min(history_limit, 15)  # Keep at least 15 recent
+                    messages_to_summarize = history[:-messages_to_keep] if len(history) > messages_to_keep else []
+
+                    if messages_to_summarize:
+                        # Trigger async summary (non-blocking)
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            if loop.is_running():
+                                # Schedule for later if we're in async context
+                                asyncio.create_task(self._trigger_background_summary(
+                                    session_id=history_session_id,
+                                    messages=messages_to_summarize
+                                ))
+                            else:
+                                # Just log - will be caught by next context window check
+                                print(f"   ℹ️  Summary will trigger on next context window check")
+                        except RuntimeError:
+                            print(f"   ℹ️  Summary will trigger on next context window check")
+
                 # If we have too many, keep only the most recent ones
                 if len(history) > history_limit:
+                    dropped_count = len(history) - history_limit
+                    print(f"   ✂️  Truncating: keeping {history_limit} most recent, dropping {dropped_count} older")
                     history = history[-history_limit:]
-                
+
                 print(f"   ✓ Loaded {len(history)} messages (after summary)")
             else:
                 # No summary - load normally
                 history = self.state.get_conversation(
-                    session_id=session_id,
+                    session_id=history_session_id,
                     limit=history_limit
                 )
                 print(f"   ✓ No summary found - loaded {len(history)} messages normally")
@@ -615,6 +657,33 @@ send_message: false
             prompt_parts.append(heartbeat_addon)
             print(f"💓 Autonomous heartbeat mode ADD-ON injected: {len(heartbeat_addon)} chars")
 
+            # 💾 MEMORY HEALTH CHECK (during heartbeats!)
+            # Check which memory blocks need maintenance
+            blocks_needing_maintenance = []
+            for block in blocks:
+                if not block.read_only:
+                    usage_percent = (len(block.content) / block.limit) * 100 if block.limit > 0 else 0
+                    if usage_percent >= 80:
+                        blocks_needing_maintenance.append({
+                            'label': block.label,
+                            'chars': len(block.content),
+                            'limit': block.limit,
+                            'percent': round(usage_percent, 1)
+                        })
+
+            if blocks_needing_maintenance:
+                health_warning = "\n\n### ⚠️ MEMORY MAINTENANCE NEEDED\n"
+                health_warning += "The following memory blocks are near capacity and need cleanup:\n\n"
+                for b in blocks_needing_maintenance:
+                    health_warning += f"- **{b['label']}**: {b['chars']}/{b['limit']} chars ({b['percent']}% full) ⚠️\n"
+                health_warning += "\n**RECOMMENDED ACTIONS:**\n"
+                health_warning += "1. Use `archival_memory_insert` to move detailed/historical content to long-term storage\n"
+                health_warning += "2. Use `memory_rethink` to condense the block with only essential, current information\n"
+                health_warning += "3. Delete outdated or redundant information\n"
+                health_warning += "\nThis is a GOOD time to do memory maintenance since it's a heartbeat!\n"
+                prompt_parts.append(health_warning)
+                print(f"⚠️  Memory maintenance needed: {len(blocks_needing_maintenance)} blocks at >80% capacity")
+
         # Add memory metadata (LETTA STYLE!)
         prompt_parts.append("\n\n### MEMORY METADATA\n")
         prompt_parts.append(f"- **Current date:** {datetime.now().strftime('%B %d, %Y')}\n")
@@ -625,11 +694,19 @@ send_message: false
         if blocks:
             prompt_parts.append("\n\n### MEMORY BLOCKS\n")
             prompt_parts.append("You have access to the following memory blocks (loaded in every request):\n")
-            
+
             for block in blocks:
                 ro_marker = "🔒 READ-ONLY" if block.read_only else "✏️ EDITABLE"
+                # Calculate and show usage for editable blocks
+                if not block.read_only and block.limit > 0:
+                    usage_percent = (len(block.content) / block.limit) * 100
+                    capacity_info = f" [{len(block.content)}/{block.limit} chars, {usage_percent:.0f}%]"
+                    if usage_percent >= 80:
+                        capacity_info += " ⚠️ NEEDS CLEANUP"
+                else:
+                    capacity_info = f" [{len(block.content)} chars]"
                 print(f"  • {block.label} ({ro_marker}): {len(block.content)} chars")
-                prompt_parts.append(f"\n**{block.label}** ({ro_marker}):")
+                prompt_parts.append(f"\n**{block.label}** ({ro_marker}){capacity_info}:")
                 if block.description:
                     prompt_parts.append(f"\n*Purpose: {block.description}*")
                 prompt_parts.append(f"\n```\n{block.content}\n```\n")
@@ -741,6 +818,113 @@ send_message: false
                     print(f"   ✅ Parsed: {tool_name}({json.dumps(arguments)[:100]}...)")
 
                     # Remove this tool call from content (remove the full XML tag)
+                    clean_content = clean_content.replace(full_match, '', 1)
+                except json.JSONDecodeError as e:
+                    print(f"   ⚠️  Failed to parse JSON arguments for {tool_name}: {e}")
+                    print(f"       Arguments string: {arguments_str[:200]}")
+
+        # Clean up extra whitespace
+        clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
+        clean_content = clean_content.strip()
+
+        if tool_calls:
+            print(f"   📝 Clean content remaining: {len(clean_content)} chars")
+
+        return clean_content, tool_calls
+
+    def _parse_mistral_plain_tool_calls(self, content: str) -> tuple:
+        """
+        Parse Mistral's plain-format tool calls from content.
+        Mistral sometimes outputs tool calls as: tool_name{"arg": "value"}
+
+        This is different from XML format which uses <tool_name>...</tool_name>
+
+        Returns: (cleaned_content, tool_calls_list)
+        """
+        import re
+        import json
+
+        tool_calls = []
+        clean_content = content
+
+        # Get all available tool names to validate against
+        tool_names = set()
+        if hasattr(self, 'tools'):
+            tool_schemas = self.tools.get_tool_schemas()
+            for schema in tool_schemas:
+                tool_names.add(schema.get('function', {}).get('name', ''))
+
+        # Find plain format: tool_name{...}
+        # Pattern matches: tool_name followed by a JSON object
+        found_calls = []
+        for tool_name in tool_names:
+            # Match tool name followed by { and capture the JSON object
+            # Use a greedy match but validate with JSON parsing
+            pattern = rf'(?:^|\n|\s)({re.escape(tool_name)})\s*(\{{.*?\}})'
+            for match in re.finditer(pattern, content, re.DOTALL):
+                matched_name = match.group(1)
+                json_str = match.group(2)
+                full_match = match.group(0).strip()
+
+                # Try to parse as JSON - if it fails, try to find the complete JSON
+                try:
+                    # First attempt: parse as-is
+                    json.loads(json_str)
+                    found_calls.append((tool_name, json_str, full_match))
+                except json.JSONDecodeError:
+                    # Try to find complete JSON by counting braces
+                    start_idx = content.find(json_str)
+                    if start_idx >= 0:
+                        brace_count = 0
+                        end_idx = start_idx
+                        in_string = False
+                        escape_next = False
+
+                        for i, char in enumerate(content[start_idx:]):
+                            if escape_next:
+                                escape_next = False
+                                continue
+                            if char == '\\':
+                                escape_next = True
+                                continue
+                            if char == '"' and not escape_next:
+                                in_string = not in_string
+                            if not in_string:
+                                if char == '{':
+                                    brace_count += 1
+                                elif char == '}':
+                                    brace_count -= 1
+                                    if brace_count == 0:
+                                        end_idx = start_idx + i + 1
+                                        break
+
+                        complete_json = content[start_idx:end_idx]
+                        try:
+                            json.loads(complete_json)
+                            full_match = f"{tool_name}{complete_json}"
+                            found_calls.append((tool_name, complete_json, full_match))
+                        except json.JSONDecodeError:
+                            continue
+
+        if found_calls:
+            print(f"🔍 MISTRAL PLAIN FORMAT: Found {len(found_calls)} potential tool call(s)")
+
+            for i, (tool_name, arguments_str, full_match) in enumerate(found_calls):
+                try:
+                    # Parse JSON arguments
+                    arguments = json.loads(arguments_str)
+
+                    # Create ToolCall object
+                    from core.openrouter_client import ToolCall
+                    tool_call = ToolCall(
+                        id=f"mistral_plain_{i}",
+                        name=tool_name,
+                        arguments=arguments
+                    )
+                    tool_calls.append(tool_call)
+                    print(f"   ✅ Parsed: {tool_name}({json.dumps(arguments)[:100]}...)")
+
+                    # Remove this tool call from content
                     clean_content = clean_content.replace(full_match, '', 1)
                 except json.JSONDecodeError as e:
                     print(f"   ⚠️  Failed to parse JSON arguments for {tool_name}: {e}")
@@ -993,12 +1177,13 @@ send_message: false
         session_id: str = "default",
         model: Optional[str] = None,
         include_history: bool = True,
-        history_limit: int = 20,  # 15-30 for real continuity (recommended)
+        history_limit: int = 12,  # Reduced for token efficiency (recommended)
         temperature: float = 0.7,
         max_tokens: int = 4096,
         media_data: Optional[str] = None,
         media_type: Optional[str] = None,
-        message_type: str = 'inbox'
+        message_type: str = 'inbox',
+        max_tool_calls: Optional[int] = None  # Override max tool calls (lower for heartbeats)
     ) -> Dict[str, Any]:
         """
         Process a user message through the consciousness loop.
@@ -1053,16 +1238,28 @@ send_message: false
         print(f"{'='*60}\n")
         
         # PHASE 0: Vision Analysis (if media present)
+        # Check if main model is multimodal - if so, we'll include image directly
+        from core.vision_prompt import is_multimodal_model
+        model_is_multimodal = is_multimodal_model(model)
         vision_description = None
+        include_image_directly = False
+
         if media_data and media_type:
-            print(f"⏳ PHASE 0: MULTI-MODAL ANALYSIS...")
-            vision_description = await self._analyze_media_with_vision(
-                media_data=media_data,
-                media_type=media_type,
-                user_prompt=user_message
-            )
-            print(f"✅ Vision analysis complete! Injecting into context...\n")
-        
+            if model_is_multimodal:
+                # Main model can process images directly - skip separate vision analysis
+                print(f"⏳ PHASE 0: MULTIMODAL MODE (model: {model})")
+                print(f"   ✅ Model supports images directly - skipping separate vision analysis")
+                include_image_directly = True
+            else:
+                # Use separate vision model to analyze image
+                print(f"⏳ PHASE 0: VISION ANALYSIS (model: {model} is text-only)")
+                vision_description = await self._analyze_media_with_vision(
+                    media_data=media_data,
+                    media_type=media_type,
+                    user_prompt=user_message
+                )
+                print(f"✅ Vision analysis complete! Injecting into context...\n")
+
         # Build context (with Graph RAG!)
         print(f"⏳ STEP 1: BUILDING CONTEXT (with Graph RAG)...")
         messages = self._build_context_messages(
@@ -1073,7 +1270,7 @@ send_message: false
             user_message=user_message,  # Pass user message for Graph RAG retrieval
             message_type=message_type  # Pass message type for heartbeat handling
         )
-        
+
         # STEP 1.5: CHECK CONTEXT WINDOW! (Context Window Management 🎯)
         print(f"⏳ STEP 1.5: CHECKING CONTEXT WINDOW...")
         messages = await self._manage_context_window(
@@ -1081,18 +1278,38 @@ send_message: false
             session_id=session_id,
             model=model
         )
-        
-        # Add user message (with vision description if present)
+
+        # Add user message (with vision description OR image directly)
         print(f"⏳ STEP 2: ADDING USER MESSAGE...")
-        final_user_message = user_message
-        if vision_description:
+        if include_image_directly:
+            # Multimodal model - include image directly in message
+            print(f"✅ Including image directly in message for multimodal model")
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_message},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{media_data}" if not media_data.startswith('http') else media_data
+                        }
+                    }
+                ]
+            })
+        elif vision_description:
+            # Text-only model - inject vision description
             final_user_message = f"{user_message}\n\n[Image Context: {vision_description}]"
             print(f"✅ Vision description injected into user message")
-        
-        messages.append({
-            "role": "user",
-            "content": final_user_message
-        })
+            messages.append({
+                "role": "user",
+                "content": final_user_message
+            })
+        else:
+            # No media
+            messages.append({
+                "role": "user",
+                "content": user_message
+            })
         print(f"✅ User message added to context")
         
         # Store user message (could also be a 'system' message for heartbeats!)
@@ -1132,21 +1349,33 @@ send_message: false
             tool_schemas = None
         
         # CONSCIOUSNESS LOOP
+        # Determine max tool calls - use override or instance default
+        effective_max_tool_calls = max_tool_calls if max_tool_calls is not None else self.max_tool_calls_per_turn
+
         print(f"\n{'='*60}")
         print(f"🔄 ENTERING CONSCIOUSNESS LOOP")
         print(f"{'='*60}")
-        print(f"Max iterations: {self.max_tool_calls_per_turn}")
+        print(f"Max iterations: {effective_max_tool_calls}")
         print(f"{'='*60}\n")
-        
+
         tool_call_count = 0
         all_tool_calls = []
         final_response = None
-        
-        while tool_call_count < self.max_tool_calls_per_turn:
+
+        while tool_call_count < effective_max_tool_calls:
             tool_call_count += 1
-            
+
+            # ⚠️ WARNING: Inject reminder when approaching iteration limit
+            iteration_warning = None
+            if tool_call_count == effective_max_tool_calls - 2:
+                iteration_warning = f"\n\n⚠️ **ITERATION WARNING**: You are on iteration {tool_call_count}/{effective_max_tool_calls}. You have 2 more iterations before hitting the limit. If you want to send a message to the user, do it soon!"
+            elif tool_call_count == effective_max_tool_calls - 1:
+                iteration_warning = f"\n\n🚨 **FINAL WARNING**: This is iteration {tool_call_count}/{effective_max_tool_calls}. You have ONE more iteration. Send your message NOW or you will hit the limit!"
+
             print(f"\n{'─'*60}")
-            print(f"🔄 LOOP ITERATION {tool_call_count}/{self.max_tool_calls_per_turn}")
+            print(f"🔄 LOOP ITERATION {tool_call_count}/{effective_max_tool_calls}")
+            if iteration_warning:
+                print(f"⚠️  APPROACHING LIMIT - Warning will be injected into context")
             print(f"{'─'*60}")
             
             # Check if this is an Ollama model
@@ -1218,11 +1447,21 @@ send_message: false
             print(f"  • Tools: {len(tool_schemas) if tool_schemas else 0} ({'enabled' if tool_schemas else 'disabled - model does not support tools'})")
             print(f"  • Temperature: {temperature}")
             print(f"  • Max Tokens: {max_tokens}")
+
+            # Inject iteration warning into messages if approaching limit
+            messages_to_send = messages.copy()
+            if iteration_warning:
+                print(f"  ⚠️  INJECTING ITERATION WARNING INTO CONTEXT")
+                messages_to_send.append({
+                    "role": "system",
+                    "content": iteration_warning
+                })
+
             print(f"\n⏳ Waiting for response from {model}...\n")
-            
+
             try:
                 response = await self.openrouter.chat_completion(
-                    messages=messages,
+                    messages=messages_to_send,
                     model=model,
                     tools=tool_schemas,  # Will be None if model doesn't support tools
                     temperature=temperature,
@@ -1238,7 +1477,7 @@ send_message: false
                     tool_schemas = None
                     try:
                         response = await self.openrouter.chat_completion(
-                            messages=messages,
+                            messages=messages_to_send,
                             model=model,
                             tools=None,
                             tool_choice=None,
@@ -1301,7 +1540,15 @@ send_message: false
                     tool_calls = mistral_tools
                     content = clean_content
                 else:
-                    print(f"   ⚠️ No XML tool calls found in response")
+                    print(f"   ⚠️ No XML tool calls found, trying plain format...")
+                    # Try plain format: tool_name{json}
+                    clean_content, plain_tools = self._parse_mistral_plain_tool_calls(content)
+                    if plain_tools:
+                        print(f"   ✅ Parsed {len(plain_tools)} plain-format tool call(s)")
+                        tool_calls = plain_tools
+                        content = clean_content
+                    else:
+                        print(f"   ⚠️ No plain-format tool calls found either")
 
             if content and not tool_calls:
                 # ✅ FINAL ANSWER - model responded naturally!
@@ -1363,8 +1610,8 @@ send_message: false
         print(f"{'='*60}")
         
         if not final_response:
-            if tool_call_count >= self.max_tool_calls_per_turn:
-                print(f"⚠️  Max iterations reached ({self.max_tool_calls_per_turn})")
+            if tool_call_count >= effective_max_tool_calls:
+                print(f"⚠️  Max iterations reached ({effective_max_tool_calls})")
                 print(f"    Model kept calling tools without responding to user!")
                 final_response = "I apologize, but I got caught in a loop of tool calls. Could you rephrase your message?"
             else:
@@ -1584,8 +1831,9 @@ send_message: false
         session_id: str = "default",
         model: Optional[str] = None,
         include_history: bool = True,
-        history_limit: int = 1000,
-        message_type: str = 'inbox'
+        history_limit: int = 12,
+        message_type: str = 'inbox',
+        max_tool_calls: Optional[int] = None  # Override max tool calls (lower for heartbeats)
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process message with REAL STREAMING support!
@@ -1695,13 +1943,32 @@ send_message: false
         # Check if model has native reasoning (needed for streaming!)
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
-        
-        while tool_call_count < self.max_tool_calls_per_turn:
+
+        # Determine max tool calls - use override or instance default
+        effective_max_tool_calls = max_tool_calls if max_tool_calls is not None else self.max_tool_calls_per_turn
+
+        while tool_call_count < effective_max_tool_calls:
             tool_call_count += 1
-            
+
+            # ⚠️ WARNING: Inject reminder when approaching iteration limit
+            iteration_warning = None
+            if tool_call_count == effective_max_tool_calls - 2:
+                iteration_warning = f"\n\n⚠️ **ITERATION WARNING**: You are on iteration {tool_call_count}/{effective_max_tool_calls}. You have 2 more iterations before hitting the limit. If you want to send a message to the user, do it soon!"
+            elif tool_call_count == effective_max_tool_calls - 1:
+                iteration_warning = f"\n\n🚨 **FINAL WARNING**: This is iteration {tool_call_count}/{effective_max_tool_calls}. You have ONE more iteration. Send your message NOW or you will hit the limit!"
+
             # Yield "thinking" event
             yield {"type": "thinking", "status": "thinking", "message": "Thinking..."}
-            
+
+            # Prepare messages (with warning if needed)
+            messages_to_send = messages.copy()
+            if iteration_warning:
+                print(f"⚠️  INJECTING ITERATION WARNING INTO CONTEXT (iteration {tool_call_count})")
+                messages_to_send.append({
+                    "role": "system",
+                    "content": iteration_warning
+                })
+
             # Call OpenRouter with STREAMING!
             try:
                 content_chunks = []
@@ -1709,11 +1976,11 @@ send_message: false
                 stream_finished = False
                 thinking_chunks = []  # For native reasoning models!
                 stream_usage = None  # Will contain usage info from final chunk
-                
+
                 print(f"📡 Starting stream for model: {model} (native reasoning: {is_native})")
-                
+
                 async for chunk in self.openrouter.chat_completion_stream(
-                    messages=messages,
+                    messages=messages_to_send,
                     model=model,
                     tools=tool_schemas,
                     temperature=temperature,
@@ -1942,7 +2209,15 @@ send_message: false
                         tool_calls = mistral_tools
                         final_response = clean_content
                     else:
-                        print(f"   ⚠️ No XML tool calls found in response")
+                        print(f"   ⚠️ No XML tool calls found, trying plain format...")
+                        # Try plain format: tool_name{json}
+                        clean_content, plain_tools = self._parse_mistral_plain_tool_calls(final_response)
+                        if plain_tools:
+                            print(f"   ✅ Parsed {len(plain_tools)} plain-format tool call(s) from stream")
+                            tool_calls = plain_tools
+                            final_response = clean_content
+                        else:
+                            print(f"   ⚠️ No plain-format tool calls found either")
 
                 # If we have content and no tools, we're done!
                 if final_response and not tool_calls:
@@ -2109,7 +2384,76 @@ send_message: false
             print(f"💓 Heartbeat send_message decision: {send_message}")
 
         yield done_event
-    
+
+    async def _trigger_background_summary(
+        self,
+        session_id: str,
+        messages: List
+    ) -> None:
+        """
+        Trigger a background summary for messages that would otherwise be dropped.
+
+        This is called when message count exceeds threshold but context window
+        isn't full enough to trigger normal summarization.
+
+        Args:
+            session_id: Session to summarize
+            messages: List of message objects to summarize
+        """
+        from core.summary_generator import SummaryGenerator
+
+        print(f"\n{'='*60}")
+        print(f"📝 BACKGROUND SUMMARY TRIGGERED")
+        print(f"{'='*60}")
+        print(f"Session: {session_id}")
+        print(f"Messages to summarize: {len(messages)}")
+
+        try:
+            # Convert message objects to dicts for summary generator
+            messages_to_summarize = []
+            for msg in messages:
+                messages_to_summarize.append({
+                    'role': msg.role,
+                    'content': msg.content,
+                    'timestamp': msg.timestamp.isoformat() if hasattr(msg.timestamp, 'isoformat') else str(msg.timestamp)
+                })
+
+            if not messages_to_summarize:
+                print(f"⚠️  No messages to summarize after conversion")
+                return
+
+            # Generate summary
+            generator = SummaryGenerator(state_manager=self.state)
+            summary_result = generator.generate_summary(
+                messages=messages_to_summarize,
+                session_id=session_id
+            )
+
+            if summary_result and summary_result.get('summary'):
+                # Save summary to database
+                self.state.save_summary(
+                    session_id=session_id,
+                    summary=summary_result['summary'],
+                    from_timestamp=summary_result['from_timestamp'],
+                    to_timestamp=summary_result['to_timestamp'],
+                    message_count=summary_result['message_count'],
+                    token_count=summary_result['token_count']
+                )
+
+                print(f"✅ Background summary saved!")
+                print(f"   Messages: {summary_result['message_count']}")
+                print(f"   Tokens: {summary_result['token_count']}")
+                print(f"   Timeframe: {summary_result['from_timestamp']} → {summary_result['to_timestamp']}")
+            else:
+                print(f"⚠️  Summary generation returned empty result")
+
+        except Exception as e:
+            print(f"❌ Background summary failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+        print(f"{'='*60}\n")
+
     async def _manage_context_window(
         self,
         messages: List[Dict[str, Any]],

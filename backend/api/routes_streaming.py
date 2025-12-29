@@ -84,7 +84,7 @@ def stream_chat():
                         session_id=session_id,
                         model=model,
                         include_history=True,
-                        history_limit=1000,
+                        history_limit=12,
                         message_type=message_type
                     )
                     

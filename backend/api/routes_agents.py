@@ -10,6 +10,7 @@ import os
 import logging
 from flask import Blueprint, jsonify, request
 from core.state_manager import StateManager
+from core.config import DEFAULT_AGENT_ID, get_model_or_default, FALLBACK_MODEL
 from core.version_manager import VersionManager
 
 logger = logging.getLogger(__name__)
@@ -45,11 +46,11 @@ def list_agents():
             # Get agents from PostgreSQL
             with postgres_manager._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT id, name, created_at, config
                     FROM agents
-                    ORDER BY 
-                        CASE WHEN id = '41dc0e38-bdb6-4563-a3b6-49aa0925ab14' THEN 0 ELSE 1 END,
+                    ORDER BY
+                        CASE WHEN id = '{DEFAULT_AGENT_ID}' THEN 0 ELSE 1 END,
                         created_at DESC
                 """)
                 rows = cursor.fetchall()
@@ -74,7 +75,7 @@ def list_agents():
             agents = [{
                 'id': agent_state.get('id', 'default'),
                 'name': agent_state.get('name', 'Assistant'),
-                'model': agent_state.get('model', os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL', 'grok-4-1-fast-reasoning')),
+                'model': agent_state.get('model', get_model_or_default()),
                 'created_at': agent_state.get('created_at', ''),
                 'description': 'Substrate AI - Default Agent',
                 'is_active': True
@@ -84,9 +85,120 @@ def list_agents():
             'agents': agents,
             'count': len(agents)
         })
-        
+
     except Exception as e:
         logger.error(f"Error listing agents: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@agents_bp.route('/api/agents', methods=['POST'])
+def create_agent():
+    """
+    Create a new agent.
+
+    Request body:
+    {
+        "name": "Agent Name",
+        "model": "grok-4-1-fast-reasoning",  // optional
+        "system_prompt": "...",  // optional
+        "config": {  // optional
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            ...
+        }
+    }
+
+    Returns:
+    {
+        "success": true,
+        "agent": {
+            "id": "uuid",
+            "name": "Agent Name",
+            "model": "...",
+            "created_at": "..."
+        }
+    }
+    """
+    try:
+        if not _state_manager:
+            return jsonify({'error': 'State manager not initialized'}), 500
+
+        data = request.json or {}
+        name = data.get('name', 'New Agent')
+        model = data.get('model', get_model_or_default())
+        system_prompt = data.get('system_prompt', '')
+        config = data.get('config', {})
+
+        # Generate UUID for new agent
+        import uuid
+        agent_id = str(uuid.uuid4())
+
+        # Merge config with defaults
+        default_config = {
+            'model': model,
+            'temperature': 0.7,
+            'max_tokens': 4096,
+            'top_p': 0.9,
+            'frequency_penalty': 0.0,
+            'presence_penalty': 0.0,
+            'context_window': 128000,
+            'reasoning_enabled': False
+        }
+        final_config = {**default_config, **config, 'model': model}
+
+        # Check if PostgreSQL is available
+        from api.server import postgres_manager
+        if postgres_manager:
+            # Create agent in PostgreSQL
+            agent = postgres_manager.create_agent(
+                agent_id=agent_id,
+                name=name,
+                config=final_config
+            )
+
+            # Initialize default memory blocks for the agent
+            try:
+                # Create persona block
+                postgres_manager._execute("""
+                    INSERT INTO memories (id, agent_id, memory_type, label, content, created_at)
+                    VALUES (%s, %s, 'core', 'persona', %s, NOW())
+                    ON CONFLICT DO NOTHING
+                """, (f"mem-{uuid.uuid4()}", agent_id, f"I am {name}."))
+
+                # Create human block
+                postgres_manager._execute("""
+                    INSERT INTO memories (id, agent_id, memory_type, label, content, created_at)
+                    VALUES (%s, %s, 'core', 'human', %s, NOW())
+                    ON CONFLICT DO NOTHING
+                """, (f"mem-{uuid.uuid4()}", agent_id, "Information about the user."))
+
+                logger.info(f"✅ Initialized default memory blocks for agent {agent_id}")
+            except Exception as mem_err:
+                logger.warning(f"⚠️ Could not initialize memory blocks: {mem_err}")
+
+            logger.info(f"✅ Created agent: {agent_id} ({name})")
+
+            return jsonify({
+                'success': True,
+                'agent': {
+                    'id': agent_id,
+                    'name': name,
+                    'model': model,
+                    'created_at': agent.created_at.isoformat() if hasattr(agent.created_at, 'isoformat') else str(agent.created_at),
+                    'config': final_config
+                }
+            }), 201
+        else:
+            # SQLite fallback - limited multi-agent support
+            return jsonify({
+                'error': 'Multi-agent creation requires PostgreSQL. SQLite only supports single agent mode.',
+                'hint': 'Set POSTGRES_URL environment variable to enable multi-agent support.'
+            }), 400
+
+    except Exception as e:
+        logger.error(f"Error creating agent: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
@@ -104,7 +216,7 @@ def get_agent(agent_id):
         agent = {
             'id': agent_state.get('id', agent_id),  # Use real UUID from DB!
             'name': agent_state.get('name', 'Assistant'),
-            'model': agent_state.get('model', 'qwen/qwen-2.5-72b-instruct'),
+            'model': agent_state.get('model', get_model_or_default()),
             'created_at': agent_state.get('created_at', ''),
             'description': 'Substrate AI - Default Agent',
             'is_active': True,
@@ -131,10 +243,14 @@ def get_agent_config(agent_id):
         # Get ACTUAL config from DB (not just defaults!)
         agent_state = _state_manager.get_agent_state()
         stored_config = agent_state.get('config', {})
-        
+
+        # Get model with CORRECT priority: env var > stored > default
+        # This ensures .env settings always take precedence over DB
+        env_model = get_model_or_default()  # From MODEL_NAME or DEFAULT_LLM_MODEL
+
         # Merge with defaults (for missing fields)
         default_config = {
-            'model': os.getenv('DEFAULT_MODEL', 'qwen/qwen-2.5-72b-instruct'),
+            'model': env_model,  # Env var takes precedence!
             'temperature': 0.7,
             'max_tokens': None,
             'top_p': 1.0,
@@ -145,9 +261,10 @@ def get_agent_config(agent_id):
             'reasoning_enabled': False,
             'max_reasoning_tokens': None
         }
-        
-        # Override defaults with stored values
+
+        # Override defaults with stored values, BUT keep env var model!
         config = {**default_config, **stored_config}
+        config['model'] = env_model  # Force env var model to take precedence!
         
         logger.info(f"📊 GET /config → Returning agent config for '{agent_id}'")
         logger.info(f"   Model: {config['model']} | Reasoning: {config.get('reasoning_enabled', False)}")
@@ -652,19 +769,19 @@ def new_chat_with_summary(agent_id):
         cost_tracker = CostTracker(db_path=os.getenv("COST_DB_PATH", "./data/costs.db"))
         client = OpenRouterClient(
             api_key=os.getenv("OPENROUTER_API_KEY"),
-            default_model="qwen/qwen-2.5-72b-instruct",
+            default_model=get_model_or_default(),
             cost_tracker=cost_tracker
         )
-        
-        summary_prompt = f"""Fasse diese Konversation in 2-3 prägnanten Sätzen zusammen. 
-Fokus: Was war der Kern? Was wurde erreicht?
+
+        summary_prompt = f"""Summarize this conversation in 2-3 concise sentences.
+Focus: What was the core topic? What was accomplished?
 
 {conversation_text[:3000]}
 
-Zusammenfassung (kurz & klar):"""
-        
+Summary (brief & clear):"""
+
         response = client.chat_completion(
-            model="qwen/qwen-2.5-72b-instruct",
+            model=get_model_or_default(),
             messages=[{"role": "user", "content": summary_prompt}],
             stream=False
         )

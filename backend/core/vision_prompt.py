@@ -41,8 +41,64 @@ Be poetic but precise. Be detailed but not clinical. Be observant but emotionall
 
 IMPORTANT: Start your description directly without any preamble like "I see" or "This image shows". Just describe the scene naturally."""
 
-# Vision model to use (Gemini Flash is FREE and excellent for multi-modal!)
-VISION_MODEL = "google/gemini-2.0-flash-exp:free"
+# Vision model configuration
+# Priority: VISION_MODEL env var > OLLAMA_VISION_MODEL > default
+import os
+
+def get_vision_model() -> str:
+    """
+    Get the vision model to use for image analysis.
+
+    Priority:
+    1. VISION_MODEL env var (explicit override)
+    2. OLLAMA_VISION_MODEL (if set, uses local Ollama)
+    3. Default to Gemini Flash (free)
+    """
+    # Check for explicit vision model override
+    vision_model = os.getenv('VISION_MODEL')
+    if vision_model:
+        return vision_model
+
+    # Check for local Ollama vision model
+    ollama_vision = os.getenv('OLLAMA_VISION_MODEL')
+    if ollama_vision:
+        return f"ollama:{ollama_vision}"
+
+    # Default to Gemini Flash (free and good)
+    return "google/gemini-2.0-flash-exp:free"
+
+# List of known multimodal models that can process images directly
+# Note: Use base model names without version suffixes for broader matching
+MULTIMODAL_MODELS = [
+    "mistralai/mistral-large",  # Mistral Large 3+ (multimodal)
+    "mistralai/pixtral",  # Pixtral models (vision-first)
+    "anthropic/claude-3",
+    "anthropic/claude-3-5",
+    "openai/gpt-4o",
+    "openai/gpt-4-vision",
+    "google/gemini",
+    "grok-4",
+    "meta-llama/llama-3.2-90b-vision",
+    "meta-llama/llama-3.2-11b-vision",
+]
+
+def is_multimodal_model(model: str) -> bool:
+    """
+    Check if a model supports direct image processing (multimodal).
+
+    Args:
+        model: Model name/ID
+
+    Returns:
+        True if model can process images directly
+    """
+    if not model:
+        return False
+    model_lower = model.lower()
+    return any(mm.lower() in model_lower for mm in MULTIMODAL_MODELS)
+
+# For backwards compatibility
+VISION_MODEL = get_vision_model()
 
 # Alternative vision models (in order of preference)
 VISION_MODEL_ALTERNATIVES = [
