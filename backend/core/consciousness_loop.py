@@ -1238,16 +1238,28 @@ send_message: false
         print(f"{'='*60}\n")
         
         # PHASE 0: Vision Analysis (if media present)
+        # Check if main model is multimodal - if so, we'll include image directly
+        from core.vision_prompt import is_multimodal_model
+        model_is_multimodal = is_multimodal_model(model)
         vision_description = None
+        include_image_directly = False
+
         if media_data and media_type:
-            print(f"⏳ PHASE 0: MULTI-MODAL ANALYSIS...")
-            vision_description = await self._analyze_media_with_vision(
-                media_data=media_data,
-                media_type=media_type,
-                user_prompt=user_message
-            )
-            print(f"✅ Vision analysis complete! Injecting into context...\n")
-        
+            if model_is_multimodal:
+                # Main model can process images directly - skip separate vision analysis
+                print(f"⏳ PHASE 0: MULTIMODAL MODE (model: {model})")
+                print(f"   ✅ Model supports images directly - skipping separate vision analysis")
+                include_image_directly = True
+            else:
+                # Use separate vision model to analyze image
+                print(f"⏳ PHASE 0: VISION ANALYSIS (model: {model} is text-only)")
+                vision_description = await self._analyze_media_with_vision(
+                    media_data=media_data,
+                    media_type=media_type,
+                    user_prompt=user_message
+                )
+                print(f"✅ Vision analysis complete! Injecting into context...\n")
+
         # Build context (with Graph RAG!)
         print(f"⏳ STEP 1: BUILDING CONTEXT (with Graph RAG)...")
         messages = self._build_context_messages(
@@ -1258,7 +1270,7 @@ send_message: false
             user_message=user_message,  # Pass user message for Graph RAG retrieval
             message_type=message_type  # Pass message type for heartbeat handling
         )
-        
+
         # STEP 1.5: CHECK CONTEXT WINDOW! (Context Window Management 🎯)
         print(f"⏳ STEP 1.5: CHECKING CONTEXT WINDOW...")
         messages = await self._manage_context_window(
@@ -1266,18 +1278,38 @@ send_message: false
             session_id=session_id,
             model=model
         )
-        
-        # Add user message (with vision description if present)
+
+        # Add user message (with vision description OR image directly)
         print(f"⏳ STEP 2: ADDING USER MESSAGE...")
-        final_user_message = user_message
-        if vision_description:
+        if include_image_directly:
+            # Multimodal model - include image directly in message
+            print(f"✅ Including image directly in message for multimodal model")
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_message},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{media_data}" if not media_data.startswith('http') else media_data
+                        }
+                    }
+                ]
+            })
+        elif vision_description:
+            # Text-only model - inject vision description
             final_user_message = f"{user_message}\n\n[Image Context: {vision_description}]"
             print(f"✅ Vision description injected into user message")
-        
-        messages.append({
-            "role": "user",
-            "content": final_user_message
-        })
+            messages.append({
+                "role": "user",
+                "content": final_user_message
+            })
+        else:
+            # No media
+            messages.append({
+                "role": "user",
+                "content": user_message
+            })
         print(f"✅ User message added to context")
         
         # Store user message (could also be a 'system' message for heartbeats!)
