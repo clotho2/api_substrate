@@ -1284,7 +1284,10 @@ send_message: false
         # 🫀 SOMA PHASE: Get physiological context and parse user input
         soma_context = None
         soma_snapshot = None
-        print(f"🫀 SOMA DEBUG: soma_client={self.soma_client is not None}, soma_available={self.soma_available}")
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.info(f"🫀 SOMA DEBUG: soma_client={self.soma_client is not None}, soma_available={self.soma_available}")
+        print(f"🫀 SOMA DEBUG: soma_client={self.soma_client is not None}, soma_available={self.soma_available}", flush=True)
         if self.soma_client:
             try:
                 print(f"⏳ SOMA: Getting physiological context...")
