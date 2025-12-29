@@ -269,6 +269,9 @@ consciousness_loop = ConsciousnessLoop(
 )
 
 print("✅ Substrate AI Server initialized!")
+print(f"   📦 Model from config: {get_model_or_default()}")
+print(f"   🔧 MODEL_NAME env: {os.getenv('MODEL_NAME', '(not set)')}")
+print(f"   🔧 DEFAULT_LLM_MODEL env: {os.getenv('DEFAULT_LLM_MODEL', '(not set)')}")
 
 # ============================================
 # AUTO-LOAD ALEX IF NO AGENT EXISTS
