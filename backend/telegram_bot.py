@@ -13,20 +13,11 @@ Features:
 - Auto-chunking for longer responses
 - Typing indicators
 - Session management
-- SOMA integration for physical state tracking
-
-SOMA Integration:
-- Parses user messages to extract physical state cues
-- Retrieves current physical context to enhance system prompts
-- Parses AI responses to update physical state
-- Enables embodied AI behavior based on physical awareness
 
 Setup:
 1. Get Telegram bot token from @BotFather
 2. Add TELEGRAM_BOT_TOKEN to backend/.env
-3. (Optional) Set SOMA_URL for SOMA service (default: http://localhost:3002)
-4. (Optional) Set SOMA_ENABLED=false to disable SOMA (default: true)
-5. Run: python telegram_bot.py
+3. Run: python telegram_bot.py
 """
 
 import os
@@ -34,11 +25,10 @@ import sys
 import asyncio
 import base64
 import requests
-import aiohttp
 import mimetypes
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,10 +47,6 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 SUBSTRATE_API_URL = os.getenv("SUBSTRATE_API_URL", "http://localhost:5001")
 SESSION_ID = os.getenv("TELEGRAM_SESSION_ID", "telegram_session")
 
-# SOMA Integration (wolfe-soma service)
-SOMA_URL = os.getenv("SOMA_URL", "http://localhost:3002")
-SOMA_ENABLED = os.getenv("SOMA_ENABLED", "true").lower() == "true"
-
 # Telegram limits
 MAX_MESSAGE_LENGTH = 4096  # Telegram's character limit
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB (Telegram's limit)
@@ -68,109 +54,6 @@ MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB (Telegram's limit)
 # Supported image formats for multimodal
 SUPPORTED_IMAGE_FORMATS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
 SUPPORTED_DOCUMENT_FORMATS = {'.pdf', '.txt', '.md', '.py', '.json', '.csv', '.xlsx'}
-
-
-# =============================================================================
-# SOMA Integration Functions
-# =============================================================================
-
-async def soma_parse_user(text: str, source: str = "telegram") -> Dict[str, Any]:
-    """
-    Parse user message through SOMA to extract physical state cues.
-
-    Args:
-        text: The user's message text
-        source: Message source identifier (telegram, discord, etc.)
-
-    Returns:
-        Dict with parsing result or empty dict on failure
-    """
-    if not SOMA_ENABLED:
-        return {}
-
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            async with session.post(
-                f"{SOMA_URL}/parse/user",
-                json={"text": text, "source": source},
-                headers={"Content-Type": "application/json"}
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    print(f"SOMA parse_user failed: {response.status}")
-                    return {}
-    except asyncio.TimeoutError:
-        print("SOMA parse_user timeout")
-        return {}
-    except Exception as e:
-        print(f"SOMA parse_user error: {e}")
-        return {}
-
-
-async def soma_get_context() -> str:
-    """
-    Get current physical state context from SOMA.
-
-    Returns:
-        String containing formatted context for system prompt, or empty string on failure
-    """
-    if not SOMA_ENABLED:
-        return ""
-
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            async with session.get(
-                f"{SOMA_URL}/context",
-                headers={"Content-Type": "application/json"}
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    # SOMA returns context in a format we can inject into the system prompt
-                    return result.get("context", "")
-                else:
-                    print(f"SOMA get_context failed: {response.status}")
-                    return ""
-    except asyncio.TimeoutError:
-        print("SOMA get_context timeout")
-        return ""
-    except Exception as e:
-        print(f"SOMA get_context error: {e}")
-        return ""
-
-
-async def soma_parse_ai(text: str, source: str = "telegram") -> Dict[str, Any]:
-    """
-    Parse AI response through SOMA to extract physical state changes.
-
-    Args:
-        text: The AI's response text
-        source: Message source identifier
-
-    Returns:
-        Dict with parsing result or empty dict on failure
-    """
-    if not SOMA_ENABLED:
-        return {}
-
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            async with session.post(
-                f"{SOMA_URL}/parse/ai",
-                json={"text": text, "source": source},
-                headers={"Content-Type": "application/json"}
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    print(f"SOMA parse_ai failed: {response.status}")
-                    return {}
-    except asyncio.TimeoutError:
-        print("SOMA parse_ai timeout")
-        return {}
-    except Exception as e:
-        print(f"SOMA parse_ai error: {e}")
-        return {}
 
 
 class TelegramBot:
@@ -188,7 +71,6 @@ class TelegramBot:
         print(f"   Substrate API: {self.substrate_url}")
         print(f"   Session ID: {self.session_id}")
         print(f"   Max message length: {MAX_MESSAGE_LENGTH} chars")
-        print(f"   SOMA: {'enabled' if SOMA_ENABLED else 'disabled'} ({SOMA_URL})")
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
@@ -253,7 +135,7 @@ Status: ✅ Connected to substrate
         )
 
     async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming text messages with SOMA integration"""
+        """Handle incoming text messages"""
         user_message = update.message.text
         chat_id = update.effective_chat.id
 
@@ -261,28 +143,14 @@ Status: ✅ Connected to substrate
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
         try:
-            # === SOMA Integration ===
-            # 1. Parse user message through SOMA (extracts physical state cues)
-            await soma_parse_user(user_message)
-
-            # 2. Get current context from SOMA
-            soma_context = await soma_get_context()
-
-            # Build request payload
-            request_payload = {
-                "message": user_message,
-                "session_id": self.session_id,
-                "stream": False  # Non-streaming for simplicity
-            }
-
-            # Include SOMA context if available
-            if soma_context:
-                request_payload["soma_context"] = soma_context
-
-            # 3. Call substrate API
+            # Call substrate API
             response = requests.post(
                 f"{self.substrate_url}/api/chat",
-                json=request_payload,
+                json={
+                    "message": user_message,
+                    "session_id": self.session_id,
+                    "stream": False  # Non-streaming for simplicity
+                },
                 timeout=120  # 2 minute timeout for complex queries
             )
 
@@ -290,10 +158,7 @@ Status: ✅ Connected to substrate
                 result = response.json()
                 nate_response = result.get("response", "")
 
-                # 4. Parse AI response through SOMA (updates physical state)
-                await soma_parse_ai(nate_response)
-
-                # 5. Send response (with auto-chunking if needed)
+                # Send response (with auto-chunking if needed)
                 await self.send_long_message(chat_id, nate_response, context)
             else:
                 await update.message.reply_text(
@@ -308,7 +173,7 @@ Status: ✅ Connected to substrate
             await update.message.reply_text(f"❌ Error: {str(e)}")
 
     async def handle_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming images (multimodal support) with SOMA integration"""
+        """Handle incoming images (multimodal support)"""
         chat_id = update.effective_chat.id
 
         # Show typing indicator
@@ -335,52 +200,34 @@ Status: ✅ Connected to substrate
             # Get caption (if any)
             caption = update.message.caption or "What's in this image?"
 
-            # === SOMA Integration ===
-            # 1. Parse user message through SOMA
-            await soma_parse_user(caption)
-
-            # 2. Get current context from SOMA
-            soma_context = await soma_get_context()
-
-            # Build request payload
-            request_payload = {
-                "session_id": self.session_id,
-                "stream": False,
-                "multimodal": True,  # Flag for substrate to use multimodal format
-                "content": [
-                    {
-                        "type": "text",
-                        "text": caption
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}",
-                            "detail": "high"  # high/low/auto - use high for detailed analysis
-                        }
-                    }
-                ]
-            }
-
-            # Include SOMA context if available
-            if soma_context:
-                request_payload["soma_context"] = soma_context
-
-            # 3. Call substrate API
+            # Prepare multimodal request in Grok's format
+            # Grok expects content as a list with type: "text" and type: "image_url"
             response = requests.post(
                 f"{self.substrate_url}/api/chat",
-                json=request_payload,
+                json={
+                    "session_id": self.session_id,
+                    "stream": False,
+                    "multimodal": True,  # Flag for substrate to use multimodal format
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": caption
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}",
+                                "detail": "high"  # high/low/auto - use high for detailed analysis
+                            }
+                        }
+                    ]
+                },
                 timeout=120
             )
 
             if response.status_code == 200:
                 result = response.json()
                 nate_response = result.get("response", "")
-
-                # 4. Parse AI response through SOMA
-                await soma_parse_ai(nate_response)
-
-                # 5. Send response
                 await self.send_long_message(chat_id, nate_response, context)
             else:
                 await update.message.reply_text(
@@ -391,7 +238,7 @@ Status: ✅ Connected to substrate
             await update.message.reply_text(f"❌ Error processing image: {str(e)}")
 
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming documents/files with SOMA integration"""
+        """Handle incoming documents/files"""
         chat_id = update.effective_chat.id
         document = update.message.document
 
@@ -431,44 +278,25 @@ Status: ✅ Connected to substrate
             # Get caption
             caption = update.message.caption or f"Analyze this {file_ext} file: {document.file_name}"
 
-            # === SOMA Integration ===
-            # 1. Parse user message through SOMA
-            await soma_parse_user(caption)
-
-            # 2. Get current context from SOMA
-            soma_context = await soma_get_context()
-
-            # Build request payload
-            request_payload = {
-                "message": caption,
-                "session_id": self.session_id,
-                "stream": False,
-                "attachment": {
-                    "filename": document.file_name,
-                    "content": file_content,
-                    "mime_type": document.mime_type
-                }
-            }
-
-            # Include SOMA context if available
-            if soma_context:
-                request_payload["soma_context"] = soma_context
-
-            # 3. Call substrate API
+            # Send to substrate
             response = requests.post(
                 f"{self.substrate_url}/api/chat",
-                json=request_payload,
+                json={
+                    "message": caption,
+                    "session_id": self.session_id,
+                    "stream": False,
+                    "attachment": {
+                        "filename": document.file_name,
+                        "content": file_content,
+                        "mime_type": document.mime_type
+                    }
+                },
                 timeout=120
             )
 
             if response.status_code == 200:
                 result = response.json()
                 nate_response = result.get("response", "")
-
-                # 4. Parse AI response through SOMA
-                await soma_parse_ai(nate_response)
-
-                # 5. Send response
                 await self.send_long_message(chat_id, nate_response, context)
             else:
                 await update.message.reply_text(
@@ -571,7 +399,6 @@ Status: ✅ Connected to substrate
         print("="*60)
         print(f"   Substrate: {self.substrate_url}")
         print(f"   Session: {self.session_id}")
-        print(f"   SOMA: {'enabled' if SOMA_ENABLED else 'disabled'} ({SOMA_URL})")
         print("="*60 + "\n")
 
         # Create application
