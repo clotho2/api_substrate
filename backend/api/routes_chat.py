@@ -89,6 +89,7 @@ def chat():
         data = request.json
         session_id = data.get('session_id', 'default')
         stream = data.get('stream', False)
+        soma_context = data.get('soma_context', '')  # SOMA physical state context
 
         # Rate limiting
         if _rate_limiter:
@@ -205,7 +206,8 @@ For now, please describe what you'd like me to help you with regarding this docu
                         user_message_text=user_message_text,
                         session_id=session_id,
                         conversation_history=conversation_history,
-                        is_multimodal=is_multimodal
+                        is_multimodal=is_multimodal,
+                        soma_context=soma_context
                     )
                 )
 
@@ -227,7 +229,8 @@ async def _process_message_async(
     user_message_text: str,
     session_id: str,
     conversation_history: list,
-    is_multimodal: bool = False
+    is_multimodal: bool = False,
+    soma_context: str = ""
 ):
     """
     Process message through consciousness loop asynchronously.
@@ -237,6 +240,7 @@ async def _process_message_async(
         session_id: Session identifier
         conversation_history: Full conversation with current message
         is_multimodal: Whether this is a multimodal request
+        soma_context: SOMA physical state context to inject into system prompt
 
     Returns:
         {"response": "...", "message_id": "..."}
@@ -269,7 +273,8 @@ async def _process_message_async(
             model=None,  # Use default model
             include_history=True,
             history_limit=12,
-            message_type='inbox'
+            message_type='inbox',
+            soma_context=soma_context  # SOMA physical state context
         )
 
         # Extract the actual response text from the result
