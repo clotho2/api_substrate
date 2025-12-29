@@ -1971,7 +1971,37 @@ send_message: false
             return
         
         model = model or self.default_model
-        
+
+        # 🫀 SOMA PHASE (Streaming): Get physiological context and parse user input
+        soma_context = None
+        soma_snapshot = None
+        if self.soma_client:
+            try:
+                print(f"⏳ SOMA (streaming): Getting physiological context...")
+
+                # Check availability (cached)
+                if not self.soma_available:
+                    self.soma_available = await self.soma_client.is_available()
+
+                if self.soma_available:
+                    # Parse user input for physiological triggers
+                    await self.soma_client.parse_user_input(user_message)
+                    print(f"   ✓ User input parsed through SOMA (streaming)")
+
+                    # Get current context for system prompt
+                    soma_context = await self.soma_client.get_context()
+                    if soma_context:
+                        print(f"   ✓ SOMA context retrieved (streaming): {len(soma_context)} chars")
+
+                    # Get snapshot for message metadata
+                    soma_snapshot = await self.soma_client.get_snapshot()
+                    if soma_snapshot:
+                        print(f"   ✓ SOMA snapshot captured (streaming): arousal={soma_snapshot.arousal}%, mood={soma_snapshot.mood}")
+                else:
+                    print(f"   ⚠️ SOMA service not available (streaming)")
+            except Exception as e:
+                print(f"   ⚠️ SOMA error (streaming, non-critical): {e}")
+
         # MULTIMODAL SUPPORT: Check if model supports images directly
         from core.vision_prompt import is_multimodal_model
         model_is_multimodal = is_multimodal_model(model)
@@ -2000,7 +2030,8 @@ send_message: false
             include_history=include_history,
             history_limit=history_limit,
             model=model,
-            message_type=message_type  # Pass message type for heartbeat handling
+            message_type=message_type,  # Pass message type for heartbeat handling
+            soma_context=soma_context  # 🫀 Pass SOMA physiological context
         )
         
         # Check context window
@@ -2509,10 +2540,27 @@ send_message: false
                         final_response = re.sub(r'<think>.*?</think>', '', final_response, flags=re.DOTALL | re.IGNORECASE).strip()
                         print(f"🧠 Thinking extracted (<think>): {len(thinking)} chars")
         
-        # Store assistant message (WITH thinking!)
+        # 🫀 SOMA: Parse AI response for physiological effects (streaming)
+        if self.soma_client and self.soma_available and final_response:
+            try:
+                await self.soma_client.parse_ai_response(final_response)
+                print(f"🫀 AI response parsed through SOMA (streaming)")
+                # Get updated snapshot after response parsing
+                soma_snapshot = await self.soma_client.get_snapshot()
+            except Exception as e:
+                print(f"   ⚠️ SOMA response parsing failed (streaming, non-critical): {e}")
+
+        # Store assistant message (WITH thinking and SOMA snapshot!)
         # 🚨 ALWAYS save, even if empty! (User's request!)
         # Some models might only provide thinking without content
         assistant_msg_id = f"msg-{uuid.uuid4()}"
+
+        # 🫀 Build metadata with SOMA snapshot (if available)
+        message_metadata = {}
+        if soma_snapshot:
+            message_metadata['soma'] = soma_snapshot.to_dict()
+            print(f"🫀 SOMA snapshot attached to message metadata (streaming)")
+
         # 🏴‍☠️ Save to PostgreSQL or SQLite
         self._save_message(
             agent_id=self.agent_id,
@@ -2521,9 +2569,10 @@ send_message: false
             content=final_response or "(No content - only thinking)",
             message_id=assistant_msg_id,
             thinking=thinking,  # 🧠 CRITICAL: Save thinking too!
-            tool_calls=all_tool_calls  # 🔧 Save tool calls too!
+            tool_calls=all_tool_calls,  # 🔧 Save tool calls too!
+            metadata=message_metadata if message_metadata else None
         )
-        print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, thinking={'YES' if thinking else 'NO'})")
+        print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, thinking={'YES' if thinking else 'NO'}, soma={'YES' if soma_snapshot else 'NO'})")
         
         # Yield final result (with token usage and cost!)
         # Frontend expects: data.reasoning_time, data.usage (NOT data.result.*)
