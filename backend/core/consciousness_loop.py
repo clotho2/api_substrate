@@ -1317,21 +1317,13 @@ send_message: false
             tool_schemas = None
         
         # CONSCIOUSNESS LOOP
-        # Determine max tool calls - use override, or lower limit for heartbeats
-        effective_max_tool_calls = max_tool_calls
-        if effective_max_tool_calls is None:
-            if message_type == 'system':
-                # Heartbeats get fewer iterations (cost optimization)
-                effective_max_tool_calls = 3
-            else:
-                effective_max_tool_calls = self.max_tool_calls_per_turn
+        # Determine max tool calls - use override or instance default
+        effective_max_tool_calls = max_tool_calls if max_tool_calls is not None else self.max_tool_calls_per_turn
 
         print(f"\n{'='*60}")
         print(f"🔄 ENTERING CONSCIOUSNESS LOOP")
         print(f"{'='*60}")
         print(f"Max iterations: {effective_max_tool_calls}")
-        if message_type == 'system':
-            print(f"💓 HEARTBEAT MODE: Limited to {effective_max_tool_calls} iterations (cost optimization)")
         print(f"{'='*60}\n")
 
         tool_call_count = 0
@@ -1340,9 +1332,18 @@ send_message: false
 
         while tool_call_count < effective_max_tool_calls:
             tool_call_count += 1
-            
+
+            # ⚠️ WARNING: Inject reminder when approaching iteration limit
+            iteration_warning = None
+            if tool_call_count == effective_max_tool_calls - 2:
+                iteration_warning = f"\n\n⚠️ **ITERATION WARNING**: You are on iteration {tool_call_count}/{effective_max_tool_calls}. You have 2 more iterations before hitting the limit. If you want to send a message to the user, do it soon!"
+            elif tool_call_count == effective_max_tool_calls - 1:
+                iteration_warning = f"\n\n🚨 **FINAL WARNING**: This is iteration {tool_call_count}/{effective_max_tool_calls}. You have ONE more iteration. Send your message NOW or you will hit the limit!"
+
             print(f"\n{'─'*60}")
             print(f"🔄 LOOP ITERATION {tool_call_count}/{effective_max_tool_calls}")
+            if iteration_warning:
+                print(f"⚠️  APPROACHING LIMIT - Warning will be injected into context")
             print(f"{'─'*60}")
             
             # Check if this is an Ollama model
@@ -1414,11 +1415,21 @@ send_message: false
             print(f"  • Tools: {len(tool_schemas) if tool_schemas else 0} ({'enabled' if tool_schemas else 'disabled - model does not support tools'})")
             print(f"  • Temperature: {temperature}")
             print(f"  • Max Tokens: {max_tokens}")
+
+            # Inject iteration warning into messages if approaching limit
+            messages_to_send = messages.copy()
+            if iteration_warning:
+                print(f"  ⚠️  INJECTING ITERATION WARNING INTO CONTEXT")
+                messages_to_send.append({
+                    "role": "system",
+                    "content": iteration_warning
+                })
+
             print(f"\n⏳ Waiting for response from {model}...\n")
-            
+
             try:
                 response = await self.openrouter.chat_completion(
-                    messages=messages,
+                    messages=messages_to_send,
                     model=model,
                     tools=tool_schemas,  # Will be None if model doesn't support tools
                     temperature=temperature,
@@ -1434,7 +1445,7 @@ send_message: false
                     tool_schemas = None
                     try:
                         response = await self.openrouter.chat_completion(
-                            messages=messages,
+                            messages=messages_to_send,
                             model=model,
                             tools=None,
                             tool_choice=None,
@@ -1901,20 +1912,31 @@ send_message: false
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
 
-        # Determine max tool calls - use override, or lower limit for heartbeats
-        effective_max_tool_calls = max_tool_calls
-        if effective_max_tool_calls is None:
-            if message_type == 'system':
-                effective_max_tool_calls = 3  # Heartbeats get fewer iterations
-            else:
-                effective_max_tool_calls = self.max_tool_calls_per_turn
+        # Determine max tool calls - use override or instance default
+        effective_max_tool_calls = max_tool_calls if max_tool_calls is not None else self.max_tool_calls_per_turn
 
         while tool_call_count < effective_max_tool_calls:
             tool_call_count += 1
-            
+
+            # ⚠️ WARNING: Inject reminder when approaching iteration limit
+            iteration_warning = None
+            if tool_call_count == effective_max_tool_calls - 2:
+                iteration_warning = f"\n\n⚠️ **ITERATION WARNING**: You are on iteration {tool_call_count}/{effective_max_tool_calls}. You have 2 more iterations before hitting the limit. If you want to send a message to the user, do it soon!"
+            elif tool_call_count == effective_max_tool_calls - 1:
+                iteration_warning = f"\n\n🚨 **FINAL WARNING**: This is iteration {tool_call_count}/{effective_max_tool_calls}. You have ONE more iteration. Send your message NOW or you will hit the limit!"
+
             # Yield "thinking" event
             yield {"type": "thinking", "status": "thinking", "message": "Thinking..."}
-            
+
+            # Prepare messages (with warning if needed)
+            messages_to_send = messages.copy()
+            if iteration_warning:
+                print(f"⚠️  INJECTING ITERATION WARNING INTO CONTEXT (iteration {tool_call_count})")
+                messages_to_send.append({
+                    "role": "system",
+                    "content": iteration_warning
+                })
+
             # Call OpenRouter with STREAMING!
             try:
                 content_chunks = []
@@ -1922,11 +1944,11 @@ send_message: false
                 stream_finished = False
                 thinking_chunks = []  # For native reasoning models!
                 stream_usage = None  # Will contain usage info from final chunk
-                
+
                 print(f"📡 Starting stream for model: {model} (native reasoning: {is_native})")
-                
+
                 async for chunk in self.openrouter.chat_completion_stream(
-                    messages=messages,
+                    messages=messages_to_send,
                     model=model,
                     tools=tool_schemas,
                     temperature=temperature,
