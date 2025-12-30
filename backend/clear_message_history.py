@@ -4,9 +4,10 @@ Clear conversation message history from SQLite database.
 No dependencies required except sqlite3 (built-in)
 
 Usage:
-    python clear_message_history.py                    # Clear all messages
-    python clear_message_history.py <session_id>      # Clear specific session
-    python clear_message_history.py --summaries       # Also clear summaries
+    python clear_message_history.py --recent 20         # Delete 20 most recent messages
+    python clear_message_history.py --recent 20 discord # Delete 20 most recent from session
+    python clear_message_history.py --all               # Clear ALL messages (dangerous!)
+    python clear_message_history.py --list              # List sessions
 """
 import sqlite3
 import os
@@ -38,38 +39,111 @@ def find_database():
     return None
 
 
-def clear_message_history(session_id=None, clear_summaries=False):
-    """Clear message history from the database"""
+def clear_recent_messages(count, session_id=None):
+    """Delete the N most recent messages"""
     print("=" * 60)
-    print("CLEAR MESSAGE HISTORY")
+    print(f"DELETE {count} MOST RECENT MESSAGES")
     print("=" * 60)
 
-    print("\n1. Looking for database...")
     db_path = find_database()
-
     if not db_path:
-        print("   Could not find database file!")
-        print("")
-        print("   Set SQLITE_DB_PATH environment variable, or ensure one of these exists:")
-        print("   - ./data/db/substrate_state.db")
-        print("   - /app/data/db/substrate_state.db")
-        print("")
-        print("   If running remotely, you need to run this script on the server")
-        print("   where the substrate is deployed, not locally.")
+        print("\nCould not find database file!")
+        print("Set SQLITE_DB_PATH or run on the server where substrate is deployed.")
         return 1
 
-    print(f"   Found database: {db_path}")
+    print(f"\nDatabase: {db_path}")
 
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
-        # Check tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages';")
-        if not cursor.fetchone():
-            print("   Table 'messages' does not exist!")
+        # Get the messages to delete
+        if session_id:
+            cursor.execute("""
+                SELECT id, role, content, timestamp, session_id
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?;
+            """, (session_id, count))
+        else:
+            cursor.execute("""
+                SELECT id, role, content, timestamp, session_id
+                FROM messages
+                ORDER BY timestamp DESC
+                LIMIT ?;
+            """, (count,))
+
+        messages = cursor.fetchall()
+
+        if not messages:
+            print("\nNo messages found!")
             conn.close()
-            return 1
+            return 0
+
+        print(f"\nMessages to delete ({len(messages)}):")
+        print("-" * 50)
+
+        ids_to_delete = []
+        for msg in messages:
+            msg_id, role, content, timestamp, sess = msg
+            ids_to_delete.append(msg_id)
+            preview = content[:50].replace('\n', ' ')
+            if len(content) > 50:
+                preview += "..."
+            print(f"  [{timestamp[-8:]}] {role}: {preview}")
+
+        print("-" * 50)
+
+        # Delete by IDs
+        placeholders = ','.join('?' for _ in ids_to_delete)
+        cursor.execute(f"DELETE FROM messages WHERE id IN ({placeholders});", ids_to_delete)
+        deleted = cursor.rowcount
+        conn.commit()
+
+        print(f"\nDeleted {deleted} messages")
+
+        # Show what remains
+        if session_id:
+            cursor.execute("SELECT COUNT(*) FROM messages WHERE session_id = ?;", (session_id,))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM messages;")
+
+        remaining = cursor.fetchone()[0]
+        print(f"Remaining messages: {remaining}")
+
+        conn.close()
+
+        print("\n" + "=" * 60)
+        print("DONE - Restart substrate for changes to take effect")
+        print("=" * 60 + "\n")
+
+        return 0
+
+    except Exception as e:
+        print(f"\nError: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def clear_all_messages(session_id=None, clear_summaries=False):
+    """Clear ALL message history from the database"""
+    print("=" * 60)
+    print("CLEAR ALL MESSAGE HISTORY")
+    print("=" * 60)
+
+    db_path = find_database()
+    if not db_path:
+        print("\nCould not find database file!")
+        print("Set SQLITE_DB_PATH or run on the server where substrate is deployed.")
+        return 1
+
+    print(f"\nDatabase: {db_path}")
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
 
         # Count current messages
         if session_id:
@@ -78,40 +152,15 @@ def clear_message_history(session_id=None, clear_summaries=False):
             cursor.execute("SELECT COUNT(*) FROM messages;")
 
         message_count = cursor.fetchone()[0]
-        print(f"\n2. Found {message_count} messages" + (f" for session '{session_id}'" if session_id else " total"))
+        scope = f" for session '{session_id}'" if session_id else " total"
+        print(f"\nFound {message_count} messages{scope}")
 
         if message_count == 0:
-            print("   No messages to clear!")
+            print("No messages to clear!")
             conn.close()
             return 0
 
-        # Show sample of messages to be deleted
-        print("\n3. Sample of messages to be deleted:")
-        if session_id:
-            cursor.execute("""
-                SELECT role, content, timestamp, session_id
-                FROM messages
-                WHERE session_id = ?
-                ORDER BY timestamp DESC
-                LIMIT 5;
-            """, (session_id,))
-        else:
-            cursor.execute("""
-                SELECT role, content, timestamp, session_id
-                FROM messages
-                ORDER BY timestamp DESC
-                LIMIT 5;
-            """)
-
-        for row in cursor.fetchall():
-            role, content, timestamp, sess = row
-            preview = content[:60] + "..." if len(content) > 60 else content
-            preview = preview.replace('\n', ' ')
-            print(f"   [{sess}] {role}: {preview}")
-
-        # Confirm deletion
-        print(f"\n4. Deleting {message_count} messages...")
-
+        # Delete
         if session_id:
             cursor.execute("DELETE FROM messages WHERE session_id = ?;", (session_id,))
         else:
@@ -119,45 +168,30 @@ def clear_message_history(session_id=None, clear_summaries=False):
 
         deleted = cursor.rowcount
         conn.commit()
-        print(f"   Deleted {deleted} messages")
+        print(f"Deleted {deleted} messages")
 
         # Optionally clear summaries
         if clear_summaries:
-            print("\n5. Clearing conversation summaries...")
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_summaries';")
             if cursor.fetchone():
                 if session_id:
                     cursor.execute("DELETE FROM conversation_summaries WHERE session_id = ?;", (session_id,))
                 else:
                     cursor.execute("DELETE FROM conversation_summaries;")
-
                 summary_deleted = cursor.rowcount
                 conn.commit()
-                print(f"   Deleted {summary_deleted} summaries")
-            else:
-                print("   No conversation_summaries table found")
-
-        # Verify
-        if session_id:
-            cursor.execute("SELECT COUNT(*) FROM messages WHERE session_id = ?;", (session_id,))
-        else:
-            cursor.execute("SELECT COUNT(*) FROM messages;")
-
-        remaining = cursor.fetchone()[0]
-        print(f"\n6. Remaining messages: {remaining}")
+                print(f"Deleted {summary_deleted} summaries")
 
         conn.close()
 
         print("\n" + "=" * 60)
-        print("MESSAGE HISTORY CLEARED!")
-        print("=" * 60)
-        print("\nNote: You may need to restart the substrate server")
-        print("for changes to take effect.\n")
+        print("DONE - Restart substrate for changes to take effect")
+        print("=" * 60 + "\n")
 
         return 0
 
     except Exception as e:
-        print(f"   Error: {e}")
+        print(f"\nError: {e}")
         import traceback
         traceback.print_exc()
         return 1
@@ -185,32 +219,67 @@ def list_sessions():
         ORDER BY last_msg DESC;
     """)
 
-    for row in cursor.fetchall():
-        session_id, count, first, last = row
-        print(f"  {session_id}: {count} messages")
-        print(f"    First: {first}")
-        print(f"    Last:  {last}")
-        print()
+    rows = cursor.fetchall()
+    if not rows:
+        print("  No messages found")
+    else:
+        for row in rows:
+            session_id, count, first, last = row
+            print(f"  {session_id}: {count} messages")
+            print(f"    First: {first}")
+            print(f"    Last:  {last}")
+            print()
 
     conn.close()
 
 
+def print_usage():
+    print("""
+Usage:
+  python clear_message_history.py --recent 20           # Delete 20 most recent messages
+  python clear_message_history.py --recent 20 discord   # Delete 20 most recent from 'discord' session
+  python clear_message_history.py --all                 # Delete ALL messages (dangerous!)
+  python clear_message_history.py --all --summaries     # Also delete summaries
+  python clear_message_history.py --list                # List sessions and message counts
+""")
+
+
 if __name__ == "__main__":
-    # Parse args
-    session_id = None
-    clear_summaries = False
-    list_only = False
+    args = sys.argv[1:]
 
-    for arg in sys.argv[1:]:
-        if arg == "--summaries":
-            clear_summaries = True
-        elif arg == "--list":
-            list_only = True
-        elif not arg.startswith("--"):
-            session_id = arg
+    if not args or "--help" in args or "-h" in args:
+        print_usage()
+        sys.exit(0)
 
-    if list_only:
+    if "--list" in args:
         list_sessions()
         sys.exit(0)
 
-    sys.exit(clear_message_history(session_id=session_id, clear_summaries=clear_summaries))
+    # Parse --recent N
+    recent_count = None
+    session_id = None
+    clear_summaries = "--summaries" in args
+    clear_all = "--all" in args
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--recent" and i + 1 < len(args):
+            try:
+                recent_count = int(args[i + 1])
+                i += 2
+                continue
+            except ValueError:
+                print(f"Error: --recent requires a number, got '{args[i + 1]}'")
+                sys.exit(1)
+        elif not args[i].startswith("--"):
+            session_id = args[i]
+        i += 1
+
+    if recent_count:
+        sys.exit(clear_recent_messages(recent_count, session_id))
+    elif clear_all:
+        sys.exit(clear_all_messages(session_id, clear_summaries))
+    else:
+        print("Error: Specify --recent N or --all")
+        print_usage()
+        sys.exit(1)
