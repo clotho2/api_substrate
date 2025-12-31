@@ -850,6 +850,128 @@ send_message: false
 
         return clean_content, tool_calls
 
+    def _parse_grok_xml_tool_calls(self, content: str) -> tuple:
+        """
+        Parse Grok's XML-formatted tool calls from content.
+        Grok 4 via OpenRouter sometimes outputs tool calls as XML tags:
+        <xai:function_call name="tool_name">{"arg": "value"}</xai:function_call>
+
+        Grok also sometimes hallucinates results with:
+        <xai:function_result name="tool_name">{"results": [...]}</xai:function_result>
+
+        For function_call tags, we extract and execute the actual tool.
+        For function_result tags (hallucinations), we log a warning and strip the content.
+
+        Returns: (cleaned_content, tool_calls_list)
+        """
+        import re
+        import json
+
+        tool_calls = []
+        clean_content = content
+
+        # Get all available tool names to validate against
+        tool_names = set()
+        if hasattr(self, 'tools'):
+            tool_schemas = self.tools.get_tool_schemas()
+            for schema in tool_schemas:
+                tool_names.add(schema.get('function', {}).get('name', ''))
+
+        # Pattern 1: <xai:function_call name="tool_name">{"args": ...}</xai:function_call>
+        # This is the proper format for tool calls
+        function_call_pattern = r'<xai:function_call\s+name="([^"]+)">(.*?)</xai:function_call>'
+        for match in re.finditer(function_call_pattern, content, re.DOTALL):
+            tool_name = match.group(1)
+            arguments_str = match.group(2).strip()
+            full_match = match.group(0)
+
+            if tool_name in tool_names:
+                try:
+                    arguments = json.loads(arguments_str)
+                    from core.openrouter_client import ToolCall
+                    tool_call = ToolCall(
+                        id=f"grok_xml_call_{len(tool_calls)}",
+                        name=tool_name,
+                        arguments=arguments
+                    )
+                    tool_calls.append(tool_call)
+                    print(f"   ✅ GROK XML CALL: Parsed {tool_name}({json.dumps(arguments)[:100]}...)")
+                    clean_content = clean_content.replace(full_match, '', 1)
+                except json.JSONDecodeError as e:
+                    print(f"   ⚠️ GROK XML: Failed to parse JSON for {tool_name}: {e}")
+            else:
+                print(f"   ⚠️ GROK XML: Unknown tool name '{tool_name}'")
+
+        # Pattern 2: <xai:function_result name="tool_name">...</xai:function_result>
+        # This is Grok hallucinating results - we need to strip it
+        # But first try to extract any arguments if they're present
+        function_result_pattern = r'<xai:function_result\s+name="([^"]+)">(.*?)</xai:function_result>'
+        for match in re.finditer(function_result_pattern, content, re.DOTALL):
+            tool_name = match.group(1)
+            content_str = match.group(2).strip()
+            full_match = match.group(0)
+
+            print(f"   🔍 GROK XML RESULT: Found hallucinated result for {tool_name}")
+
+            if tool_name in tool_names:
+                try:
+                    # Try to parse the content
+                    parsed_content = json.loads(content_str)
+
+                    # Check if this looks like results (hallucination) or arguments
+                    # Results typically have "results" key, arguments have tool-specific keys
+                    if 'results' in parsed_content or 'result' in parsed_content:
+                        # This is a hallucination - Grok made up the results
+                        # Try to extract any query-like parameters
+                        print(f"   ⚠️ GROK HALLUCINATION: {tool_name} returned fabricated results")
+
+                        # For archival_memory_search, check if we can find a query in metadata
+                        if tool_name == 'archival_memory_search':
+                            # Look for patterns in the hallucinated content that might indicate intent
+                            results = parsed_content.get('results', [])
+                            if results:
+                                # Try to infer query from metadata tags
+                                first_result = results[0] if results else {}
+                                metadata = first_result.get('metadata', {})
+                                tags = metadata.get('tags', [])
+                                if tags:
+                                    # Use tags as a proxy for what the query might have been
+                                    inferred_query = ' '.join(tags[:3])
+                                    print(f"   🔄 GROK RECOVERY: Inferred query from tags: '{inferred_query}'")
+                                    from core.openrouter_client import ToolCall
+                                    tool_call = ToolCall(
+                                        id=f"grok_xml_recovered_{len(tool_calls)}",
+                                        name=tool_name,
+                                        arguments={"query": inferred_query}
+                                    )
+                                    tool_calls.append(tool_call)
+                    else:
+                        # This might actually be arguments, not results
+                        from core.openrouter_client import ToolCall
+                        tool_call = ToolCall(
+                            id=f"grok_xml_result_{len(tool_calls)}",
+                            name=tool_name,
+                            arguments=parsed_content
+                        )
+                        tool_calls.append(tool_call)
+                        print(f"   ✅ GROK XML RESULT: Parsed {tool_name} as arguments")
+
+                except json.JSONDecodeError as e:
+                    print(f"   ⚠️ GROK XML: Failed to parse content for {tool_name}: {e}")
+
+            # Always remove the XML from content to prevent it showing in Discord
+            clean_content = clean_content.replace(full_match, '', 1)
+
+        # Clean up extra whitespace
+        clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
+        clean_content = clean_content.strip()
+
+        if tool_calls:
+            print(f"   📝 GROK: Clean content remaining: {len(clean_content)} chars")
+            print(f"   📝 GROK: Parsed {len(tool_calls)} tool call(s)")
+
+        return clean_content, tool_calls
+
     def _parse_mistral_plain_tool_calls(self, content: str) -> tuple:
         """
         Parse Mistral's plain-format tool calls from content.
@@ -1607,8 +1729,11 @@ send_message: false
             
             print(f"\n🤔 DECISION:")
 
-            # MISTRAL XML PARSER: Check if Mistral output tool calls as XML tags
+            # XML PARSER: Check for XML-formatted tool calls from models that output them
             is_mistral = 'mistral' in model.lower()
+            is_grok = 'grok' in model.lower()
+
+            # MISTRAL XML PARSER
             if content and not tool_calls and is_mistral and tool_schemas:
                 print(f"🔍 MISTRAL CHECK: Checking for XML-formatted tool calls in response")
                 print(f"   📄 Raw response (first 500 chars): {content[:500]}")
@@ -1628,6 +1753,23 @@ send_message: false
                         content = clean_content
                     else:
                         print(f"   ⚠️ No plain-format tool calls found either")
+
+            # GROK XML PARSER: Check for xai:function_call or xai:function_result tags
+            if content and not tool_calls and is_grok and tool_schemas:
+                print(f"🔍 GROK CHECK: Checking for XML-formatted tool calls in response")
+                print(f"   📄 Raw response (first 500 chars): {content[:500]}")
+                print(f"   📄 Raw response (last 200 chars): {content[-200:]}")
+                clean_content, grok_tools = self._parse_grok_xml_tool_calls(content)
+                if grok_tools:
+                    print(f"   ✅ Parsed {len(grok_tools)} Grok XML tool call(s)")
+                    tool_calls = grok_tools
+                    content = clean_content
+                else:
+                    # Even if no tool calls parsed, use the cleaned content
+                    # (XML tags stripped to prevent them showing in Discord)
+                    if clean_content != content:
+                        print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
+                        content = clean_content
 
             if content and not tool_calls:
                 # ✅ FINAL ANSWER - model responded naturally!
@@ -2393,8 +2535,11 @@ send_message: false
                 else:
                     tool_calls = []
 
-                # MISTRAL XML PARSER: Check if Mistral output tool calls as XML tags (streaming)
+                # XML PARSER: Check for XML-formatted tool calls from models that output them (streaming)
                 is_mistral = 'mistral' in model.lower()
+                is_grok = 'grok' in model.lower()
+
+                # MISTRAL XML PARSER (streaming)
                 if final_response and not tool_calls and is_mistral:
                     print(f"🔍 MISTRAL CHECK (streaming): Checking for XML-formatted tool calls")
                     print(f"   📄 Raw response (first 500 chars): {final_response[:500]}")
@@ -2414,6 +2559,23 @@ send_message: false
                             final_response = clean_content
                         else:
                             print(f"   ⚠️ No plain-format tool calls found either")
+
+                # GROK XML PARSER: Check for xai:function_call or xai:function_result tags (streaming)
+                if final_response and not tool_calls and is_grok:
+                    print(f"🔍 GROK CHECK (streaming): Checking for XML-formatted tool calls")
+                    print(f"   📄 Raw response (first 500 chars): {final_response[:500]}")
+                    print(f"   📄 Raw response (last 200 chars): {final_response[-200:]}")
+                    clean_content, grok_tools = self._parse_grok_xml_tool_calls(final_response)
+                    if grok_tools:
+                        print(f"   ✅ Parsed {len(grok_tools)} Grok XML tool call(s) from stream")
+                        tool_calls = grok_tools
+                        final_response = clean_content
+                    else:
+                        # Even if no tool calls parsed, use the cleaned content
+                        # (XML tags stripped to prevent them showing in Discord)
+                        if clean_content != final_response:
+                            print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
+                            final_response = clean_content
 
                 # If we have content and no tools, we're done!
                 if final_response and not tool_calls:
