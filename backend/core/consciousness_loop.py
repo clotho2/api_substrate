@@ -1712,7 +1712,24 @@ send_message: false
             content = assistant_msg.get('content', '').strip()
             # Only parse tool calls if tools were enabled
             tool_calls = self.openrouter.parse_tool_calls(response) if tool_schemas else []
-            
+
+            # DEBUG: Log all message fields to catch models putting content in unexpected places
+            msg_keys = list(assistant_msg.keys())
+            if not content and not tool_calls:
+                print(f"\n⚠️  DEBUG - Empty response detected!")
+                print(f"   Message keys: {msg_keys}")
+                for key in msg_keys:
+                    val = assistant_msg.get(key)
+                    if val and key not in ['role']:
+                        print(f"   • {key}: {str(val)[:200]}...")
+
+            # Check for reasoning_content (some models like DeepSeek R1, Hermes put content there)
+            if not content and 'reasoning_content' in assistant_msg:
+                reasoning = assistant_msg.get('reasoning_content', '').strip()
+                if reasoning:
+                    print(f"🔄 HERMES/R1 FIX: Found content in 'reasoning_content' ({len(reasoning)} chars)")
+                    content = reasoning
+
             print(f"\n📥 ANALYZING RESPONSE...")
             print(f"  • Content: {'Yes' if content else 'No'} ({len(content)} chars)")
             print(f"  • Tool Calls: {len(tool_calls)} ({'enabled' if tool_schemas else 'disabled'})")
