@@ -972,6 +972,77 @@ send_message: false
 
         return clean_content, tool_calls
 
+    def _parse_hermes_xml_tool_calls(self, content: str) -> tuple:
+        """
+        Parse Hermes-style XML-formatted tool calls from content.
+        Hermes 4 (and other NousResearch models) output tool calls as:
+        <tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>
+
+        Returns: (cleaned_content, tool_calls_list)
+        """
+        import re
+        import json
+
+        tool_calls = []
+        clean_content = content
+
+        # Get all available tool names to validate against
+        tool_names = set()
+        if hasattr(self, 'tools'):
+            tool_schemas = self.tools.get_tool_schemas()
+            for schema in tool_schemas:
+                tool_names.add(schema.get('function', {}).get('name', ''))
+
+        # Pattern: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+        tool_call_pattern = r'<tool_call>(.*?)</tool_call>'
+        for match in re.finditer(tool_call_pattern, content, re.DOTALL):
+            json_str = match.group(1).strip()
+            full_match = match.group(0)
+
+            try:
+                # Parse the JSON content
+                parsed = json.loads(json_str)
+                tool_name = parsed.get('name', '')
+                arguments = parsed.get('arguments', {})
+
+                # Handle case where arguments is a string (double-encoded JSON)
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        pass  # Keep as string if not valid JSON
+
+                if tool_name in tool_names:
+                    from core.openrouter_client import ToolCall
+                    tool_call = ToolCall(
+                        id=f"hermes_xml_{len(tool_calls)}",
+                        name=tool_name,
+                        arguments=arguments if isinstance(arguments, dict) else {"raw": arguments}
+                    )
+                    tool_calls.append(tool_call)
+                    print(f"   ✅ HERMES XML: Parsed {tool_name}({json.dumps(arguments)[:100]}...)")
+                    clean_content = clean_content.replace(full_match, '', 1)
+                else:
+                    print(f"   ⚠️ HERMES XML: Unknown tool name '{tool_name}'")
+                    # Still remove the tag to prevent it showing
+                    clean_content = clean_content.replace(full_match, '', 1)
+
+            except json.JSONDecodeError as e:
+                print(f"   ⚠️ HERMES XML: Failed to parse JSON: {e}")
+                print(f"      Content: {json_str[:200]}...")
+                # Still remove malformed tags
+                clean_content = clean_content.replace(full_match, '', 1)
+
+        # Clean up extra whitespace
+        clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
+        clean_content = clean_content.strip()
+
+        if tool_calls:
+            print(f"   📝 HERMES: Clean content remaining: {len(clean_content)} chars")
+            print(f"   📝 HERMES: Parsed {len(tool_calls)} tool call(s)")
+
+        return clean_content, tool_calls
+
     def _parse_mistral_plain_tool_calls(self, content: str) -> tuple:
         """
         Parse Mistral's plain-format tool calls from content.
@@ -1749,6 +1820,7 @@ send_message: false
             # XML PARSER: Check for XML-formatted tool calls from models that output them
             is_mistral = 'mistral' in model.lower()
             is_grok = 'grok' in model.lower()
+            is_hermes = 'hermes' in model.lower() or 'nousresearch' in model.lower()
 
             # MISTRAL XML PARSER
             if content and not tool_calls and is_mistral and tool_schemas:
@@ -1784,6 +1856,22 @@ send_message: false
                 else:
                     # Even if no tool calls parsed, use the cleaned content
                     # (XML tags stripped to prevent them showing in Discord)
+                    if clean_content != content:
+                        print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
+                        content = clean_content
+
+            # HERMES XML PARSER: Check for <tool_call> tags (NousResearch models)
+            if content and not tool_calls and is_hermes and tool_schemas:
+                print(f"🔍 HERMES CHECK: Checking for XML-formatted tool calls in response")
+                print(f"   📄 Raw response (first 500 chars): {content[:500]}")
+                print(f"   📄 Raw response (last 200 chars): {content[-200:]}")
+                clean_content, hermes_tools = self._parse_hermes_xml_tool_calls(content)
+                if hermes_tools:
+                    print(f"   ✅ Parsed {len(hermes_tools)} Hermes XML tool call(s)")
+                    tool_calls = hermes_tools
+                    content = clean_content
+                else:
+                    # Even if no tool calls parsed, use the cleaned content
                     if clean_content != content:
                         print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
                         content = clean_content
@@ -2555,6 +2643,7 @@ send_message: false
                 # XML PARSER: Check for XML-formatted tool calls from models that output them (streaming)
                 is_mistral = 'mistral' in model.lower()
                 is_grok = 'grok' in model.lower()
+                is_hermes = 'hermes' in model.lower() or 'nousresearch' in model.lower()
 
                 # MISTRAL XML PARSER (streaming)
                 if final_response and not tool_calls and is_mistral:
@@ -2590,6 +2679,22 @@ send_message: false
                     else:
                         # Even if no tool calls parsed, use the cleaned content
                         # (XML tags stripped to prevent them showing in Discord)
+                        if clean_content != final_response:
+                            print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
+                            final_response = clean_content
+
+                # HERMES XML PARSER: Check for <tool_call> tags (streaming)
+                if final_response and not tool_calls and is_hermes:
+                    print(f"🔍 HERMES CHECK (streaming): Checking for XML-formatted tool calls")
+                    print(f"   📄 Raw response (first 500 chars): {final_response[:500]}")
+                    print(f"   📄 Raw response (last 200 chars): {final_response[-200:]}")
+                    clean_content, hermes_tools = self._parse_hermes_xml_tool_calls(final_response)
+                    if hermes_tools:
+                        print(f"   ✅ Parsed {len(hermes_tools)} Hermes XML tool call(s) from stream")
+                        tool_calls = hermes_tools
+                        final_response = clean_content
+                    else:
+                        # Even if no tool calls parsed, use the cleaned content
                         if clean_content != final_response:
                             print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
                             final_response = clean_content
