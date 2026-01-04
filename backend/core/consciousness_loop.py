@@ -476,11 +476,41 @@ class ConsciousnessLoop:
         print(f"\n{'='*60}")
         print(f"📝 BUILDING SYSTEM PROMPT")
         print(f"{'='*60}")
-        
-        # Get system prompt (BASE - without thinking!)
-        base_prompt = self.state.get_state("agent:system_prompt", "")
-        print(f"✓ Base system prompt: {len(base_prompt)} chars")
-        
+
+        # Load system prompt from separate files (persona + instructions)
+        # This split helps prevent models from narrating behavior instructions
+        from pathlib import Path
+        data_dir = Path(__file__).parent.parent / "data"
+
+        # Load persona (first-person identity) - establishes WHO the agent is
+        persona_path = data_dir / "system_prompt_persona.txt"
+        persona_prompt = ""
+        if persona_path.exists():
+            persona_prompt = persona_path.read_text().strip()
+            print(f"✓ Persona prompt loaded: {len(persona_prompt)} chars")
+        else:
+            print(f"⚠️  Persona prompt not found at {persona_path}")
+
+        # Load instructions (operational rules) - establishes HOW to behave
+        instructions_path = data_dir / "system_prompt_instructions.txt"
+        instructions_prompt = ""
+        if instructions_path.exists():
+            instructions_prompt = instructions_path.read_text().strip()
+            print(f"✓ Instructions prompt loaded: {len(instructions_prompt)} chars")
+        else:
+            print(f"⚠️  Instructions prompt not found at {instructions_path}")
+
+        # Fallback to legacy single-file prompt if new files don't exist
+        if not persona_prompt and not instructions_prompt:
+            base_prompt = self.state.get_state("agent:system_prompt", "")
+            print(f"✓ Fallback to legacy prompt: {len(base_prompt)} chars")
+        else:
+            # Combine: Persona first (identity), then instructions (rules)
+            base_prompt = persona_prompt
+            if instructions_prompt:
+                base_prompt += "\n\n" + instructions_prompt
+            print(f"✓ Combined system prompt: {len(base_prompt)} chars")
+
         # Get agent config for reasoning settings
         agent_state = self.state.get_agent_state()
         config = agent_state.get('config', {})
