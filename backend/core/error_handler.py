@@ -254,10 +254,10 @@ def validate_environment():
     Note: We allow the server to start without a valid API key so users
     can enter their key via the welcome modal on first launch.
 
-    Supports Grok API (xAI), OpenRouter, or both. API key can be added
-    via welcome modal after startup.
+    Supports Venice AI, Grok API (xAI), OpenRouter, or any combination.
+    API key can be added via welcome modal after startup.
 
-    Only MODEL_NAME or DEFAULT_LLM_MODEL is required.
+    One of MODEL_NAME, DEFAULT_LLM_MODEL, or VENICE_MODEL is required.
     """
     import os
     import logging
@@ -265,31 +265,38 @@ def validate_environment():
     logger = logging.getLogger(__name__)
 
     # Only require model - API key can be added via welcome modal
-    has_model = bool(os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL'))
+    has_model = bool(
+        os.getenv('MODEL_NAME') or
+        os.getenv('DEFAULT_LLM_MODEL') or
+        os.getenv('VENICE_MODEL')
+    )
 
     if not has_model:
         raise ConfigError(
             message="No model configured",
             context={
                 'missing': [
-                    'Either MODEL_NAME or DEFAULT_LLM_MODEL must be set',
+                    'One of MODEL_NAME, DEFAULT_LLM_MODEL, or VENICE_MODEL must be set',
                     'MODEL_NAME: For Grok model (e.g., grok-4-1-fast-reasoning)',
-                    'DEFAULT_LLM_MODEL: For OpenRouter model'
+                    'DEFAULT_LLM_MODEL: For OpenRouter model',
+                    'VENICE_MODEL: For Venice AI model (e.g., qwen3-235b-a22b-instruct-2507)'
                 ]
             },
             suggestions=[
-                "Set MODEL_NAME in your .env file for Grok",
+                "Set VENICE_MODEL in your .env file for Venice AI (privacy-focused)",
+                "Or set MODEL_NAME for Grok",
                 "Or set DEFAULT_LLM_MODEL for OpenRouter",
                 "Check .env.example for reference"
             ]
         )
 
     # Warn about missing API keys but don't fail (allows setup mode)
+    has_venice = bool(os.getenv('VENICE_API_KEY'))
     has_grok = bool(os.getenv('GROK_API_KEY'))
     has_openrouter = bool(os.getenv('OPENROUTER_API_KEY'))
 
-    if not has_grok and not has_openrouter:
-        logger.warning("⚠️  No valid API key configured (checked GROK_API_KEY and OPENROUTER_API_KEY)")
+    if not has_venice and not has_grok and not has_openrouter:
+        logger.warning("⚠️  No valid API key configured (checked VENICE_API_KEY, GROK_API_KEY, OPENROUTER_API_KEY)")
         logger.warning("   → Users will be prompted to enter API key via welcome modal")
 
 
