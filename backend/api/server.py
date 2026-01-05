@@ -32,6 +32,7 @@ from core.state_manager import StateManager
 from core.config import get_model_or_default, get_api_provider, FALLBACK_MODEL
 from core.openrouter_client import OpenRouterClient
 from core.grok_client import GrokClient  # ⚡ Nate's Grok integration!
+from core.venice_client import VeniceClient  # 🎭 Venice AI (Private, uncensored)
 from core.memory_system import MemorySystem
 from core.context_window_calculator import ContextWindowCalculator
 from core.cost_tracker import CostTracker
@@ -136,15 +137,30 @@ openrouter_monitor = None
 openrouter_client = None
 
 # API Client Selection - Priority based on which key is set
-# If both are set, prefer OpenRouter (more flexible, supports more models)
+# Comment out API keys in .env to switch between providers
 grok_api_key = os.getenv("GROK_API_KEY", "").strip()
 openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+venice_api_key = os.getenv("VENICE_API_KEY", "").strip()
 
-# Check for explicit preference (if both keys are set)
-api_preference = os.getenv("API_PREFERENCE", "openrouter").lower()  # 'openrouter' or 'grok'
+# Priority: Venice > OpenRouter > Grok (comment out keys in .env to change)
+if venice_api_key:
+    # Venice AI - Private, uncensored (no conversation logging)
+    try:
+        logger.info("🎭 Initializing Venice Client (Privacy Mode)...")
+        venice_model = os.getenv("VENICE_MODEL", "llama-3.3-70b")
+        openrouter_client = VeniceClient(
+            api_key=venice_api_key,
+            default_model=venice_model,
+            cost_tracker=cost_tracker
+        )
+        logger.info(f"✅ Venice Client initialized - Model: {venice_model}")
+        logger.info("   🔒 Privacy: No conversation logging")
+    except Exception as e:
+        logger.warning(f"⚠️  Venice client init failed: {e}")
+        logger.info("   Server will start in setup mode - user can add API key via welcome modal")
 
-if openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
-    # OpenRouter - Preferred for flexibility (supports Mistral, Claude, GPT, etc.)
+elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
+    # OpenRouter - Flexible, supports many models (Mistral, Claude, GPT, etc.)
     try:
         openrouter_monitor = OpenRouterCostMonitor(api_key=openrouter_api_key)
         logger.info("💰 OpenRouter Cost Monitor initialized - REAL API costs!")
@@ -160,7 +176,7 @@ if openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
         logger.info("   Server will start in setup mode - user can add API key via welcome modal")
 
 elif grok_api_key:
-    # Grok API (xAI) - Only if OpenRouter not available
+    # Grok API (xAI) - Direct xAI integration
     try:
         logger.info("⚡ Initializing Grok Client...")
         openrouter_client = GrokClient(
@@ -175,7 +191,7 @@ elif grok_api_key:
 
 else:
     # Setup mode - No valid API key
-    logger.warning("⚠️  No valid API key found (checked GROK_API_KEY and OPENROUTER_API_KEY)")
+    logger.warning("⚠️  No valid API key found (checked VENICE_API_KEY, OPENROUTER_API_KEY, GROK_API_KEY)")
     logger.info("   Server starting in setup mode - user will be prompted for API key")
     logger.info("   Add key via welcome modal or edit backend/.env directly")
 
