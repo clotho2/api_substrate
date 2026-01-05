@@ -140,7 +140,7 @@ class VeniceClient:
         self.app_name = app_name
         self.app_url = app_url
         self.timeout = timeout
-        self.base_url = "https://api.venice.ai/api/v1"
+        self.base_url = os.getenv("VENICE_API_URL", "https://api.venice.ai/api/v1")
 
         # Cost tracking (same as OpenRouterClient)
         self.total_prompt_tokens = 0
