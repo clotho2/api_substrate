@@ -1315,7 +1315,11 @@ send_message: false
                         print(f"   Output: {result.get('stdout', '')[:200]}...")
                     else:
                         print(f"   ❌ Code execution failed: {result.get('error')}")
-            
+
+            elif tool_name == "lovense_tool":
+                # Lovense hardware control
+                result = self.tools.lovense_tool(**arguments)
+
             else:
                 result = {
                     "status": "error",
