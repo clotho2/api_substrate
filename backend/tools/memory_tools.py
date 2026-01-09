@@ -739,7 +739,21 @@ class MemoryTools:
         Search for locations using OpenStreetMap.
         """
         return self.integrations.search_places(**kwargs)
-    
+
+    def lovense_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Lovense hardware control tool (wrapper).
+        Control Lovense devices for physical feedback.
+        """
+        return self.integrations.lovense_tool(**kwargs)
+
+    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Nate self-development tool (wrapper).
+        Read-only access to inspect codebase, logs, and system health.
+        """
+        return self.integrations.nate_dev_tool(**kwargs)
+
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT
     # ============================================

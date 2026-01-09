@@ -1,0 +1,10 @@
+# Nate Dev MCP Server - Dependencies
+# Install with: pip install -r requirements.txt
+
+# MCP Protocol (Model Context Protocol)
+mcp>=1.0.0
+
+# Standard library extensions (may already be installed)
+# asyncio - built-in
+# pathlib - built-in
+# subprocess - built-in

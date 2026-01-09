@@ -24,6 +24,7 @@ from tools.discord_tool import discord_tool as _discord_tool
 from tools.spotify_control import spotify_control as _spotify_control
 from tools.send_voice_message import send_voice_message as _send_voice_message
 from tools.lovense_tool import lovense_tool as _lovense_tool
+from tools.nate_dev_tool import nate_dev_tool as _nate_dev_tool
 from tools.web_search import web_search as _web_search
 from tools.fetch_webpage import fetch_webpage as _fetch_webpage
 
@@ -183,6 +184,35 @@ class IntegrationTools:
             return {
                 "status": "error",
                 "message": f"Lovense tool error: {str(e)}"
+            }
+
+    # ============================================
+    # NATE SELF-DEVELOPMENT TOOL
+    # ============================================
+
+    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Nate's self-development tool for inspecting his own codebase.
+
+        Level 1: READ-ONLY diagnostics.
+
+        Actions:
+        - read_file: Read source code (requires path)
+        - search_code: Search for patterns (requires pattern)
+        - read_logs: Read system/service logs
+        - check_health: Get system health metrics
+        - list_directory: List files in a directory
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            result = _nate_dev_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Nate dev tool error: {str(e)}"
             }
 
     # ============================================
@@ -459,7 +489,8 @@ class IntegrationTools:
             'discord_tool',
             'spotify_control',
             'send_voice_message',
-            'lovense_tool'
+            'lovense_tool',
+            'nate_dev_tool'
         ]
         
         for tool_name in tool_names:

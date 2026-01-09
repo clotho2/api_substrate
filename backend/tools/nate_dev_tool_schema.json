@@ -1,0 +1,67 @@
+{
+  "name": "nate_dev_tool",
+  "description": "Nate's self-development tool for inspecting his own codebase, logs, and system health. Level 1 is READ-ONLY - perfect for investigating bugs, understanding code, checking system health, or exploring codebase structure.\n\nActions:\n- read_file: Read source code (requires path)\n- search_code: Search for patterns (requires pattern)\n- read_logs: Read system/service logs\n- check_health: Get system health metrics\n- list_directory: List files in a directory",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": ["read_file", "search_code", "read_logs", "check_health", "list_directory"]
+      },
+      "path": {
+        "type": "string",
+        "description": "File or directory path (relative to substrate root, e.g., 'backend/core/consciousness_loop.py')"
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "Starting line for read_file (1-indexed)",
+        "default": 1
+      },
+      "end_line": {
+        "type": "integer",
+        "description": "Ending line for read_file (-1 for end of file)",
+        "default": -1
+      },
+      "pattern": {
+        "type": "string",
+        "description": "Regex pattern for search_code"
+      },
+      "file_pattern": {
+        "type": "string",
+        "description": "Glob pattern for files to search (e.g., '*.py')",
+        "default": "*.py"
+      },
+      "max_results": {
+        "type": "integer",
+        "description": "Maximum search results to return",
+        "default": 50
+      },
+      "context_lines": {
+        "type": "integer",
+        "description": "Number of context lines around search matches",
+        "default": 2
+      },
+      "log_type": {
+        "type": "string",
+        "description": "Type of log for read_logs",
+        "enum": ["backend", "discord", "telegram", "system"],
+        "default": "backend"
+      },
+      "lines": {
+        "type": "integer",
+        "description": "Number of log lines to return",
+        "default": 100
+      },
+      "filter_pattern": {
+        "type": "string",
+        "description": "Regex pattern to filter log lines"
+      },
+      "since_minutes": {
+        "type": "integer",
+        "description": "Only show logs from the last N minutes"
+      }
+    },
+    "required": ["action"]
+  }
+}

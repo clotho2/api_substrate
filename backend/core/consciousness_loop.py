@@ -1320,6 +1320,10 @@ send_message: false
                 # Lovense hardware control
                 result = self.tools.lovense_tool(**arguments)
 
+            elif tool_name == "nate_dev_tool":
+                # Nate's self-development tool (read-only diagnostics)
+                result = self.tools.nate_dev_tool(**arguments)
+
             else:
                 result = {
                     "status": "error",
