@@ -43,6 +43,7 @@ PROTECTED_PATTERNS = [
     r'api_key',
     r'password',
     r'token',
+    r'log',  # Redact log content to prevent sensitive data exposure
 ]
 
 # Files that cannot be read at all
@@ -436,7 +437,7 @@ def nate_dev_tool(
         return _action_check_health()
 
     elif action == "list_directory":
-        return _action_list_directory(path or "backend", file_pattern if pattern else None)
+        return _action_list_directory(path or "backend", file_pattern)
 
     else:
         return {

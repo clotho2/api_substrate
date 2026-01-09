@@ -56,6 +56,7 @@ PROTECTED_PATTERNS = [
     r'api_key',
     r'password',
     r'token',
+    r'log',  # Redact log content to prevent sensitive data exposure
 ]
 
 # Files that cannot be read at all
