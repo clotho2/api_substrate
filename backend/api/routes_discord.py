@@ -380,10 +380,22 @@ def send_message_to_agent(agent_id):
         # This helps prevent inappropriate responses in group chats/public channels
         is_dm = guild_id is None
         channel_type = "DM" if is_dm else f"Server: {guild_id}"
+
+        # Build reply instructions based on context
+        if is_dm:
+            reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
+  discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
+        else:
+            reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. To reply in this channel, use:
+  discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
+  IMPORTANT: Do NOT use target_type="user" - that would send a private DM instead of replying in the channel!
+  Only send a DM if you explicitly want a PRIVATE message to {username}."""
+
         context_prefix = f"""<message_context>
 From: {username} (ID: {user_id})
 Channel: {channel_id} ({channel_type})
 Type: {"Private DM" if is_dm else "Group/Public Channel"}
+{reply_instructions}
 </message_context>
 
 """
