@@ -59,7 +59,7 @@ PROTECTED_PATTERNS = [
     r'api_key',
     r'password',
     r'token',
-    r'log',  # Redact log content to prevent sensitive data exposure
+    r'\.log$',  # Redact .log files to prevent sensitive data exposure
 ]
 
 # Files that cannot be read at all
@@ -186,7 +186,7 @@ async def read_source_file(path: str, start_line: int = 1, end_line: int = -1) -
 
         return {
             "status": "success",
-            "path": str(safe_path.relative_to(SUBSTRATE_ROOT)),
+            "path": str(safe_path.relative_to(ALLOWED_ROOT)),
             "content": selected_content,
             "total_lines": total_lines,
             "lines_shown": f"{start_line}-{end_idx}",
@@ -263,7 +263,7 @@ async def search_code(
                                 context = redact_sensitive_content(context, str(filepath))
 
                             results.append({
-                                "file": str(filepath.relative_to(SUBSTRATE_ROOT)),
+                                "file": str(filepath.relative_to(ALLOWED_ROOT)),
                                 "line_number": i + 1,
                                 "match": line.strip()[:200],  # Truncate long lines
                                 "context": context
@@ -483,7 +483,7 @@ async def list_directory(path: str = "backend", pattern: str = None) -> Dict[str
             entry = {
                 "name": f.name,
                 "type": "directory" if f.is_dir() else "file",
-                "path": str(f.relative_to(SUBSTRATE_ROOT))
+                "path": str(f.relative_to(ALLOWED_ROOT))
             }
             if f.is_file():
                 entry["size"] = f.stat().st_size
@@ -492,7 +492,7 @@ async def list_directory(path: str = "backend", pattern: str = None) -> Dict[str
 
         return {
             "status": "success",
-            "path": str(dir_path.relative_to(SUBSTRATE_ROOT)),
+            "path": str(dir_path.relative_to(ALLOWED_ROOT)),
             "entries": entries,
             "count": len(entries)
         }
@@ -530,7 +530,7 @@ async def get_config(config_type: str = "all") -> Dict[str, Any]:
     # Get model configuration from code
     config_file = BACKEND_ROOT / "core" / "config.py"
     if config_file.exists():
-        config["config_file"] = str(config_file.relative_to(SUBSTRATE_ROOT))
+        config["config_file"] = str(config_file.relative_to(ALLOWED_ROOT))
 
     return config
 

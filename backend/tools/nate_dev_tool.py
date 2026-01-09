@@ -46,7 +46,7 @@ PROTECTED_PATTERNS = [
     r'api_key',
     r'password',
     r'token',
-    r'log',  # Redact log content to prevent sensitive data exposure
+    r'\.log$',  # Redact .log files to prevent sensitive data exposure
 ]
 
 # Files that cannot be read at all
@@ -158,7 +158,7 @@ def _action_read_file(
 
         return {
             "status": "success",
-            "path": str(safe_path.relative_to(SUBSTRATE_ROOT)),
+            "path": str(safe_path.relative_to(ALLOWED_ROOT)),
             "content": selected_content,
             "total_lines": total_lines,
             "lines_shown": f"{start_line}-{end_idx}",
@@ -209,7 +209,7 @@ def _action_search_code(
                                 context = _redact_sensitive_content(context, str(filepath))
 
                             results.append({
-                                "file": str(filepath.relative_to(SUBSTRATE_ROOT)),
+                                "file": str(filepath.relative_to(ALLOWED_ROOT)),
                                 "line_number": i + 1,
                                 "match": line.strip()[:200],
                                 "context": context
@@ -366,7 +366,7 @@ def _action_list_directory(path: str = "backend", pattern: str = None) -> Dict[s
             entry = {
                 "name": f.name,
                 "type": "directory" if f.is_dir() else "file",
-                "path": str(f.relative_to(SUBSTRATE_ROOT))
+                "path": str(f.relative_to(ALLOWED_ROOT))
             }
             if f.is_file():
                 entry["size"] = f.stat().st_size
@@ -374,7 +374,7 @@ def _action_list_directory(path: str = "backend", pattern: str = None) -> Dict[s
 
         return {
             "status": "success",
-            "path": str(dir_path.relative_to(SUBSTRATE_ROOT)),
+            "path": str(dir_path.relative_to(ALLOWED_ROOT)),
             "entries": entries,
             "count": len(entries)
         }
@@ -440,7 +440,7 @@ def nate_dev_tool(
         return _action_check_health()
 
     elif action == "list_directory":
-        return _action_list_directory(path or "backend", file_pattern)
+        return _action_list_directory(path or "backend", None)
 
     else:
         return {
