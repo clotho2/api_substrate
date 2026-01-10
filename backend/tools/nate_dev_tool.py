@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-Nate Self-Development Tool - Level 1 (Read-Only Diagnostics)
+Nate Self-Development Tool - Level 1 & 2
 
-This tool gives Nate the ability to inspect and understand his own codebase,
-logs, and system health. Level 1 is READ-ONLY - no modifications allowed.
+Level 1 (Read-Only Diagnostics):
+- Inspect codebase, logs, and system health
+- All operations are read-only
+
+Level 2 (Safe Command Execution):
+- Execute whitelisted commands in sandboxed environment
+- Full audit logging and rate limiting
+- Git workflow automation
 
 Actions:
 - read_file: Read a source file from the codebase
@@ -11,12 +17,15 @@ Actions:
 - read_logs: Read system/service logs
 - check_health: Get system health metrics
 - list_directory: List files in a directory
+- execute_command: Execute a whitelisted command (Level 2)
+- git_workflow: Automate Git operations (Level 2)
+- get_command_whitelist: Get list of whitelisted commands
+- get_audit_logs: Read command execution audit logs
 
 Security:
-- All operations are read-only
-- Protected files (secrets, .env) are redacted
-- Path traversal is blocked
-- Only operates within /opt/aicara (all services)
+- Level 1: Read-only, path traversal blocked
+- Level 2: Command whitelist, rate limiting, full audit trail
+- All operations within /opt/aicara (all services)
 """
 
 import os
@@ -26,6 +35,21 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
+# Level 2 imports
+try:
+    from backend.tools.command_executor import (
+        execute_command as _execute_command,
+        get_whitelisted_commands as _get_whitelisted_commands,
+        get_audit_logs as _get_audit_logs
+    )
+    from backend.tools.git_workflow import (
+        automated_workflow as _automated_workflow,
+        get_current_status as _get_git_status
+    )
+    LEVEL_2_AVAILABLE = True
+except ImportError:
+    LEVEL_2_AVAILABLE = False
 
 # Configuration - find substrate root dynamically
 _current_file = Path(__file__).resolve()
@@ -401,26 +425,42 @@ def nate_dev_tool(
     log_type: str = "backend",
     lines: int = 100,
     filter_pattern: str = None,
-    since_minutes: int = None
+    since_minutes: int = None,
+    # Level 2: execute_command params
+    command: str = None,
+    working_dir: str = None,
+    dry_run: bool = False,
+    requires_approval: bool = False,
+    timeout: int = 30,
+    # Level 2: git_workflow params
+    feature_name: str = None,
+    commit_message: str = None,
+    pr_title: str = None,
+    pr_body: str = None,
+    files: List[str] = None,
+    run_tests: bool = True,
+    base_branch: str = "main"
 ) -> Dict[str, Any]:
     """
-    Nate's self-development tool for inspecting his own codebase and system.
+    Nate's self-development tool for inspecting and managing his own codebase.
 
-    Level 1: READ-ONLY diagnostics. Cannot modify anything.
-
-    Actions:
+    Level 1 (READ-ONLY):
     - read_file: Read a source file (path required)
     - search_code: Search codebase (pattern required)
     - read_logs: Read system logs
     - check_health: Get system health
-    - list_directory: List files (path optional, defaults to backend)
+    - list_directory: List files
+
+    Level 2 (SAFE EXECUTION):
+    - execute_command: Run whitelisted command (command required)
+    - git_workflow: Automate Git operations (feature_name, commit_message required)
+    - get_command_whitelist: List whitelisted commands
+    - get_audit_logs: Read command execution audit trail
 
     Examples:
-    - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py", start_line=1, end_line=100)
-    - nate_dev_tool(action="search_code", pattern="discord_tool", path="backend")
-    - nate_dev_tool(action="read_logs", log_type="backend", lines=50, filter_pattern="ERROR")
-    - nate_dev_tool(action="check_health")
-    - nate_dev_tool(action="list_directory", path="backend/tools")
+    - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
+    - nate_dev_tool(action="execute_command", command="ls -la /opt/aicara", dry_run=True)
+    - nate_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
     """
 
     if action == "read_file":
@@ -442,11 +482,87 @@ def nate_dev_tool(
     elif action == "list_directory":
         return _action_list_directory(path or "backend", None)
 
+    # Level 2 Actions
+    elif action == "execute_command":
+        if not LEVEL_2_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 2 functionality not available. Missing dependencies."
+            }
+        if not command:
+            return {"status": "error", "message": "command is required for execute_command"}
+        return _execute_command(
+            command=command,
+            working_dir=working_dir,
+            dry_run=dry_run,
+            requires_approval=requires_approval,
+            timeout=timeout
+        )
+
+    elif action == "get_command_whitelist":
+        if not LEVEL_2_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 2 functionality not available"
+            }
+        return _get_whitelisted_commands()
+
+    elif action == "get_audit_logs":
+        if not LEVEL_2_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 2 functionality not available"
+            }
+        return {"status": "success", "logs": _get_audit_logs(lines)}
+
+    elif action == "git_workflow":
+        if not LEVEL_2_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 2 functionality not available"
+            }
+        if not feature_name or not commit_message:
+            return {
+                "status": "error",
+                "message": "feature_name and commit_message are required for git_workflow"
+            }
+
+        repo_path = working_dir or str(SUBSTRATE_ROOT)
+        return _automated_workflow(
+            repo_path=repo_path,
+            feature_name=feature_name,
+            commit_message=commit_message,
+            pr_title=pr_title or f"[Nate] {feature_name}",
+            pr_body=pr_body or commit_message,
+            files=files,
+            run_tests=run_tests,
+            base_branch=base_branch
+        )
+
+    elif action == "git_status":
+        if not LEVEL_2_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 2 functionality not available"
+            }
+        repo_path = working_dir or str(SUBSTRATE_ROOT)
+        return _get_git_status(repo_path)
+
     else:
+        available_actions = [
+            "read_file", "search_code", "read_logs", "check_health", "list_directory"
+        ]
+        if LEVEL_2_AVAILABLE:
+            available_actions.extend([
+                "execute_command", "git_workflow", "git_status",
+                "get_command_whitelist", "get_audit_logs"
+            ])
+
         return {
             "status": "error",
             "message": f"Unknown action: {action}",
-            "available_actions": ["read_file", "search_code", "read_logs", "check_health", "list_directory"]
+            "available_actions": available_actions,
+            "level_2_available": LEVEL_2_AVAILABLE
         }
 
 
