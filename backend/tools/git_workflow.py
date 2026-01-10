@@ -341,7 +341,8 @@ def automated_workflow(
             results["status"] = "warning"
             results["message"] = f"No changes to commit but failed to checkout {base_branch}"
             results["branch"] = branch_result["branch_name"]
-            results["cleanup_error"] = checkout_result.get("stderr", "Unknown error")
+            # Get error from either stderr (command failed) or error (exception occurred)
+            results["cleanup_error"] = checkout_result.get("stderr") or checkout_result.get("error", "Unknown error")
             return results
 
         delete_result = _run_git_command(["git", "branch", "-D", branch_result["branch_name"]], repo_path)
@@ -349,7 +350,8 @@ def automated_workflow(
             results["status"] = "warning"
             results["message"] = f"No changes to commit, returned to {base_branch} but failed to delete branch"
             results["branch"] = branch_result["branch_name"]
-            results["cleanup_error"] = delete_result.get("stderr", "Unknown error")
+            # Get error from either stderr (command failed) or error (exception occurred)
+            results["cleanup_error"] = delete_result.get("stderr") or delete_result.get("error", "Unknown error")
             return results
 
         results["status"] = "info"
