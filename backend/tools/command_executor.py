@@ -128,12 +128,31 @@ BLOCKED_PATTERNS = [
     r'\bhalt\b',
     r'\bpoweroff\b',
     r'[;&|]',  # Command chaining (prevent complex chains)
+    r'>',  # File redirection (both single and double)
+    r'<',  # Input redirection
     r'`.*`',  # Command substitution
     r'\$\(',  # Command substitution
-    r'>.*>',  # File redirection (double redirect)
-    r'/etc/passwd',  # System files
-    r'/etc/shadow',
+    r'\n',  # Newline injection
+    r'/etc/',  # System directories
+    r'/var/',  # Var directory
+    r'/home/',  # Home directories
+    r'/root/',  # Root home
+    r'/boot/',  # Boot directory
+    r'/sys/',  # System files
+    r'/proc/',  # Process files
+    r'/dev/',  # Device files
+    r'/tmp/',  # Temp (use /opt/aicara instead)
     r'\.ssh/',  # SSH keys
+    r'\.git/config',  # Git credentials
+    r'shutil\.rmtree',  # Python file deletion
+    r'shutil\.rmdir',
+    r'os\.remove',  # Python file deletion
+    r'os\.unlink',
+    r'os\.rmdir',
+    r'subprocess\.',  # Prevent nested subprocess calls
+    r'eval\(',  # Python code execution
+    r'exec\(',  # Python code execution
+    r'__import__',  # Python dynamic imports
 ]
 
 

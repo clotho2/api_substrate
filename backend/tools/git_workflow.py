@@ -71,17 +71,18 @@ def create_feature_branch(
 
     has_changes = bool(status["stdout"])
 
-    # Create and checkout branch
+    # Create and checkout branch from base_branch
     result = _run_git_command(
-        ["git", "checkout", "-b", branch_name],
+        ["git", "checkout", "-b", branch_name, base_branch],
         repo_path
     )
 
     if not result["success"]:
         return {
             "status": "error",
-            "message": f"Failed to create branch: {result.get('stderr', 'Unknown error')}",
-            "branch_name": branch_name
+            "message": f"Failed to create branch from {base_branch}: {result.get('stderr', 'Unknown error')}",
+            "branch_name": branch_name,
+            "base_branch": base_branch
         }
 
     return {
@@ -89,7 +90,7 @@ def create_feature_branch(
         "branch_name": branch_name,
         "base_branch": base_branch,
         "has_uncommitted_changes": has_changes,
-        "message": f"Created and switched to branch: {branch_name}"
+        "message": f"Created and switched to branch: {branch_name} (from {base_branch})"
     }
 
 
@@ -332,9 +333,19 @@ def automated_workflow(
         "result": commit_result
     })
 
-    if commit_result["status"] != "success":
+    # Handle different commit statuses
+    if commit_result["status"] == "info":
+        # No changes to commit - clean up branch and return
+        _run_git_command(["git", "checkout", base_branch], repo_path)
+        _run_git_command(["git", "branch", "-D", branch_result["branch_name"]], repo_path)
+        results["status"] = "info"
+        results["message"] = "No changes to commit - branch cleaned up"
+        return results
+    elif commit_result["status"] != "success":
+        # Error occurred - leave branch for manual investigation
         results["status"] = "error"
         results["failed_at"] = "commit_changes"
+        results["message"] = f"Commit failed - branch '{branch_result['branch_name']}' preserved for investigation"
         return results
 
     # Step 3: Create PR
@@ -347,6 +358,7 @@ def automated_workflow(
     if pr_result["status"] != "success":
         results["status"] = "warning"
         results["message"] = "Changes committed but PR creation failed"
+        results["branch"] = branch_result["branch_name"]
         return results
 
     results["status"] = "success"

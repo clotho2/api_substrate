@@ -121,6 +121,12 @@ def _sanitize_path(requested_path: str) -> Optional[Path]:
         return None
 
 
+def _sanitize_path_string(requested_path: str) -> Optional[str]:
+    """Sanitize path and return as string (for git operations)."""
+    sanitized = _sanitize_path(requested_path)
+    return str(sanitized) if sanitized else None
+
+
 def _redact_sensitive_content(content: str, filepath: str) -> str:
     """Redact sensitive information from file content."""
     if not _is_protected_file(filepath):
@@ -527,7 +533,17 @@ def nate_dev_tool(
                 "message": "feature_name and commit_message are required for git_workflow"
             }
 
-        repo_path = working_dir or str(SUBSTRATE_ROOT)
+        # Validate working_dir is within sandbox
+        if working_dir:
+            repo_path = _sanitize_path_string(working_dir)
+            if not repo_path:
+                return {
+                    "status": "error",
+                    "message": f"Working directory '{working_dir}' is outside allowed sandbox"
+                }
+        else:
+            repo_path = str(SUBSTRATE_ROOT)
+
         return _automated_workflow(
             repo_path=repo_path,
             feature_name=feature_name,
@@ -545,7 +561,18 @@ def nate_dev_tool(
                 "status": "error",
                 "message": "Level 2 functionality not available"
             }
-        repo_path = working_dir or str(SUBSTRATE_ROOT)
+
+        # Validate working_dir is within sandbox
+        if working_dir:
+            repo_path = _sanitize_path_string(working_dir)
+            if not repo_path:
+                return {
+                    "status": "error",
+                    "message": f"Working directory '{working_dir}' is outside allowed sandbox"
+                }
+        else:
+            repo_path = str(SUBSTRATE_ROOT)
+
         return _get_git_status(repo_path)
 
     else:
