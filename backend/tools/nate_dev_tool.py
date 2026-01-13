@@ -34,6 +34,9 @@ Actions:
 - run_tests: Run tests with coverage (Level 3)
 - list_tests: List available tests (Level 3)
 - get_test_history: Get recent test failures (Level 3)
+- control_service: Control Nate services (start/stop/restart/status) (Level 3)
+- get_service_status: Get service status (Level 3)
+- restart_after_edit: Safely restart service after edits (Level 3)
 
 Security:
 - Level 1: Read-only, path traversal blocked
@@ -69,8 +72,10 @@ except ImportError:
 try:
     from backend.tools.file_editor import FileEditor
     from backend.tools.test_executor import TestExecutor
+    from backend.tools.service_controller import ServiceController
     _file_editor = FileEditor()
     _test_executor = TestExecutor()
+    _service_controller = ServiceController()
     LEVEL_3_AVAILABLE = True
 except ImportError:
     LEVEL_3_AVAILABLE = False
@@ -505,7 +510,10 @@ def nate_dev_tool(
     test_markers: str = None,
     coverage: bool = True,
     verbose: bool = True,
-    stop_on_first_failure: bool = False
+    stop_on_first_failure: bool = False,
+    # Level 3: service_controller params
+    service: str = None,
+    operation: str = None
 ) -> Dict[str, Any]:
     """
     Nate's self-development tool for inspecting and managing his own codebase.
@@ -531,6 +539,9 @@ def nate_dev_tool(
     - run_tests: Run tests with coverage (optional: test_path, pattern, markers)
     - list_tests: List available tests without running them
     - get_test_history: Get recent test failures
+    - control_service: Control services (service, operation required)
+    - get_service_status: Get service status (optional: service)
+    - restart_after_edit: Restart service after edits (service required)
 
     Examples:
     - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
@@ -539,6 +550,7 @@ def nate_dev_tool(
     - nate_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
     - nate_dev_tool(action="list_backups", path="backend/tools/test.py")
     - nate_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
+    - nate_dev_tool(action="control_service", service="nate-substrate", operation="restart")
     """
 
     if action == "read_file":
@@ -716,6 +728,42 @@ def nate_dev_tool(
             }
         return _test_executor.get_test_history()
 
+    elif action == "control_service":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        if not service:
+            return {"status": "error", "message": "service is required for control_service"}
+        if not operation:
+            return {"status": "error", "message": "operation is required for control_service"}
+
+        return _service_controller.control_service(
+            service=service,
+            operation=operation,
+            dry_run=dry_run
+        )
+
+    elif action == "get_service_status":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        return _service_controller.get_service_status(service=service)
+
+    elif action == "restart_after_edit":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        if not service:
+            return {"status": "error", "message": "service is required for restart_after_edit"}
+
+        return _service_controller.restart_after_edit(service=service)
+
     else:
         available_actions = [
             "read_file", "search_code", "read_logs", "check_health", "list_directory"
@@ -728,7 +776,8 @@ def nate_dev_tool(
         if LEVEL_3_AVAILABLE:
             available_actions.extend([
                 "edit_file", "list_backups", "restore_backup",
-                "run_tests", "list_tests", "get_test_history"
+                "run_tests", "list_tests", "get_test_history",
+                "control_service", "get_service_status", "restart_after_edit"
             ])
 
         return {
