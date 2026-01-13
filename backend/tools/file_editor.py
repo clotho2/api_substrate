@@ -254,8 +254,22 @@ class FileEditor:
             elif change_type == "replace":
                 # Replace specific line
                 line_num = change.get("line", 0)
-                old_text = change.get("old", "")
-                new_text = change.get("new", "")
+                # Support multiple parameter names for flexibility (check existence, not truthiness)
+                if "old" in change:
+                    old_text = change["old"]
+                elif "old_content" in change:
+                    old_text = change["old_content"]
+                else:
+                    old_text = ""
+
+                if "new" in change:
+                    new_text = change["new"]
+                elif "new_content" in change:
+                    new_text = change["new_content"]
+                elif "content" in change:
+                    new_text = change["content"]
+                else:
+                    raise ValueError(f"Replace operation requires 'new', 'new_content', or 'content' parameter")
 
                 if line_num < 1 or line_num > len(lines):
                     raise ValueError(f"Line {line_num} out of range (1-{len(lines)})")
@@ -284,7 +298,15 @@ class FileEditor:
             elif change_type == "insert":
                 # Insert new line
                 line_num = change.get("line", 0)
-                new_text = change.get("new", "")
+                # Support multiple parameter names for flexibility (check existence, not truthiness)
+                if "new" in change:
+                    new_text = change["new"]
+                elif "new_content" in change:
+                    new_text = change["new_content"]
+                elif "content" in change:
+                    new_text = change["content"]
+                else:
+                    raise ValueError(f"Insert operation requires 'new', 'new_content', or 'content' parameter")
 
                 if line_num < 0 or line_num > len(lines):
                     raise ValueError(f"Line {line_num} out of range (0-{len(lines)})")
@@ -405,7 +427,16 @@ class FileEditor:
     def _create_backup(self, file_path: Path, content: str) -> Path:
         """Create backup of file."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        relative_path = file_path.relative_to(ALLOWED_ROOT)
+
+        # Get relative path from appropriate root
+        try:
+            relative_path = file_path.relative_to(SUBSTRATE_ROOT)
+        except ValueError:
+            try:
+                relative_path = file_path.relative_to(ALLOWED_ROOT)
+            except ValueError:
+                # Fallback: use just the filename
+                relative_path = Path(file_path.name)
 
         # Create subdirectories in backup dir
         backup_file_dir = BACKUP_DIR / relative_path.parent
@@ -435,7 +466,15 @@ class FileEditor:
                 if not file_path:
                     return {"status": "error", "message": "Invalid filepath"}
 
-                relative_path = file_path.relative_to(ALLOWED_ROOT)
+                # Get relative path from appropriate root (same logic as _create_backup)
+                try:
+                    relative_path = file_path.relative_to(SUBSTRATE_ROOT)
+                except ValueError:
+                    try:
+                        relative_path = file_path.relative_to(ALLOWED_ROOT)
+                    except ValueError:
+                        relative_path = Path(file_path.name)
+
                 backup_dir = BACKUP_DIR / relative_path.parent
 
                 if backup_dir.exists():
