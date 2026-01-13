@@ -386,13 +386,22 @@ def send_message_to_agent(agent_id):
             reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
   discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
         else:
-            reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. To reply in this channel, use:
-  discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
-  IMPORTANT: Do NOT use target_type="user" - that would send a private DM instead of replying in the channel!
-  Only send a DM if you explicitly want a PRIVATE message to {username}."""
+            reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. You have TWO options for replying:
+
+  OPTION 1 - Reply in the channel (default for group messages):
+    discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
+
+  OPTION 2 - Send a private DM to {username} (only if you explicitly want a PRIVATE message):
+    discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")
+
+  CRITICAL:
+  - To reply in THIS channel, you MUST use target="{channel_id}" AND target_type="channel"
+  - To send a private DM to {username}, you MUST use target="{user_id}" AND target_type="user"
+  - NEVER use target="{channel_id}" with target_type="user" - that's incorrect and will fail!
+  - NEVER use target="{user_id}" with target_type="channel" - that's incorrect and will fail!"""
 
         context_prefix = f"""<message_context>
-From: {username} (ID: {user_id})
+From: {username} (User ID: {user_id})
 Channel: {channel_id} ({channel_type})
 Type: {"Private DM" if is_dm else "Group/Public Channel"}
 {reply_instructions}
