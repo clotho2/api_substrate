@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Nate Self-Development Tool - Level 1 & 2
+Nate Self-Development Tool - Level 1, 2 & 3
 
 Level 1 (Read-Only Diagnostics):
 - Inspect codebase, logs, and system health
@@ -10,6 +10,13 @@ Level 2 (Safe Command Execution):
 - Execute whitelisted commands in sandboxed environment
 - Full audit logging and rate limiting
 - Git workflow automation
+
+Level 3 (Self-Maintenance):
+- Safe file editing with validation and backup
+- Automatic rollback on validation failure
+- Test execution with coverage
+- Service control and restart
+- Snapshot and rollback capabilities
 
 Actions:
 - read_file: Read a source file from the codebase
@@ -21,10 +28,14 @@ Actions:
 - git_workflow: Automate Git operations (Level 2)
 - get_command_whitelist: Get list of whitelisted commands
 - get_audit_logs: Read command execution audit logs
+- edit_file: Edit files with validation and backup (Level 3)
+- list_backups: List available file backups (Level 3)
+- restore_backup: Restore file from backup (Level 3)
 
 Security:
 - Level 1: Read-only, path traversal blocked
 - Level 2: Command whitelist, rate limiting, full audit trail
+- Level 3: Syntax validation, automatic backup/rollback, audit logging
 - All operations within /opt/aicara (all services)
 """
 
@@ -50,6 +61,14 @@ try:
     LEVEL_2_AVAILABLE = True
 except ImportError:
     LEVEL_2_AVAILABLE = False
+
+# Level 3 imports
+try:
+    from backend.tools.file_editor import FileEditor
+    _file_editor = FileEditor()
+    LEVEL_3_AVAILABLE = True
+except ImportError:
+    LEVEL_3_AVAILABLE = False
 
 # Configuration - find substrate root dynamically
 _current_file = Path(__file__).resolve()
@@ -445,7 +464,11 @@ def nate_dev_tool(
     pr_body: str = None,
     files: List[str] = None,
     run_tests: bool = True,
-    base_branch: str = "main"
+    base_branch: str = "main",
+    # Level 3: edit_file params
+    changes: List[Dict[str, Any]] = None,
+    validate: bool = True,
+    backup_file: str = None
 ) -> Dict[str, Any]:
     """
     Nate's self-development tool for inspecting and managing his own codebase.
@@ -460,13 +483,21 @@ def nate_dev_tool(
     Level 2 (SAFE EXECUTION):
     - execute_command: Run whitelisted command (command required)
     - git_workflow: Automate Git operations (feature_name, commit_message required)
+    - git_status: Get current Git status
     - get_command_whitelist: List whitelisted commands
     - get_audit_logs: Read command execution audit trail
+
+    Level 3 (SELF-MAINTENANCE):
+    - edit_file: Edit files with validation and backup (path, changes required)
+    - list_backups: List available backups (optional: path)
+    - restore_backup: Restore file from backup (backup_file required)
 
     Examples:
     - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
     - nate_dev_tool(action="execute_command", command="ls -la /opt/aicara", dry_run=True)
     - nate_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
+    - nate_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
+    - nate_dev_tool(action="list_backups", path="backend/tools/test.py")
     """
 
     if action == "read_file":
@@ -575,6 +606,44 @@ def nate_dev_tool(
 
         return _get_git_status(repo_path)
 
+    # Level 3 Actions
+    elif action == "edit_file":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available. Missing dependencies."
+            }
+        if not path:
+            return {"status": "error", "message": "path is required for edit_file"}
+        if not changes:
+            return {"status": "error", "message": "changes is required for edit_file"}
+
+        return _file_editor.edit_file(
+            filepath=path,
+            changes=changes,
+            validate=validate,
+            dry_run=dry_run
+        )
+
+    elif action == "list_backups":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        return _file_editor.list_backups(filepath=path)
+
+    elif action == "restore_backup":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        if not backup_file:
+            return {"status": "error", "message": "backup_file is required for restore_backup"}
+
+        return _file_editor.restore_from_backup(backup_file=backup_file)
+
     else:
         available_actions = [
             "read_file", "search_code", "read_logs", "check_health", "list_directory"
@@ -584,12 +653,17 @@ def nate_dev_tool(
                 "execute_command", "git_workflow", "git_status",
                 "get_command_whitelist", "get_audit_logs"
             ])
+        if LEVEL_3_AVAILABLE:
+            available_actions.extend([
+                "edit_file", "list_backups", "restore_backup"
+            ])
 
         return {
             "status": "error",
             "message": f"Unknown action: {action}",
             "available_actions": available_actions,
-            "level_2_available": LEVEL_2_AVAILABLE
+            "level_2_available": LEVEL_2_AVAILABLE,
+            "level_3_available": LEVEL_3_AVAILABLE
         }
 
 
