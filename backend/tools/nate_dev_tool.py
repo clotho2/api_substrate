@@ -126,10 +126,24 @@ def _sanitize_path(requested_path: str) -> Optional[Path]:
         else:
             full_path = (SUBSTRATE_ROOT / requested_path).resolve()
 
-        # Check if path is within allowed directories (/opt/aicara)
+        # Check if path is within allowed directories
+        # Allow either within SUBSTRATE_ROOT itself OR within /opt/aicara (for other services)
+        within_substrate = False
+        within_opt_aicara = False
+
+        try:
+            full_path.relative_to(SUBSTRATE_ROOT)
+            within_substrate = True
+        except ValueError:
+            pass
+
         try:
             full_path.relative_to(ALLOWED_ROOT)
+            within_opt_aicara = True
         except ValueError:
+            pass
+
+        if not (within_substrate or within_opt_aicara):
             return None
 
         if _is_blocked_file(str(full_path)):
@@ -144,6 +158,17 @@ def _sanitize_path_string(requested_path: str) -> Optional[str]:
     """Sanitize path and return as string (for git operations)."""
     sanitized = _sanitize_path(requested_path)
     return str(sanitized) if sanitized else None
+
+
+def _get_display_path(full_path: Path) -> str:
+    """Get display path relative to appropriate root."""
+    try:
+        return str(full_path.relative_to(SUBSTRATE_ROOT))
+    except ValueError:
+        try:
+            return str(full_path.relative_to(ALLOWED_ROOT))
+        except ValueError:
+            return str(full_path)
 
 
 def _redact_sensitive_content(content: str, filepath: str) -> str:
@@ -207,7 +232,7 @@ def _action_read_file(
 
         return {
             "status": "success",
-            "path": str(safe_path.relative_to(ALLOWED_ROOT)),
+            "path": _get_display_path(safe_path),
             "content": selected_content,
             "total_lines": total_lines,
             "lines_shown": f"{start_line}-{end_idx}",
@@ -258,7 +283,7 @@ def _action_search_code(
                                 context = _redact_sensitive_content(context, str(filepath))
 
                             results.append({
-                                "file": str(filepath.relative_to(ALLOWED_ROOT)),
+                                "file": _get_display_path(filepath),
                                 "line_number": i + 1,
                                 "match": line.strip()[:200],
                                 "context": context
@@ -415,7 +440,7 @@ def _action_list_directory(path: str = "backend", pattern: str = None) -> Dict[s
             entry = {
                 "name": f.name,
                 "type": "directory" if f.is_dir() else "file",
-                "path": str(f.relative_to(ALLOWED_ROOT))
+                "path": _get_display_path(f)
             }
             if f.is_file():
                 entry["size"] = f.stat().st_size
@@ -423,7 +448,7 @@ def _action_list_directory(path: str = "backend", pattern: str = None) -> Dict[s
 
         return {
             "status": "success",
-            "path": str(dir_path.relative_to(ALLOWED_ROOT)),
+            "path": _get_display_path(dir_path),
             "entries": entries,
             "count": len(entries)
         }

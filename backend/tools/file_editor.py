@@ -26,6 +26,8 @@ from datetime import datetime
 
 
 # Configuration
+_current_file = Path(__file__).resolve()
+SUBSTRATE_ROOT = _current_file.parent.parent.parent  # backend/tools -> backend -> substrate
 ALLOWED_ROOT = Path("/opt/aicara")
 BACKUP_DIR = Path("/opt/aicara/.nate_backups")
 MAX_FILE_SIZE = 1_000_000  # 1MB max for safety
@@ -120,7 +122,7 @@ class FileEditor:
             return {
                 "status": "success",
                 "message": "Dry run - changes not applied",
-                "filepath": str(file_path.relative_to(ALLOWED_ROOT)),
+                "filepath": self._get_display_path(file_path),
                 "changes": change_summary,
                 "diff": diff,
                 "dry_run": True
@@ -177,26 +179,55 @@ class FileEditor:
         return {
             "status": "success",
             "message": "File edited successfully",
-            "filepath": str(file_path.relative_to(ALLOWED_ROOT)),
+            "filepath": self._get_display_path(file_path),
             "changes": change_summary,
             "diff": diff,
-            "backup": str(backup_path.relative_to(ALLOWED_ROOT)),
+            "backup": str(backup_path.relative_to(BACKUP_DIR)),
             "validated": validate
         }
 
     def _validate_path(self, filepath: str) -> Optional[Path]:
-        """Validate path is within allowed root."""
+        """Validate path is within allowed roots."""
         try:
+            # Resolve path (prepend SUBSTRATE_ROOT for relative paths like nate_dev_tool)
             if filepath.startswith('/'):
                 full_path = Path(filepath).resolve()
             else:
-                full_path = (ALLOWED_ROOT / filepath).resolve()
+                full_path = (SUBSTRATE_ROOT / filepath).resolve()
 
-            # Check if within allowed root
-            full_path.relative_to(ALLOWED_ROOT)
+            # Check if path is within allowed directories
+            # Allow either within SUBSTRATE_ROOT itself OR within /opt/aicara (for other services)
+            within_substrate = False
+            within_opt_aicara = False
+
+            try:
+                full_path.relative_to(SUBSTRATE_ROOT)
+                within_substrate = True
+            except ValueError:
+                pass
+
+            try:
+                full_path.relative_to(ALLOWED_ROOT)
+                within_opt_aicara = True
+            except ValueError:
+                pass
+
+            if not (within_substrate or within_opt_aicara):
+                return None
+
             return full_path
-        except (ValueError, Exception):
+        except Exception:
             return None
+
+    def _get_display_path(self, full_path: Path) -> str:
+        """Get display path relative to appropriate root."""
+        try:
+            return str(full_path.relative_to(SUBSTRATE_ROOT))
+        except ValueError:
+            try:
+                return str(full_path.relative_to(ALLOWED_ROOT))
+            except ValueError:
+                return str(full_path)
 
     def _apply_changes(
         self,
@@ -258,6 +289,10 @@ class FileEditor:
                 if line_num < 0 or line_num > len(lines):
                     raise ValueError(f"Line {line_num} out of range (0-{len(lines)})")
 
+                # If inserting at end and last line has no newline, add one first
+                if line_num == len(lines) and lines and not lines[-1].endswith(('\n', '\r\n')):
+                    lines[-1] += '\n'
+
                 lines.insert(line_num, new_text + '\n')
                 change_summary.append({
                     "type": "insert",
@@ -313,15 +348,24 @@ class FileEditor:
         elif file_extension in ['.js', '.jsx']:
             # JavaScript validation (if node available)
             try:
-                result = subprocess.run(
-                    ['node', '--check'],
-                    input=content,
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode != 0:
-                    errors.append(f"JavaScript syntax error: {result.stderr}")
+                import tempfile
+                # node --check requires a file, so write to temp file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+
+                try:
+                    result = subprocess.run(
+                        ['node', '--check', tmp_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode != 0:
+                        errors.append(f"JavaScript syntax error: {result.stderr}")
+                finally:
+                    # Clean up temp file
+                    Path(tmp_path).unlink(missing_ok=True)
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 # Node not available, skip JS validation
                 pass
@@ -399,7 +443,7 @@ class FileEditor:
                     for backup in sorted(backup_dir.glob(pattern), reverse=True):
                         backups.append({
                             "file": str(backup.relative_to(BACKUP_DIR)),
-                            "timestamp": backup.stem.split('.')[-2],
+                            "timestamp": backup.stem.split('.')[-1],
                             "size": backup.stat().st_size
                         })
             else:
@@ -425,7 +469,14 @@ class FileEditor:
     def restore_from_backup(self, backup_file: str) -> Dict[str, Any]:
         """Restore a file from backup."""
         try:
-            backup_path = BACKUP_DIR / backup_file
+            # Validate and resolve backup path to prevent traversal
+            backup_path = (BACKUP_DIR / backup_file).resolve()
+
+            # Ensure backup path is within BACKUP_DIR
+            try:
+                backup_path.relative_to(BACKUP_DIR)
+            except ValueError:
+                return {"status": "error", "message": "Invalid backup path - outside backup directory"}
 
             if not backup_path.exists():
                 return {"status": "error", "message": "Backup not found"}
@@ -436,9 +487,15 @@ class FileEditor:
             parts = original_relative.stem.rsplit('.', 1)
             original_name = parts[0] if len(parts) > 1 else original_relative.stem
 
-            original_path = ALLOWED_ROOT / original_relative.parent / original_name
+            # Try to reconstruct the original path - check both roots
+            # Try SUBSTRATE_ROOT first (most common)
+            original_path = SUBSTRATE_ROOT / original_relative.parent / original_name
+            if not original_path.exists():
+                # Try ALLOWED_ROOT as fallback
+                original_path = ALLOWED_ROOT / original_relative.parent / original_name
 
             # Create new backup of current file (before restoring)
+            new_backup = None
             if original_path.exists():
                 current_content = original_path.read_text(encoding='utf-8')
                 new_backup = self._create_backup(original_path, current_content)
@@ -450,9 +507,9 @@ class FileEditor:
             return {
                 "status": "success",
                 "message": "File restored from backup",
-                "filepath": str(original_path.relative_to(ALLOWED_ROOT)),
+                "filepath": self._get_display_path(original_path),
                 "backup_used": backup_file,
-                "new_backup": str(new_backup.relative_to(BACKUP_DIR)) if original_path.exists() else None
+                "new_backup": str(new_backup.relative_to(BACKUP_DIR)) if new_backup else None
             }
         except Exception as e:
             return {
