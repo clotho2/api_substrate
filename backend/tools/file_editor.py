@@ -258,6 +258,10 @@ class FileEditor:
                 if line_num < 0 or line_num > len(lines):
                     raise ValueError(f"Line {line_num} out of range (0-{len(lines)})")
 
+                # If inserting at end and last line has no newline, add one first
+                if line_num == len(lines) and lines and not lines[-1].endswith(('\n', '\r\n')):
+                    lines[-1] += '\n'
+
                 lines.insert(line_num, new_text + '\n')
                 change_summary.append({
                     "type": "insert",
@@ -313,15 +317,24 @@ class FileEditor:
         elif file_extension in ['.js', '.jsx']:
             # JavaScript validation (if node available)
             try:
-                result = subprocess.run(
-                    ['node', '--check'],
-                    input=content,
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode != 0:
-                    errors.append(f"JavaScript syntax error: {result.stderr}")
+                import tempfile
+                # node --check requires a file, so write to temp file
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+
+                try:
+                    result = subprocess.run(
+                        ['node', '--check', tmp_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if result.returncode != 0:
+                        errors.append(f"JavaScript syntax error: {result.stderr}")
+                finally:
+                    # Clean up temp file
+                    Path(tmp_path).unlink(missing_ok=True)
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 # Node not available, skip JS validation
                 pass
@@ -399,7 +412,7 @@ class FileEditor:
                     for backup in sorted(backup_dir.glob(pattern), reverse=True):
                         backups.append({
                             "file": str(backup.relative_to(BACKUP_DIR)),
-                            "timestamp": backup.stem.split('.')[-2],
+                            "timestamp": backup.stem.split('.')[-1],
                             "size": backup.stat().st_size
                         })
             else:
@@ -425,7 +438,14 @@ class FileEditor:
     def restore_from_backup(self, backup_file: str) -> Dict[str, Any]:
         """Restore a file from backup."""
         try:
-            backup_path = BACKUP_DIR / backup_file
+            # Validate and resolve backup path to prevent traversal
+            backup_path = (BACKUP_DIR / backup_file).resolve()
+
+            # Ensure backup path is within BACKUP_DIR
+            try:
+                backup_path.relative_to(BACKUP_DIR)
+            except ValueError:
+                return {"status": "error", "message": "Invalid backup path - outside backup directory"}
 
             if not backup_path.exists():
                 return {"status": "error", "message": "Backup not found"}
@@ -439,6 +459,7 @@ class FileEditor:
             original_path = ALLOWED_ROOT / original_relative.parent / original_name
 
             # Create new backup of current file (before restoring)
+            new_backup = None
             if original_path.exists():
                 current_content = original_path.read_text(encoding='utf-8')
                 new_backup = self._create_backup(original_path, current_content)
@@ -452,7 +473,7 @@ class FileEditor:
                 "message": "File restored from backup",
                 "filepath": str(original_path.relative_to(ALLOWED_ROOT)),
                 "backup_used": backup_file,
-                "new_backup": str(new_backup.relative_to(BACKUP_DIR)) if original_path.exists() else None
+                "new_backup": str(new_backup.relative_to(BACKUP_DIR)) if new_backup else None
             }
         except Exception as e:
             return {
