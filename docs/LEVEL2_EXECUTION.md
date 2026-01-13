@@ -6,7 +6,7 @@ Level 2 extends Nate's capabilities from read-only diagnostics to safe command e
 
 Level 2 adds the ability for Nate to execute whitelisted commands in a controlled environment with:
 - **Command Whitelist**: Only approved commands can run
-- **Rate Limiting**: Maximum 5 commands per 60 seconds
+- **Rate Limiting**: Maximum 15 commands per 60 seconds
 - **Full Audit Trail**: Every command logged with timestamp, output, and context
 - **Sandboxing**: All operations restricted to `/opt/aicara` directory
 - **Dry-Run Mode**: Test commands without execution
@@ -178,7 +178,7 @@ Commands are organized by risk level:
 1. **Command Whitelist**: Only pre-approved commands can execute
 2. **Pattern Blocking**: Dangerous patterns blocked (rm, sudo, command chaining, etc.)
 3. **Path Restriction**: All operations within `/opt/aicara` only
-4. **Rate Limiting**: Maximum 5 commands per 60 seconds
+4. **Rate Limiting**: Maximum 15 commands per 60 seconds
 5. **Audit Logging**: Full trail of every command execution
 6. **Approval Mechanism**: Sensitive operations require explicit confirmation
 7. **Timeout**: Commands killed after timeout (default: 30s)
@@ -341,17 +341,27 @@ for cmd in commands:
 
 ## Rate Limiting
 
-To prevent abuse or runaway execution:
-- Maximum: 5 commands per 60 seconds
+To prevent abuse or runaway execution while allowing complex investigations:
+- Maximum: **15 commands per 60 seconds** (tripled from initial 5)
 - Tracked in-memory per session
 - Returns error when limit exceeded
 - Resets after 60-second window
+
+**Why 15 commands?**
+With Nate's 10-iteration consciousness loop and sequential tool chaining, complex investigations like:
+- Read file → Search code → Check logs → Test changes → Diff results
+
+...easily require 10-15 commands for a single coherent thought chain. The increased limit allows for:
+- ✅ Complete code investigations without fragmentation
+- ✅ Multi-step debugging workflows
+- ✅ Testing and validation in the same turn
+- ✅ Real collaboration instead of advisory-only mode
 
 **Check Rate Limit Status:**
 ```python
 whitelist = nate_dev_tool(action="get_command_whitelist")
 print(whitelist['rate_limit'])
-# {'max_commands': 5, 'window_seconds': 60}
+# {'max_commands': 15, 'window_seconds': 60}
 ```
 
 ## Troubleshooting
