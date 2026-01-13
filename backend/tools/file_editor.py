@@ -405,6 +405,33 @@ class FileEditor:
                 # Node not available, skip JS validation
                 pass
 
+        elif file_extension in ['.ts', '.tsx']:
+            # TypeScript validation (if tsc available)
+            try:
+                import tempfile
+                # tsc --noEmit requires a file, so write to temp file
+                with tempfile.NamedTemporaryFile(mode='w', suffix=file_extension, delete=False) as tmp:
+                    tmp.write(content)
+                    tmp_path = tmp.name
+
+                try:
+                    result = subprocess.run(
+                        ['tsc', '--noEmit', '--skipLibCheck', tmp_path],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result.returncode != 0:
+                        # Filter out the file path from error messages for cleaner output
+                        error_msg = result.stderr.replace(tmp_path, filepath.name if filepath else 'file')
+                        errors.append(f"TypeScript syntax error: {error_msg}")
+                finally:
+                    # Clean up temp file
+                    Path(tmp_path).unlink(missing_ok=True)
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                # TypeScript compiler not available, skip TS validation
+                pass
+
         # Additional validation: check for common dangerous patterns
         # Skip this check for security tool files (they contain these patterns legitimately)
         if not is_security_tool:
