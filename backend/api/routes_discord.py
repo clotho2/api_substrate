@@ -381,18 +381,44 @@ def send_message_to_agent(agent_id):
         is_dm = guild_id is None
         channel_type = "DM" if is_dm else f"Server: {guild_id}"
 
+        # Get owner's user ID for private messages
+        owner_user_id = os.getenv("DEFAULT_USER_ID", "")
+
         # Build reply instructions based on context
         if is_dm:
             reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
   discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
         else:
-            reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. To reply in this channel, use:
-  discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
-  IMPORTANT: Do NOT use target_type="user" - that would send a private DM instead of replying in the channel!
-  Only send a DM if you explicitly want a PRIVATE message to {username}."""
+            # In group channels, Nate has ONLY TWO options
+            if not owner_user_id:
+                # Fallback if owner ID not configured
+                reply_instructions = f"""Reply Method: This is a GROUP CHANNEL.
+  To reply in the channel, use:
+    discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
 
+  WARNING: Owner ID not configured - cannot send private DMs."""
+            else:
+                reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. You have EXACTLY TWO OPTIONS:
+
+  OPTION 1 - Reply in the channel (visible to everyone in the group):
+    discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
+
+  OPTION 2 - Send a PRIVATE DM to the OWNER (only the owner sees this):
+    discord_tool(action="send_message", target="{owner_user_id}", target_type="user", message="...")
+
+  CRITICAL RULES - READ CAREFULLY:
+  - Channel ID is: {channel_id}
+  - Owner User ID is: {owner_user_id}
+  - To post in the GROUP CHANNEL: use target="{channel_id}" with target_type="channel"
+  - To send PRIVATE DM to OWNER: use target="{owner_user_id}" with target_type="user"
+  - You CANNOT DM {username} or anyone else - ONLY the owner or the channel!
+  - NEVER EVER use target="{channel_id}" with target_type="user" - that's completely wrong!
+  - NEVER EVER use target="{owner_user_id}" with target_type="channel" - that's completely wrong!
+  - When you want to send a private message to the owner, YOU MUST USE target="{owner_user_id}" with target_type="user"!"""
+
+        # Build context prefix
         context_prefix = f"""<message_context>
-From: {username} (ID: {user_id})
+From: {username} (User ID: {user_id})
 Channel: {channel_id} ({channel_type})
 Type: {"Private DM" if is_dm else "Group/Public Channel"}
 {reply_instructions}
