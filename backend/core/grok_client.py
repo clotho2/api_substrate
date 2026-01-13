@@ -143,12 +143,25 @@ class GrokClient:
         print(f"   API: {self.base_url}")
         print(f"   Timeout: {timeout}s")
 
-    def _get_headers(self) -> Dict[str, str]:
-        """Build request headers"""
-        return {
+    def _get_headers(self, session_id: Optional[str] = None) -> Dict[str, str]:
+        """
+        Build request headers.
+
+        Args:
+            session_id: Optional session ID for prompt caching optimization
+        """
+        headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+
+        # Add x-grok-conv-id header for prompt caching optimization
+        # This increases cache hit likelihood, resulting in 90%+ cost savings
+        # Cached tokens: $0.02/1M vs regular: $0.20/1M
+        if session_id:
+            headers["x-grok-conv-id"] = session_id
+
+        return headers
 
     async def chat_completion(
         self,
@@ -159,6 +172,7 @@ class GrokClient:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         stream: bool = False,
+        session_id: Optional[str] = None,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -175,6 +189,7 @@ class GrokClient:
             temperature: Sampling temperature (0-2)
             max_tokens: Max tokens to generate
             stream: Whether to stream response (NOT IMPLEMENTED YET)
+            session_id: Optional session ID for prompt caching (adds x-grok-conv-id header)
             **kwargs: Additional model parameters
 
         Returns:
@@ -210,7 +225,7 @@ class GrokClient:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
                     url,
-                    headers=self._get_headers(),
+                    headers=self._get_headers(session_id=session_id),
                     json=payload
                 ) as response:
                     response_text = await response.text()
@@ -272,6 +287,7 @@ class GrokClient:
         tool_choice: str = "auto",
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        session_id: Optional[str] = None,
         **kwargs
     ):
         """
@@ -284,6 +300,7 @@ class GrokClient:
             tool_choice: Tool choice mode ("auto", "none", or specific tool)
             temperature: Sampling temperature
             max_tokens: Max tokens to generate
+            session_id: Optional session ID for prompt caching (adds x-grok-conv-id header)
             **kwargs: Additional parameters
 
         Yields:
@@ -310,14 +327,9 @@ class GrokClient:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, headers=headers) as response:
+                async with session.post(url, json=payload, headers=self._get_headers(session_id=session_id)) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         raise GrokError(

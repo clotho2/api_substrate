@@ -1399,7 +1399,8 @@ send_message: false
                 messages=[vision_message],
                 model=VISION_MODEL,
                 temperature=0.7,
-                max_tokens=500  # Vision descriptions should be concise
+                max_tokens=500,  # Vision descriptions should be concise
+                session_id=None  # Vision analysis doesn't need caching
             )
             
             vision_description = response['choices'][0]['message']['content'].strip()
@@ -1746,7 +1747,8 @@ send_message: false
                     model=model,
                     tools=tool_schemas,  # Will be None if model doesn't support tools
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    session_id=session_id  # Pass session_id for prompt caching optimization
                 )
                 print(f"✅ Response received from LLM API!")
             except Exception as e:
@@ -1763,7 +1765,8 @@ send_message: false
                             tools=None,
                             tool_choice=None,
                             temperature=temperature,
-                            max_tokens=max_tokens
+                            max_tokens=max_tokens,
+                            session_id=session_id  # Pass session_id for prompt caching optimization
                         )
                         print(f"✅ Response received from LLM API (without tools)!")
                     except Exception as retry_e:

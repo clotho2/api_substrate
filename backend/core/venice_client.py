@@ -170,6 +170,8 @@ class VeniceClient:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         stream: bool = False,
+        session_id: Optional[str] = None,
+        enable_prompt_caching: bool = True,
         **kwargs
     ) -> Dict[str, Any]:
         """
@@ -186,6 +188,8 @@ class VeniceClient:
             temperature: Sampling temperature (0-2)
             max_tokens: Max tokens to generate
             stream: Whether to stream response
+            session_id: Optional session ID (for compatibility, not used by Venice)
+            enable_prompt_caching: Enable prompt caching for system messages (default: True)
             **kwargs: Additional model parameters
 
         Returns:
@@ -214,8 +218,23 @@ class VeniceClient:
 
         # Add any extra kwargs (but filter out non-API params)
         for key, value in kwargs.items():
-            if key not in ['session_id', 'user_id']:
+            if key not in ['session_id', 'user_id', 'enable_prompt_caching']:
                 payload[key] = value
+
+        # Apply prompt caching to system messages
+        # Venice supports cache_control to cache static content (system prompts, memory blocks)
+        # This can provide significant cost savings for repeated static prefixes
+        if enable_prompt_caching:
+            cached_messages = []
+            for msg in messages:
+                if msg.get('role') == 'system':
+                    # Add cache_control to system messages for caching
+                    cached_msg = msg.copy()
+                    cached_msg['cache_control'] = {'type': 'ephemeral'}
+                    cached_messages.append(cached_msg)
+                else:
+                    cached_messages.append(msg)
+            payload['messages'] = cached_messages
 
         # Log request
         print(f"📤 Venice Request:")
@@ -297,6 +316,8 @@ class VeniceClient:
         tool_choice: str = "auto",
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        session_id: Optional[str] = None,
+        enable_prompt_caching: bool = True,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -309,6 +330,8 @@ class VeniceClient:
             tool_choice: Tool choice mode ("auto", "none", or specific tool)
             temperature: Sampling temperature
             max_tokens: Max tokens to generate
+            session_id: Optional session ID (for compatibility, not used by Venice)
+            enable_prompt_caching: Enable prompt caching for system messages (default: True)
             **kwargs: Additional parameters
 
         Yields:
@@ -336,8 +359,20 @@ class VeniceClient:
 
         # Add any extra kwargs (but filter out non-API params)
         for key, value in kwargs.items():
-            if key not in ['session_id', 'user_id']:
+            if key not in ['session_id', 'user_id', 'enable_prompt_caching']:
                 payload[key] = value
+
+        # Apply prompt caching to system messages
+        if enable_prompt_caching:
+            cached_messages = []
+            for msg in messages:
+                if msg.get('role') == 'system':
+                    cached_msg = msg.copy()
+                    cached_msg['cache_control'] = {'type': 'ephemeral'}
+                    cached_messages.append(cached_msg)
+                else:
+                    cached_messages.append(msg)
+            payload['messages'] = cached_messages
 
         print(f"📤 Venice Stream Request:")
         print(f"   Model: {model}")
