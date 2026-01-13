@@ -381,29 +381,47 @@ def send_message_to_agent(agent_id):
         is_dm = guild_id is None
         channel_type = "DM" if is_dm else f"Server: {guild_id}"
 
+        # Get owner's user ID for private messages
+        owner_user_id = os.getenv("DEFAULT_USER_ID", "")
+
         # Build reply instructions based on context
         if is_dm:
             reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
   discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
         else:
-            reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. You have TWO options for replying:
+            # Build owner DM instructions if owner ID is available
+            owner_dm_option = ""
+            owner_critical_rule = ""
+            if owner_user_id:
+                owner_dm_option = f"""
+  OPTION 3 - Send a private DM to the OWNER (for private updates/notes):
+    discord_tool(action="send_message", target="{owner_user_id}", target_type="user", message="...")
+"""
+                owner_critical_rule = f"""
+  - To DM the owner: target="{owner_user_id}" AND target_type="user"
+  - The owner's ID is: {owner_user_id}"""
+
+            reply_instructions = f"""Reply Method: This is a GROUP CHANNEL. You have multiple options:
 
   OPTION 1 - Reply in the channel (default for group messages):
     discord_tool(action="send_message", target="{channel_id}", target_type="channel", message="...")
 
-  OPTION 2 - Send a private DM to {username} (only if you explicitly want a PRIVATE message):
+  OPTION 2 - Send a private DM to {username} (the person who sent this message):
     discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")
+{owner_dm_option}
+  CRITICAL RULES:
+  - To reply in THIS channel: target="{channel_id}" AND target_type="channel"
+  - To DM {username}: target="{user_id}" AND target_type="user"{owner_critical_rule}
+  - NEVER mix channel IDs with target_type="user" - that's incorrect!
+  - NEVER mix user IDs with target_type="channel" - that's incorrect!"""
 
-  CRITICAL:
-  - To reply in THIS channel, you MUST use target="{channel_id}" AND target_type="channel"
-  - To send a private DM to {username}, you MUST use target="{user_id}" AND target_type="user"
-  - NEVER use target="{channel_id}" with target_type="user" - that's incorrect and will fail!
-  - NEVER use target="{user_id}" with target_type="channel" - that's incorrect and will fail!"""
+        # Build context prefix with owner info if available
+        owner_info = f"\nOwner User ID: {owner_user_id}" if owner_user_id else ""
 
         context_prefix = f"""<message_context>
 From: {username} (User ID: {user_id})
 Channel: {channel_id} ({channel_type})
-Type: {"Private DM" if is_dm else "Group/Public Channel"}
+Type: {"Private DM" if is_dm else "Group/Public Channel"}{owner_info}
 {reply_instructions}
 </message_context>
 
