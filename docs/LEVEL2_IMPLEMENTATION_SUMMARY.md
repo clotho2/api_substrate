@@ -11,7 +11,7 @@ This document summarizes the Level 2 expansion that adds safe command execution 
 1. **`backend/tools/command_executor.py`** (460 lines)
    - Core command execution engine
    - Command whitelist and validation
-   - Rate limiting (5 commands/60s)
+   - Rate limiting (15 commands/60s - tripled for complex investigations)
    - Audit logging
    - Sandboxed execution
 
@@ -102,8 +102,8 @@ This document summarizes the Level 2 expansion that adds safe command execution 
    - Path traversal attempts blocked
 
 4. **Rate Limiting** (Fourth Line)
-   - 5 commands per 60 seconds
-   - Prevents runaway execution
+   - 15 commands per 60 seconds (tripled from initial 5)
+   - Prevents runaway execution while allowing complex investigations
 
 5. **Audit Logging** (Oversight)
    - Every command logged

@@ -29,7 +29,7 @@ from collections import deque
 ALLOWED_ROOT = Path("/opt/aicara")
 AUDIT_LOG = Path("/var/log/nate_dev_commands.log")
 RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX = 5  # commands per window
+RATE_LIMIT_MAX = 15  # commands per window (increased for complex investigations)
 
 # Command rate limiting tracking (in-memory for now)
 _command_history = deque(maxlen=100)
