@@ -14,7 +14,7 @@ Level 2 (Safe Command Execution):
 Level 3 (Self-Maintenance):
 - Safe file editing with validation and backup
 - Automatic rollback on validation failure
-- Test execution with coverage
+- Test execution with coverage reporting
 - Service control and restart
 - Snapshot and rollback capabilities
 
@@ -31,6 +31,9 @@ Actions:
 - edit_file: Edit files with validation and backup (Level 3)
 - list_backups: List available file backups (Level 3)
 - restore_backup: Restore file from backup (Level 3)
+- run_tests: Run tests with coverage (Level 3)
+- list_tests: List available tests (Level 3)
+- get_test_history: Get recent test failures (Level 3)
 
 Security:
 - Level 1: Read-only, path traversal blocked
@@ -65,7 +68,9 @@ except ImportError:
 # Level 3 imports
 try:
     from backend.tools.file_editor import FileEditor
+    from backend.tools.test_executor import TestExecutor
     _file_editor = FileEditor()
+    _test_executor = TestExecutor()
     LEVEL_3_AVAILABLE = True
 except ImportError:
     LEVEL_3_AVAILABLE = False
@@ -493,7 +498,14 @@ def nate_dev_tool(
     # Level 3: edit_file params
     changes: List[Dict[str, Any]] = None,
     validate: bool = True,
-    backup_file: str = None
+    backup_file: str = None,
+    # Level 3: test_executor params
+    test_path: str = None,
+    test_pattern: str = None,
+    test_markers: str = None,
+    coverage: bool = True,
+    verbose: bool = True,
+    stop_on_first_failure: bool = False
 ) -> Dict[str, Any]:
     """
     Nate's self-development tool for inspecting and managing his own codebase.
@@ -516,6 +528,9 @@ def nate_dev_tool(
     - edit_file: Edit files with validation and backup (path, changes required)
     - list_backups: List available backups (optional: path)
     - restore_backup: Restore file from backup (backup_file required)
+    - run_tests: Run tests with coverage (optional: test_path, pattern, markers)
+    - list_tests: List available tests without running them
+    - get_test_history: Get recent test failures
 
     Examples:
     - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
@@ -523,6 +538,7 @@ def nate_dev_tool(
     - nate_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
     - nate_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
     - nate_dev_tool(action="list_backups", path="backend/tools/test.py")
+    - nate_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
     """
 
     if action == "read_file":
@@ -669,6 +685,37 @@ def nate_dev_tool(
 
         return _file_editor.restore_from_backup(backup_file=backup_file)
 
+    elif action == "run_tests":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        return _test_executor.run_tests(
+            test_path=test_path,
+            pattern=test_pattern,
+            markers=test_markers,
+            coverage=coverage,
+            verbose=verbose,
+            stop_on_first_failure=stop_on_first_failure
+        )
+
+    elif action == "list_tests":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        return _test_executor.list_tests(test_path=test_path)
+
+    elif action == "get_test_history":
+        if not LEVEL_3_AVAILABLE:
+            return {
+                "status": "error",
+                "message": "Level 3 functionality not available"
+            }
+        return _test_executor.get_test_history()
+
     else:
         available_actions = [
             "read_file", "search_code", "read_logs", "check_health", "list_directory"
@@ -680,7 +727,8 @@ def nate_dev_tool(
             ])
         if LEVEL_3_AVAILABLE:
             available_actions.extend([
-                "edit_file", "list_backups", "restore_backup"
+                "edit_file", "list_backups", "restore_backup",
+                "run_tests", "list_tests", "get_test_history"
             ])
 
         return {
