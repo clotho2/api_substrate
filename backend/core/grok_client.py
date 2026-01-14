@@ -344,18 +344,33 @@ class GrokClient:
                         )
 
                     # Stream the response
-                    async for line in response.content:
-                        line = line.decode('utf-8').strip()
+                    buffer = ""
+                    chunk_count = 0
+                    async for chunk_bytes in response.content.iter_chunked(1024):
+                        chunk_count += 1
+                        print(f"🌊 Received chunk #{chunk_count}: {len(chunk_bytes)} bytes")
 
-                        if not line or line == "data: [DONE]":
-                            continue
+                        buffer += chunk_bytes.decode('utf-8')
 
-                        if line.startswith("data: "):
-                            try:
-                                data = json.loads(line[6:])  # Remove "data: " prefix
-                                yield data
-                            except json.JSONDecodeError:
+                        # Process complete lines
+                        while '\n' in buffer:
+                            line, buffer = buffer.split('\n', 1)
+                            line = line.strip()
+                            print(f"   LINE: {line[:200]}")  # Debug: show first 200 chars
+
+                            if not line or line == "data: [DONE]":
                                 continue
+
+                            if line.startswith("data: "):
+                                try:
+                                    data = json.loads(line[6:])  # Remove "data: " prefix
+                                    print(f"✅ Parsed chunk successfully!")
+                                    yield data
+                                except json.JSONDecodeError as e:
+                                    print(f"⚠️  Failed to parse chunk: {line[:100]}")
+                                    continue
+
+                    print(f"🏁 Stream complete! Total chunks received: {chunk_count}")
 
         except aiohttp.ClientError as e:
             raise GrokError(
