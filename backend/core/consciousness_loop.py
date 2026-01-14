@@ -2446,7 +2446,8 @@ send_message: false
                     model=model,
                     tools=tool_schemas,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    session_id=session_id  # For prompt caching optimization
                 ):
                     # Parse chunk
                     if 'choices' in chunk and len(chunk['choices']) > 0:
