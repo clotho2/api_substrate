@@ -382,10 +382,10 @@ class ConsciousnessLoop:
                 )
 
                 # Filter: Only messages AFTER the summary
-                # BUT: Keep ALL system messages (including summaries!)
+                # This includes user, assistant, AND system messages after the summary timestamp
                 history = [
                     msg for msg in all_history
-                    if msg.timestamp > from_timestamp or msg.role == 'system'
+                    if msg.timestamp > from_timestamp
                 ]
 
                 # 🔥 MESSAGE-COUNT SUMMARY TRIGGER
