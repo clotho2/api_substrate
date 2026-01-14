@@ -372,7 +372,7 @@ class ConsciousnessLoop:
             
             if latest_summary:
                 from_timestamp = datetime.fromisoformat(latest_summary['to_timestamp'])
-                summary_created_at = datetime.fromisoformat(latest_summary['created_at'])
+                summary_content = latest_summary.get('summary', '')
                 print(f"   📝 Found summary (created: {latest_summary['created_at']})")
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
 
@@ -383,11 +383,11 @@ class ConsciousnessLoop:
                 )
 
                 # Filter: Only messages AFTER the summary
-                # Include the LATEST summary itself, but exclude older summaries
+                # Include the LATEST summary itself by matching content, but exclude older summaries
                 history = [
                     msg for msg in all_history
                     if msg.timestamp > from_timestamp or
-                       (msg.role == 'system' and msg.timestamp == summary_created_at)
+                       (msg.role == 'system' and summary_content and msg.content == summary_content)
                 ]
 
                 # 🔥 MESSAGE-COUNT SUMMARY TRIGGER
