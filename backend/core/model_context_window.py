@@ -15,9 +15,14 @@ MODEL_CONTEXT_WINDOWS = {
     "openai/gpt-4": 8192,
     "openai/gpt-4-turbo": 128000,
     "openai/gpt-4o": 128000,
+    "openai/gpt-4.1": 1000000,       # GPT-4.1 has ~1M context window
+    "openai/gpt-4.1-mini": 1000000,  # GPT-4.1 mini also has ~1M
+    "openai/gpt-4.1-nano": 1000000,  # GPT-4.1 nano also has ~1M
     "openai/o1": 200000,
     "openai/o1-preview": 200000,
     "openai/o1-mini": 128000,
+    "openai/o3": 200000,
+    "openai/o3-mini": 200000,
     
     # Anthropic
     "anthropic/claude-3-opus": 200000,
@@ -73,10 +78,12 @@ def get_max_context_window(model_id: str) -> int:
         return 200000  # o1 models have huge context
     if "claude" in model_lower or "opus" in model_lower:
         return 200000  # Claude models have 200k
-    if "gpt-4" in model_lower and "turbo" in model_lower:
-        return 128000  # GPT-4 Turbo
+    if "gpt-4.1" in model_lower:
+        return 1000000  # GPT-4.1 has ~1M context window
+    if "gpt-4" in model_lower and ("turbo" in model_lower or "o" in model_lower):
+        return 128000  # GPT-4 Turbo / GPT-4o
     if "gpt-4" in model_lower:
-        return 8192  # GPT-4 base
+        return 8192  # GPT-4 base (legacy)
     if "kimi" in model_lower or "k2" in model_lower:
         return 200000  # Kimi K2
     if "deepseek" in model_lower:
