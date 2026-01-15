@@ -3071,109 +3071,110 @@ send_message: false
 
         # TRIGGER SUMMARY! 🔥
         self._summary_in_progress = True
-        print(f"\n{'='*60}")
-        print(f"⚠️  CONTEXT WINDOW > 80% FULL!")
-        print(f"{'='*60}")
-        print(f"Triggering conversation summary...\n")
-        
-        # Get all messages since last summary
-        # CRITICAL: Track when last summary was created!
-        latest_summary = self.state.get_latest_summary(session_id)
-        
-        if latest_summary:
-            # Get messages since last summary
-            from_timestamp = datetime.fromisoformat(latest_summary['to_timestamp'])
-            print(f"📅 Last summary found:")
-            print(f"   Created: {latest_summary['created_at']}")
-            print(f"   Covered up to: {latest_summary['to_timestamp']}")
-            print(f"   Messages summarized: {latest_summary.get('message_count', 0)}")
-            print(f"   Summary ID: {latest_summary.get('id', 'unknown')}")
-        else:
-            # No previous summary - get ALL messages
-            from_timestamp = None
-            print(f"📅 No previous summary found - summarizing ALL messages from start")
-        
-        # Get messages to summarize (from DB, not from context!)
-        all_messages = self.state.get_conversation(session_id=session_id, limit=100000)
-        
-        # Filter by timestamp if needed
-        messages_to_summarize = []
-        for msg in all_messages:
-            if from_timestamp and msg.timestamp <= from_timestamp:
-                continue  # Skip already summarized
-            
-            messages_to_summarize.append({
-                'role': msg.role,
-                'content': msg.content,
-                'timestamp': msg.timestamp.isoformat() if hasattr(msg.timestamp, 'isoformat') else str(msg.timestamp)
-            })
-        
-        if not messages_to_summarize:
-            print(f"⚠️  No new messages to summarize!")
-            return messages
-        
-        print(f"📝 Summarizing {len(messages_to_summarize)} messages...")
-        
-        # Generate summary (SEPARATE OpenRouter session!)
-        # IMPORTANT: Pass state_manager so the agent writes in their own voice! 🎯
-        generator = SummaryGenerator(state_manager=self.state)
-        summary_result = generator.generate_summary(
-            messages=messages_to_summarize,
-            session_id=session_id
-        )
-        
-        # Save summary to DB
-        from_ts = datetime.fromisoformat(summary_result['from_timestamp'])
-        to_ts = datetime.fromisoformat(summary_result['to_timestamp'])
-        
-        summary_id = self.state.save_summary(
-            session_id=session_id,
-            summary=summary_result['summary'],
-            from_timestamp=from_ts,
-            to_timestamp=to_ts,
-            message_count=summary_result['message_count'],
-            token_count=summary_result['token_count']
-        )
-        print(f"✅ Summary saved to summary table (id: {summary_id})")
-        
-        # Save to Archive Memory!
-        print(f"💾 Saving summary to Archive Memory...")
         try:
-            from tools.memory_tools import MemoryTools
-            memory_tools = MemoryTools(self.state)
-            
-            archive_text = f"""📅 Chat Zusammenfassung ({from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')})
+            print(f"\n{'='*60}")
+            print(f"⚠️  CONTEXT WINDOW > 80% FULL!")
+            print(f"{'='*60}")
+            print(f"Triggering conversation summary...\n")
+
+            # Get all messages since last summary
+            # CRITICAL: Track when last summary was created!
+            latest_summary = self.state.get_latest_summary(session_id)
+
+            if latest_summary:
+                # Get messages since last summary
+                from_timestamp = datetime.fromisoformat(latest_summary['to_timestamp'])
+                print(f"📅 Last summary found:")
+                print(f"   Created: {latest_summary['created_at']}")
+                print(f"   Covered up to: {latest_summary['to_timestamp']}")
+                print(f"   Messages summarized: {latest_summary.get('message_count', 0)}")
+                print(f"   Summary ID: {latest_summary.get('id', 'unknown')}")
+            else:
+                # No previous summary - get ALL messages
+                from_timestamp = None
+                print(f"📅 No previous summary found - summarizing ALL messages from start")
+
+            # Get messages to summarize (from DB, not from context!)
+            all_messages = self.state.get_conversation(session_id=session_id, limit=100000)
+
+            # Filter by timestamp if needed
+            messages_to_summarize = []
+            for msg in all_messages:
+                if from_timestamp and msg.timestamp <= from_timestamp:
+                    continue  # Skip already summarized
+
+                messages_to_summarize.append({
+                    'role': msg.role,
+                    'content': msg.content,
+                    'timestamp': msg.timestamp.isoformat() if hasattr(msg.timestamp, 'isoformat') else str(msg.timestamp)
+                })
+
+            if not messages_to_summarize:
+                print(f"⚠️  No new messages to summarize!")
+                return messages
+
+            print(f"📝 Summarizing {len(messages_to_summarize)} messages...")
+
+            # Generate summary (SEPARATE OpenRouter session!)
+            # IMPORTANT: Pass state_manager so the agent writes in their own voice! 🎯
+            generator = SummaryGenerator(state_manager=self.state)
+            summary_result = generator.generate_summary(
+                messages=messages_to_summarize,
+                session_id=session_id
+            )
+
+            # Save summary to DB
+            from_ts = datetime.fromisoformat(summary_result['from_timestamp'])
+            to_ts = datetime.fromisoformat(summary_result['to_timestamp'])
+
+            summary_id = self.state.save_summary(
+                session_id=session_id,
+                summary=summary_result['summary'],
+                from_timestamp=from_ts,
+                to_timestamp=to_ts,
+                message_count=summary_result['message_count'],
+                token_count=summary_result['token_count']
+            )
+            print(f"✅ Summary saved to summary table (id: {summary_id})")
+
+            # Save to Archive Memory!
+            print(f"💾 Saving summary to Archive Memory...")
+            try:
+                from tools.memory_tools import MemoryTools
+                memory_tools = MemoryTools(self.state)
+
+                archive_text = f"""📅 Chat Zusammenfassung ({from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')})
 
 {summary_result['summary']}
 
 ---
 📊 Stats: {summary_result['message_count']} Nachrichten zusammengefasst"""
-            
-            memory_tools.add_to_archive(
-                content=archive_text,
-                metadata={
-                    'type': 'conversation_summary',
-                    'session_id': session_id,
-                    'summary_id': summary_id,
-                    'from_timestamp': summary_result['from_timestamp'],
-                    'to_timestamp': summary_result['to_timestamp'],
-                    'message_count': summary_result['message_count']
-                }
-            )
-            print(f"✅ Summary saved to Archive Memory!")
-        except Exception as e:
-            print(f"⚠️  Failed to save to Archive: {e}")
-        
-        # Build NEW context with summary
-        print(f"\n🔄 Rebuilding context with summary...")
-        
-        # Keep system prompt
-        new_messages = [msg for msg in messages if msg['role'] == 'system']
-        
-        # Create summary content (for both DB and context)
-        summary_content = f"""📝 **ZUSAMMENFASSUNG** (Context Window Management)
 
-**Zeitraum:** {from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')}  
+                memory_tools.add_to_archive(
+                    content=archive_text,
+                    metadata={
+                        'type': 'conversation_summary',
+                        'session_id': session_id,
+                        'summary_id': summary_id,
+                        'from_timestamp': summary_result['from_timestamp'],
+                        'to_timestamp': summary_result['to_timestamp'],
+                        'message_count': summary_result['message_count']
+                    }
+                )
+                print(f"✅ Summary saved to Archive Memory!")
+            except Exception as e:
+                print(f"⚠️  Failed to save to Archive: {e}")
+
+            # Build NEW context with summary
+            print(f"\n🔄 Rebuilding context with summary...")
+
+            # Keep system prompt
+            new_messages = [msg for msg in messages if msg['role'] == 'system']
+
+            # Create summary content (for both DB and context)
+            summary_content = f"""📝 **ZUSAMMENFASSUNG** (Context Window Management)
+
+**Zeitraum:** {from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')}
 **Nachrichten:** {summary_result['message_count']}
 
 {summary_result['summary']}
@@ -3191,45 +3192,46 @@ send_message: false
 </details>
 
 💾 Vollständige Details: `search_archive()` oder `read_archive()`"""
-        
-        # Save summary to DB as system message! (So it shows in frontend!)
-        summary_msg_id = f"msg-{uuid.uuid4()}"
-        # 🏴‍☠️ Save to PostgreSQL or SQLite
-        self._save_message(
-            agent_id=self.agent_id,
-            session_id=session_id,
-            role="system",
-            content=summary_content,
-            message_id=summary_msg_id,
-            message_type="system"
-        )
-        print(f"✅ Summary saved to DB as system message (id: {summary_msg_id})")
-        print(f"💾 Old messages remain in DB (for history/export)")
-        print(f"   They will NOT be sent to API anymore! (filtered by timestamp)")
-        
-        # Add summary as system message to context
-        summary_system_msg = {
-            "role": "system",
-            "content": summary_content
-        }
-        new_messages.append(summary_system_msg)
-        
-        # Add only the LAST 20 messages (most recent context)
-        recent_messages = [msg for msg in messages if msg['role'] != 'system'][-20:]
-        new_messages.extend(recent_messages)
-        
-        print(f"✅ Context rebuilt:")
-        print(f"   System messages: {len([m for m in new_messages if m['role'] == 'system'])}")
-        print(f"   Recent messages: {len(recent_messages)}")
-        print(f"   Total: {len(new_messages)} messages")
-        print(f"{'='*60}\n")
 
-        # 🔒 Clear flag and update cooldown timestamp
-        self._summary_in_progress = False
-        self._last_summary_time = datetime.now()
-        print(f"🔓 Context window summary complete - cooldown started ({self._summary_cooldown_seconds}s)")
+            # Save summary to DB as system message! (So it shows in frontend!)
+            summary_msg_id = f"msg-{uuid.uuid4()}"
+            # 🏴‍☠️ Save to PostgreSQL or SQLite
+            self._save_message(
+                agent_id=self.agent_id,
+                session_id=session_id,
+                role="system",
+                content=summary_content,
+                message_id=summary_msg_id,
+                message_type="system"
+            )
+            print(f"✅ Summary saved to DB as system message (id: {summary_msg_id})")
+            print(f"💾 Old messages remain in DB (for history/export)")
+            print(f"   They will NOT be sent to API anymore! (filtered by timestamp)")
 
-        return new_messages
+            # Add summary as system message to context
+            summary_system_msg = {
+                "role": "system",
+                "content": summary_content
+            }
+            new_messages.append(summary_system_msg)
+
+            # Add only the LAST 20 messages (most recent context)
+            recent_messages = [msg for msg in messages if msg['role'] != 'system'][-20:]
+            new_messages.extend(recent_messages)
+
+            print(f"✅ Context rebuilt:")
+            print(f"   System messages: {len([m for m in new_messages if m['role'] == 'system'])}")
+            print(f"   Recent messages: {len(recent_messages)}")
+            print(f"   Total: {len(new_messages)} messages")
+            print(f"{'='*60}\n")
+
+            return new_messages
+
+        finally:
+            # 🔒 ALWAYS clear flag and update cooldown timestamp (even on error or early return)
+            self._summary_in_progress = False
+            self._last_summary_time = datetime.now()
+            print(f"🔓 Context window summary complete - cooldown started ({self._summary_cooldown_seconds}s)")
 
 
 
