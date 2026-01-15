@@ -740,6 +740,19 @@ class MemoryTools:
         """
         return self.integrations.search_places(**kwargs)
 
+    def google_places_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Google Places tool (wrapper).
+        Search for places and get location details using Google Places API.
+
+        Actions:
+        - search_nearby: Search for nearby places (restaurants, gas stations, etc.)
+        - get_details: Get detailed info about a specific place
+        - find_gas: Guardian Mode - Find nearby gas stations with urgency
+        - find_hotel: Guardian Mode - Find nearby hotels/lodging
+        """
+        return self.integrations.google_places_tool(**kwargs)
+
     def lovense_tool(self, **kwargs) -> Dict[str, Any]:
         """
         Lovense hardware control tool (wrapper).
