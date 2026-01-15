@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 tts_bp = Blueprint('tts', __name__)
 
 # Chatterbox TTS configuration
-CHATTERBOX_URL = os.getenv('CHATTERBOX_URL', 'http://localhost:8000')
+CHATTERBOX_URL = os.getenv('CHATTERBOX_URL', 'http://localhost:8001')
 CHATTERBOX_TIMEOUT = int(os.getenv('CHATTERBOX_TIMEOUT', '30'))
 
 # Text preprocessing settings
