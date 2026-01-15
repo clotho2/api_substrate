@@ -46,6 +46,33 @@ SUPPORTED_FORMATS = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/webm',
                      'audio/ogg', 'audio/flac', 'audio/m4a', 'audio/x-wav']
 
 
+def _normalize_language_code(language: str) -> str:
+    """
+    Normalize language codes for Whisper compatibility.
+
+    Whisper expects 2-letter ISO 639-1 codes (e.g., 'en', 'es', 'fr')
+    but clients often send BCP-47 codes (e.g., 'en-US', 'es-MX').
+
+    Args:
+        language: Language code from client (e.g., 'en-US', 'en', 'english')
+
+    Returns:
+        Normalized 2-letter language code (e.g., 'en')
+    """
+    if not language:
+        return None
+
+    # Handle BCP-47 format (e.g., 'en-US' -> 'en')
+    if '-' in language:
+        language = language.split('-')[0]
+
+    # Handle underscore format (e.g., 'en_US' -> 'en')
+    if '_' in language:
+        language = language.split('_')[0]
+
+    return language.lower()
+
+
 def _check_whisper_health() -> dict:
     """Check if local Whisper server is available."""
     try:
@@ -119,7 +146,8 @@ def _transcribe_whisper_local(audio_data: bytes, content_type: str, language: st
             'response_format': 'json'
         }
         if language:
-            data['language'] = language
+            # Normalize language code (e.g., 'en-US' -> 'en')
+            data['language'] = _normalize_language_code(language)
 
         # Try OpenAI-compatible endpoint first (most common)
         response = requests.post(
