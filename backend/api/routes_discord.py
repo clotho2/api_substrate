@@ -52,6 +52,9 @@ ALLOWED_AGENT_ID_PATTERN = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-
 # Supported image formats
 SUPPORTED_IMAGE_FORMATS = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
 
+# Supported audio formats (for voice messages)
+SUPPORTED_AUDIO_FORMATS = {'audio/ogg', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/webm', 'audio/x-wav', 'audio/mp4'}
+
 
 def init_discord_routes(consciousness_loop, state_manager, rate_limiter=None, postgres_manager=None):
     """Initialize Discord routes with dependencies"""
@@ -201,6 +204,98 @@ def extract_image_from_content(content: List[Dict[str, Any]]) -> Tuple[Optional[
     return None, None
 
 
+def extract_and_transcribe_voice(attachments: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract voice/audio from Discord attachments and transcribe to text.
+
+    Uses local Whisper server first (fast, free), falls back to OpenAI Whisper API.
+
+    Args:
+        attachments: List of attachment dicts with keys:
+            - url: URL to the audio (Discord CDN)
+            - content_type: MIME type (audio/ogg, audio/mpeg, etc.)
+            - data: base64 encoded data (optional, if pre-downloaded)
+            - size: file size in bytes
+
+    Returns:
+        Tuple of (transcribed_text, error_message)
+        - If successful: (text, None)
+        - If failed: (None, error_message)
+    """
+    import base64
+    import requests
+
+    # Import STT functions from routes_stt
+    from api.routes_stt import (
+        _transcribe_whisper_local,
+        _transcribe_openai,
+        WHISPER_URL,
+        OPENAI_API_KEY
+    )
+
+    for attachment in attachments:
+        content_type = attachment.get('content_type', '')
+
+        # Check if it's a supported audio format
+        if content_type not in SUPPORTED_AUDIO_FORMATS:
+            continue
+
+        logger.info(f"🎤 Voice message detected: {content_type}")
+
+        # Get audio data
+        audio_data = None
+
+        # Prefer base64 data if provided (pre-downloaded by Discord bot)
+        if 'data' in attachment and attachment['data']:
+            try:
+                audio_data = base64.b64decode(attachment['data'])
+                logger.info(f"   Using pre-downloaded audio: {len(audio_data)} bytes")
+            except Exception as e:
+                logger.error(f"   Failed to decode base64 audio: {e}")
+                continue
+
+        # Fall back to downloading from URL
+        elif 'url' in attachment and attachment['url']:
+            try:
+                logger.info(f"   Downloading audio from: {attachment['url'][:80]}...")
+                response = requests.get(attachment['url'], timeout=30)
+                if response.ok:
+                    audio_data = response.content
+                    logger.info(f"   Downloaded audio: {len(audio_data)} bytes")
+                else:
+                    logger.error(f"   Failed to download audio: {response.status_code}")
+                    continue
+            except Exception as e:
+                logger.error(f"   Failed to download audio: {e}")
+                continue
+
+        if not audio_data:
+            continue
+
+        # Transcribe using local Whisper first
+        logger.info(f"   Transcribing with local Whisper ({WHISPER_URL})...")
+        text, error = _transcribe_whisper_local(audio_data, content_type)
+
+        if text:
+            logger.info(f"   ✅ Transcription (local): '{text[:100]}{'...' if len(text) > 100 else ''}'")
+            return text, None
+
+        # Fall back to OpenAI Whisper if local fails
+        if error and OPENAI_API_KEY:
+            logger.warning(f"   Local Whisper failed ({error}), trying OpenAI...")
+            text, error = _transcribe_openai(audio_data, content_type)
+
+            if text:
+                logger.info(f"   ✅ Transcription (OpenAI): '{text[:100]}{'...' if len(text) > 100 else ''}'")
+                return text, None
+
+        # Both failed
+        logger.error(f"   ❌ Transcription failed: {error}")
+        return None, error or "Transcription failed"
+
+    return None, None  # No audio attachment found
+
+
 # ============================================
 # DISCORD API ENDPOINTS
 # ============================================
@@ -326,13 +421,26 @@ def send_message_to_agent(agent_id):
         else:
             # Standard text content
             content = data.get('content', '').strip()
-            
-            # Check for Discord attachments (images)
+
+            # Check for Discord attachments (images and voice)
             attachments = data.get('attachments', [])
             if attachments:
+                # First check for images
                 media_data, media_type = extract_image_from_attachments(attachments)
                 has_image = media_data is not None
-        
+
+                # Then check for voice messages (transcribe them)
+                voice_text, voice_error = extract_and_transcribe_voice(attachments)
+                if voice_text:
+                    # Prepend transcribed voice to content
+                    if content:
+                        content = f"[Voice message transcription: {voice_text}]\n\n{content}"
+                    else:
+                        content = f"[Voice message transcription: {voice_text}]"
+                    logger.info(f"🎤 Voice transcribed: {len(voice_text)} chars")
+                elif voice_error:
+                    logger.warning(f"⚠️ Voice transcription failed: {voice_error}")
+
         if not content and not has_image:
             return jsonify({'error': 'Message content or image is required'}), 400
         
@@ -728,8 +836,10 @@ def discord_health():
             'text': True,
             'multimodal': True,
             'images': True,
+            'voice_messages': True,
             'max_image_size_mb': MAX_IMAGE_SIZE / (1024 * 1024),
-            'supported_formats': list(SUPPORTED_IMAGE_FORMATS)
+            'supported_image_formats': list(SUPPORTED_IMAGE_FORMATS),
+            'supported_audio_formats': list(SUPPORTED_AUDIO_FORMATS)
         },
         'components': {
             'consciousness_loop': _consciousness_loop is not None,
