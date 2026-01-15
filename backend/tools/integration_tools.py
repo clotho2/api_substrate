@@ -35,6 +35,7 @@ from tools.deep_research import get_deep_research, init_deep_research
 from tools.jina_reader import get_jina_reader, fetch_webpage as _jina_fetch
 from tools.pdf_reader import get_pdf_reader, read_arxiv_paper as _read_arxiv
 from tools.places_search import get_places_search, search_places as _search_places
+from tools.google_places_tool import google_places_tool as _google_places_tool, get_google_places_schema
 
 # Import cost tracker for cost tools
 from core.cost_tracker import CostTracker
@@ -470,6 +471,34 @@ class IntegrationTools:
             return result
         except Exception as e:
             return {"status": "error", "message": f"Places search error: {str(e)}"}
+
+    # ============================================
+    # GOOGLE PLACES (Requires API Key)
+    # ============================================
+
+    def google_places_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Google Places tool for location-aware features.
+
+        Actions:
+        - search_nearby: Search for nearby places (restaurants, gas stations, etc.)
+        - get_details: Get detailed info about a specific place
+        - find_gas: Guardian Mode - Find nearby gas stations with urgency
+        - find_hotel: Guardian Mode - Find nearby hotels/lodging
+
+        Requires: GOOGLE_PLACES_API_KEY environment variable
+
+        Returns:
+            Dict with status and results
+        """
+        try:
+            result = _google_places_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Google Places tool error: {str(e)}"
+            }
     
     # ============================================
     # TOOL SCHEMAS
@@ -673,7 +702,10 @@ class IntegrationTools:
             }
         ]
         schemas.extend(free_tool_schemas)
-        
+
+        # Add Google Places tool (requires API key, more accurate than OSM)
+        schemas.append(get_google_places_schema())
+
         return schemas
 
 
