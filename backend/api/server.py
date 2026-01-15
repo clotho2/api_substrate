@@ -55,6 +55,7 @@ from api.routes_chat import chat_bp, init_chat_routes  # 📱 Telegram/Chat API!
 from api.routes_aicara_compat import aicara_bp, init_aicara_routes  # 🌐 AiCara Frontend Compatibility
 from api.routes_places import places_bp  # 📍 Google Places + Guardian Mode
 from api.routes_tts import tts_bp  # 🎤 Chatterbox TTS for Voice Chat
+from api.routes_stt import stt_bp  # 🎙️ Whisper STT for Voice Chat
 
 # 🏴‍☠️ LETTA MAGIC SAUCE!
 from core.postgres_manager import create_postgres_manager_from_env
@@ -361,6 +362,7 @@ app.register_blueprint(chat_bp)  # 📱 Telegram/Chat API!
 app.register_blueprint(aicara_bp)  # 🌐 /chat and /v1/chat/completions
 app.register_blueprint(places_bp)  # 📍 Google Places + Guardian Mode
 app.register_blueprint(tts_bp)  # 🎤 Chatterbox TTS for Voice Chat
+app.register_blueprint(stt_bp)  # 🎙️ Whisper STT for Voice Chat
 
 # Initialize routes with dependencies
 init_agents_routes(state_manager, version_manager)
