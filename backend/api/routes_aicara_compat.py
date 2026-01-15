@@ -22,6 +22,8 @@ from datetime import datetime
 from flask import Blueprint, Response, request, jsonify
 from typing import Dict, Any, Optional
 
+from core.config import get_model_or_default
+
 logger = logging.getLogger(__name__)
 
 # Create blueprint
@@ -96,10 +98,10 @@ def aicara_chat():
         
         logger.info(f"🌐 AiCara /chat: session={session_id}, stream={stream}, msg_len={len(user_message)}")
         
-        # Get model from state or use default
+        # Get model from state or use default from .env configuration
         model = _state_manager.get_state("agent:model") if _state_manager else None
         if not model:
-            model = "mistralai/mistral-large"
+            model = get_model_or_default()
         
         if stream:
             # STREAMING MODE - Return NDJSON
@@ -257,10 +259,10 @@ def openai_chat_completions():
         
         logger.info(f"📱 AiCara /v1/chat/completions: session={session_id}, stream={stream}")
         
-        # Get model
+        # Get model from state or use default from .env configuration
         model = _state_manager.get_state("agent:model") if _state_manager else None
         if not model:
-            model = "mistralai/mistral-large"
+            model = get_model_or_default()
         
         if stream:
             # STREAMING MODE - OpenAI SSE format
