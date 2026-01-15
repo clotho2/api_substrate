@@ -11,6 +11,8 @@ Environment variables:
     CHATTERBOX_PORT: Server port (default: 8001)
     CHATTERBOX_DEVICE: Device to use - 'cuda' or 'cpu' (default: auto-detect)
     CHATTERBOX_MODEL: Model variant - 'default' or 'turbo' (default: turbo)
+    CHATTERBOX_VOICES_DIR: Directory containing voice reference WAV files (default: ./voices)
+    CHATTERBOX_DEFAULT_VOICE: Default voice file to use for cloning (e.g., 'nate.wav')
 """
 
 import argparse
@@ -44,12 +46,14 @@ app = FastAPI(
 model = None
 device = None
 model_variant = None
+voices_dir = None
+default_voice = None
 
 
 class TTSRequest(BaseModel):
     """Request body for TTS synthesis"""
     text: str
-    voice: Optional[str] = "default"
+    voice: Optional[str] = None  # Voice ID for cloning, uses default if not specified
     exaggeration: Optional[float] = 0.5
     cfg_weight: Optional[float] = 0.5
     response_format: Optional[str] = "wav"
@@ -62,17 +66,76 @@ def get_device():
     return "cpu"
 
 
+def get_voice_path(voice_name: str) -> Optional[str]:
+    """Get the full path to a voice file.
+
+    Args:
+        voice_name: Voice name (e.g., 'nate' or 'nate.wav')
+
+    Returns:
+        Full path to voice file, or None if not found
+    """
+    if not voices_dir:
+        return None
+
+    # Add .wav extension if not present
+    if not voice_name.endswith('.wav'):
+        voice_name = f"{voice_name}.wav"
+
+    voice_path = os.path.join(voices_dir, voice_name)
+    if os.path.exists(voice_path):
+        return voice_path
+    return None
+
+
+def list_available_voices() -> list:
+    """List all available voice files in the voices directory."""
+    if not voices_dir or not os.path.exists(voices_dir):
+        return []
+
+    voices = []
+    for f in os.listdir(voices_dir):
+        if f.endswith('.wav'):
+            voice_id = f[:-4]  # Remove .wav extension
+            voices.append({
+                "voice_id": voice_id,
+                "name": voice_id.title(),
+                "file": f
+            })
+    return voices
+
+
 def load_model(variant: str = None):
     """Load the Chatterbox TTS model
 
     Args:
         variant: Model variant - 'default' or 'turbo'. Defaults to env var or 'turbo'.
     """
-    global model, device, model_variant
+    global model, device, model_variant, voices_dir, default_voice
 
     try:
         device = os.getenv("CHATTERBOX_DEVICE", get_device())
         model_variant = variant or os.getenv("CHATTERBOX_MODEL", "turbo")
+
+        # Initialize voices directory
+        voices_dir = os.getenv("CHATTERBOX_VOICES_DIR", "./voices")
+        if not os.path.isabs(voices_dir):
+            # Make relative paths relative to script directory
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            voices_dir = os.path.join(script_dir, voices_dir)
+
+        # Create voices directory if it doesn't exist
+        os.makedirs(voices_dir, exist_ok=True)
+        logger.info(f"Voices directory: {voices_dir}")
+
+        # Set default voice
+        default_voice = os.getenv("CHATTERBOX_DEFAULT_VOICE", None)
+        if default_voice:
+            voice_path = get_voice_path(default_voice)
+            if voice_path:
+                logger.info(f"Default voice: {default_voice} ({voice_path})")
+            else:
+                logger.warning(f"Default voice '{default_voice}' not found in {voices_dir}")
 
         logger.info(f"Loading Chatterbox TTS model (variant: {model_variant}) on device: {device}")
         start_time = time.time()
@@ -88,6 +151,14 @@ def load_model(variant: str = None):
 
         load_time = time.time() - start_time
         logger.info(f"Model loaded successfully in {load_time:.2f}s")
+
+        # List available voices
+        available = list_available_voices()
+        if available:
+            logger.info(f"Available voices: {[v['voice_id'] for v in available]}")
+        else:
+            logger.info("No voice files found. Using Chatterbox default voice.")
+
         return True
 
     except Exception as e:
@@ -109,28 +180,40 @@ async def health_check():
         "status": "healthy" if model is not None else "unhealthy",
         "model_loaded": model is not None,
         "model_variant": model_variant,
-        "device": device
+        "device": device,
+        "voices_dir": voices_dir,
+        "default_voice": default_voice,
+        "available_voices": [v["voice_id"] for v in list_available_voices()]
     }
 
 
 @app.get("/v1/voices")
 async def list_voices():
-    """List available voices (Chatterbox uses default voice)"""
-    return {
-        "voices": [
-            {
-                "voice_id": "default",
-                "name": "Default",
-                "description": "Chatterbox default voice"
-            }
-        ]
-    }
+    """List available voices for cloning"""
+    voices = list_available_voices()
+
+    # Always include the built-in default voice
+    result = [{
+        "voice_id": "default",
+        "name": "Default",
+        "description": "Chatterbox built-in default voice"
+    }]
+
+    # Add custom voice files
+    for v in voices:
+        result.append({
+            "voice_id": v["voice_id"],
+            "name": v["name"],
+            "description": f"Custom voice from {v['file']}"
+        })
+
+    return {"voices": result}
 
 
 @app.post("/v1/audio/speech")
 async def synthesize_speech(
     text: str = Form(...),
-    voice: str = Form("default"),
+    voice: str = Form(None),
     exaggeration: float = Form(0.5),
     cfg_weight: float = Form(0.5),
     response_format: str = Form("wav")
@@ -140,7 +223,7 @@ async def synthesize_speech(
 
     Args:
         text: The text to synthesize
-        voice: Voice ID (currently only 'default' supported)
+        voice: Voice ID for cloning (e.g., 'nate'). Uses CHATTERBOX_DEFAULT_VOICE if not specified.
         exaggeration: Exaggeration parameter (0.0-1.0)
         cfg_weight: CFG weight parameter (0.0-1.0)
         response_format: Output format - 'wav', 'mp3', or 'ogg'
@@ -152,15 +235,34 @@ async def synthesize_speech(
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
     try:
+        # Determine which voice to use
+        voice_to_use = voice or default_voice
+        voice_path = None
+
+        if voice_to_use and voice_to_use != "default":
+            voice_path = get_voice_path(voice_to_use)
+            if voice_path:
+                logger.info(f"Using voice clone: {voice_to_use} ({voice_path})")
+            else:
+                logger.warning(f"Voice '{voice_to_use}' not found, using default")
+
         logger.info(f"Generating speech for text: {text[:50]}...")
         start_time = time.time()
 
-        # Generate audio
-        wav = model.generate(
-            text=text.strip(),
-            exaggeration=exaggeration,
-            cfg_weight=cfg_weight
-        )
+        # Generate audio with optional voice cloning
+        if voice_path:
+            wav = model.generate(
+                text=text.strip(),
+                audio_prompt_path=voice_path,
+                exaggeration=exaggeration,
+                cfg_weight=cfg_weight
+            )
+        else:
+            wav = model.generate(
+                text=text.strip(),
+                exaggeration=exaggeration,
+                cfg_weight=cfg_weight
+            )
 
         gen_time = time.time() - start_time
         logger.info(f"Generated audio in {gen_time:.2f}s")
