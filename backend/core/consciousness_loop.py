@@ -422,6 +422,10 @@ class ConsciousnessLoop:
                         messages_to_summarize = history[:-messages_to_keep] if len(history) > messages_to_keep else []
 
                         if messages_to_summarize:
+                            # 🔒 Set flag BEFORE scheduling to prevent race condition!
+                            # This ensures no other request can schedule a duplicate summary
+                            self._summary_in_progress = True
+
                             # Trigger async summary (non-blocking)
                             import asyncio
                             try:
@@ -433,9 +437,12 @@ class ConsciousnessLoop:
                                         messages=messages_to_summarize
                                     ))
                                 else:
-                                    # Just log - will be caught by next context window check
+                                    # Clear flag since we didn't actually schedule
+                                    self._summary_in_progress = False
                                     print(f"   ℹ️  Summary will trigger on next context window check")
                             except RuntimeError:
+                                # Clear flag since we didn't actually schedule
+                                self._summary_in_progress = False
                                 print(f"   ℹ️  Summary will trigger on next context window check")
 
                 # If we have too many, keep only the most recent ones
@@ -2939,8 +2946,8 @@ send_message: false
         """
         from core.summary_generator import SummaryGenerator
 
-        # 🔒 Set flag to prevent concurrent summaries
-        self._summary_in_progress = True
+        # 🔒 Flag is already set BEFORE scheduling (in _build_context_messages)
+        # This prevents race conditions where multiple tasks could be scheduled
 
         print(f"\n{'='*60}")
         print(f"📝 BACKGROUND SUMMARY TRIGGERED")
