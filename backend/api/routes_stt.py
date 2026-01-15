@@ -106,6 +106,7 @@ def _transcribe_whisper_local(audio_data: bytes, content_type: str, language: st
             'audio/ogg': 'ogg',
             'audio/flac': 'flac',
             'audio/m4a': 'm4a',
+            'audio/mp4': 'mp4',
         }
         ext = ext_map.get(content_type, 'wav')
 
@@ -134,10 +135,13 @@ def _transcribe_whisper_local(audio_data: bytes, content_type: str, language: st
             logger.info(f"🎤 Whisper transcription: {len(text)} chars")
             return text, None
 
-        # Try alternative endpoint format
+        # Try alternative endpoint format - recreate BytesIO since it was consumed
+        files_retry = {
+            'file': (f'audio.{ext}', io.BytesIO(audio_data), content_type)
+        }
         response = requests.post(
             f"{WHISPER_URL}/transcribe",
-            files=files,
+            files=files_retry,
             data=data,
             timeout=WHISPER_TIMEOUT
         )
@@ -170,10 +174,14 @@ def _transcribe_openai(audio_data: bytes, content_type: str, language: str = Non
     try:
         ext_map = {
             'audio/wav': 'wav',
+            'audio/x-wav': 'wav',
             'audio/mpeg': 'mp3',
             'audio/mp3': 'mp3',
             'audio/webm': 'webm',
+            'audio/ogg': 'ogg',
+            'audio/flac': 'flac',
             'audio/m4a': 'm4a',
+            'audio/mp4': 'mp4',
         }
         ext = ext_map.get(content_type, 'wav')
 
