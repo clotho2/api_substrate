@@ -142,8 +142,8 @@ def load_model(variant: str = None):
 
         if model_variant == "turbo":
             # Use the faster turbo model
-            from chatterbox.tts import ChatterboxTTSTurbo
-            model = ChatterboxTTSTurbo.from_pretrained(device=device)
+            from chatterbox.tts_turbo import ChatterboxTurboTTS
+            model = ChatterboxTurboTTS.from_pretrained(device=device)
         else:
             # Use the default model
             from chatterbox.tts import ChatterboxTTS
