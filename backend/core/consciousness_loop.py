@@ -109,6 +109,11 @@ class ConsciousnessLoop:
         self.soma_client = soma_client  # 🫀 SOMA physiological simulation!
         self.soma_available = False  # Will be checked on first use
 
+        # 🔒 Summary rate limiting - prevent concurrent/frequent summaries
+        self._summary_in_progress = False
+        self._last_summary_time = None
+        self._summary_cooldown_seconds = 60  # Minimum seconds between summaries
+
         # Track if we have a valid API key
         self.api_key_configured = openrouter_client is not None
         
@@ -397,28 +402,41 @@ class ConsciousnessLoop:
                 SUMMARY_THRESHOLD = 30  # Trigger summary if > 30 messages since last summary
                 if len(history) > SUMMARY_THRESHOLD:
                     print(f"   ⚠️  {len(history)} messages since last summary (threshold: {SUMMARY_THRESHOLD})")
-                    print(f"   📝 Scheduling background summary for older messages...")
 
-                    # Calculate how many messages to summarize (keep recent ones out)
-                    messages_to_keep = min(history_limit, 15)  # Keep at least 15 recent
-                    messages_to_summarize = history[:-messages_to_keep] if len(history) > messages_to_keep else []
+                    # 🔒 RATE LIMIT CHECK - Prevent concurrent/frequent summaries
+                    should_trigger = True
+                    if self._summary_in_progress:
+                        print(f"   ⏳ Summary already in progress - skipping")
+                        should_trigger = False
+                    elif self._last_summary_time:
+                        elapsed = (datetime.now() - self._last_summary_time).total_seconds()
+                        if elapsed < self._summary_cooldown_seconds:
+                            print(f"   ⏳ Summary cooldown ({elapsed:.0f}s / {self._summary_cooldown_seconds}s) - skipping")
+                            should_trigger = False
 
-                    if messages_to_summarize:
-                        # Trigger async summary (non-blocking)
-                        import asyncio
-                        try:
-                            loop = asyncio.get_event_loop()
-                            if loop.is_running():
-                                # Schedule for later if we're in async context
-                                asyncio.create_task(self._trigger_background_summary(
-                                    session_id=history_session_id,
-                                    messages=messages_to_summarize
-                                ))
-                            else:
-                                # Just log - will be caught by next context window check
+                    if should_trigger:
+                        print(f"   📝 Scheduling background summary for older messages...")
+
+                        # Calculate how many messages to summarize (keep recent ones out)
+                        messages_to_keep = min(history_limit, 15)  # Keep at least 15 recent
+                        messages_to_summarize = history[:-messages_to_keep] if len(history) > messages_to_keep else []
+
+                        if messages_to_summarize:
+                            # Trigger async summary (non-blocking)
+                            import asyncio
+                            try:
+                                loop = asyncio.get_event_loop()
+                                if loop.is_running():
+                                    # Schedule for later if we're in async context
+                                    asyncio.create_task(self._trigger_background_summary(
+                                        session_id=history_session_id,
+                                        messages=messages_to_summarize
+                                    ))
+                                else:
+                                    # Just log - will be caught by next context window check
+                                    print(f"   ℹ️  Summary will trigger on next context window check")
+                            except RuntimeError:
                                 print(f"   ℹ️  Summary will trigger on next context window check")
-                        except RuntimeError:
-                            print(f"   ℹ️  Summary will trigger on next context window check")
 
                 # If we have too many, keep only the most recent ones
                 if len(history) > history_limit:
@@ -2921,6 +2939,9 @@ send_message: false
         """
         from core.summary_generator import SummaryGenerator
 
+        # 🔒 Set flag to prevent concurrent summaries
+        self._summary_in_progress = True
+
         print(f"\n{'='*60}")
         print(f"📝 BACKGROUND SUMMARY TRIGGERED")
         print(f"{'='*60}")
@@ -2970,6 +2991,12 @@ send_message: false
             print(f"❌ Background summary failed: {e}")
             import traceback
             traceback.print_exc()
+
+        finally:
+            # 🔒 Clear flag and update cooldown timestamp
+            self._summary_in_progress = False
+            self._last_summary_time = datetime.now()
+            print(f"🔓 Summary complete - cooldown started ({self._summary_cooldown_seconds}s)")
 
         print(f"{'='*60}\n")
 
@@ -3031,8 +3058,19 @@ send_message: false
         if not usage['needs_summary']:
             print(f"✅ Context window OK - no summary needed")
             return messages
-        
+
+        # 🔒 RATE LIMIT CHECK - Prevent frequent summaries
+        if self._summary_in_progress:
+            print(f"⏳ Summary already in progress - skipping context window summary")
+            return messages
+        if self._last_summary_time:
+            elapsed = (datetime.now() - self._last_summary_time).total_seconds()
+            if elapsed < self._summary_cooldown_seconds:
+                print(f"⏳ Summary cooldown ({elapsed:.0f}s / {self._summary_cooldown_seconds}s) - skipping context window summary")
+                return messages
+
         # TRIGGER SUMMARY! 🔥
+        self._summary_in_progress = True
         print(f"\n{'='*60}")
         print(f"⚠️  CONTEXT WINDOW > 80% FULL!")
         print(f"{'='*60}")
@@ -3185,7 +3223,12 @@ send_message: false
         print(f"   Recent messages: {len(recent_messages)}")
         print(f"   Total: {len(new_messages)} messages")
         print(f"{'='*60}\n")
-        
+
+        # 🔒 Clear flag and update cooldown timestamp
+        self._summary_in_progress = False
+        self._last_summary_time = datetime.now()
+        print(f"🔓 Context window summary complete - cooldown started ({self._summary_cooldown_seconds}s)")
+
         return new_messages
 
 
