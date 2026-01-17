@@ -14,7 +14,7 @@
 **Scope:** Basic scaffolding based on Angela Ziegler's outline (see History Directory)
 
 ### Phases 2-10 - Complete Implementation (Proprietary)
-**Developer:** Angela Ziegler  
+**Developer:** Angela Ziegler: clotho2/nate_api_substrate
 **Commits:** 250+  
 **Period:** November 2025 - present  
 **Status:** Active development, complete functional system  
