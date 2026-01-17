@@ -11,8 +11,10 @@ Environment variables:
     CHATTERBOX_PORT: Server port (default: 8001)
     CHATTERBOX_DEVICE: Device to use - 'cuda' or 'cpu' (default: auto-detect)
     CHATTERBOX_MODEL: Model variant - 'default' or 'turbo' (default: turbo)
+    CHATTERBOX_MODEL_PATH: Local path to model weights (skips HuggingFace download)
     CHATTERBOX_VOICES_DIR: Directory containing voice reference WAV files (default: ./voices)
     CHATTERBOX_DEFAULT_VOICE: Default voice file to use for cloning (e.g., 'nate.wav')
+    HF_TOKEN: HuggingFace access token (only needed if CHATTERBOX_MODEL_PATH not set)
 """
 
 import argparse
@@ -140,14 +142,37 @@ def load_model(variant: str = None):
         logger.info(f"Loading Chatterbox TTS model (variant: {model_variant}) on device: {device}")
         start_time = time.time()
 
-        if model_variant == "turbo":
-            # Use the faster turbo model
-            from chatterbox.tts_turbo import ChatterboxTurboTTS
-            model = ChatterboxTurboTTS.from_pretrained(device=device)
+        # Check for local model path first
+        model_path = os.getenv("CHATTERBOX_MODEL_PATH")
+
+        if model_path:
+            # Load from local path (no HuggingFace needed)
+            logger.info(f"Loading model from local path: {model_path}")
+            if model_variant == "turbo":
+                from chatterbox.tts_turbo import ChatterboxTurboTTS
+                model = ChatterboxTurboTTS.from_pretrained(model_path, device=device)
+            else:
+                from chatterbox.tts import ChatterboxTTS
+                model = ChatterboxTTS.from_pretrained(model_path, device=device)
         else:
-            # Use the default model
-            from chatterbox.tts import ChatterboxTTS
-            model = ChatterboxTTS.from_pretrained(device=device)
+            # Load from HuggingFace (requires token for gated models)
+            hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+            if hf_token:
+                try:
+                    from huggingface_hub import login
+                    login(token=hf_token, add_to_git_credential=False)
+                    logger.info("Logged in to HuggingFace")
+                except Exception as e:
+                    logger.warning(f"HuggingFace login failed: {e}")
+            else:
+                logger.warning("No HF_TOKEN found - model download may fail for gated models")
+
+            if model_variant == "turbo":
+                from chatterbox.tts_turbo import ChatterboxTurboTTS
+                model = ChatterboxTurboTTS.from_pretrained(device=device)
+            else:
+                from chatterbox.tts import ChatterboxTTS
+                model = ChatterboxTTS.from_pretrained(device=device)
 
         load_time = time.time() - start_time
         logger.info(f"Model loaded successfully in {load_time:.2f}s")
