@@ -13,6 +13,7 @@ Environment variables:
     CHATTERBOX_MODEL: Model variant - 'default' or 'turbo' (default: turbo)
     CHATTERBOX_VOICES_DIR: Directory containing voice reference WAV files (default: ./voices)
     CHATTERBOX_DEFAULT_VOICE: Default voice file to use for cloning (e.g., 'nate.wav')
+    HF_TOKEN: HuggingFace access token (required for downloading gated models)
 """
 
 import argparse
@@ -139,6 +140,18 @@ def load_model(variant: str = None):
 
         logger.info(f"Loading Chatterbox TTS model (variant: {model_variant}) on device: {device}")
         start_time = time.time()
+
+        # Login to HuggingFace if token is available (required for gated models)
+        hf_token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+        if hf_token:
+            try:
+                from huggingface_hub import login
+                login(token=hf_token, add_to_git_credential=False)
+                logger.info("Logged in to HuggingFace")
+            except Exception as e:
+                logger.warning(f"HuggingFace login failed: {e}")
+        else:
+            logger.warning("No HF_TOKEN found - model download may fail for gated models")
 
         if model_variant == "turbo":
             # Use the faster turbo model
