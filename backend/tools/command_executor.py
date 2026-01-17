@@ -104,6 +104,7 @@ WHITELISTED_COMMANDS = {
         "ps": {"max_args": 10, "description": "Process status"},
         "systemctl": {"max_args": 5, "description": "Service control", "requires_approval": True},
         "journalctl": {"max_args": 10, "description": "System journal"},
+        "sudo journalctl": {"max_args": 15, "description": "System journal (with sudo for full access)"},
         "free": {"max_args": 5, "description": "Memory usage"},
         "uptime": {"max_args": 0, "description": "System uptime"},
     },
@@ -184,18 +185,29 @@ def _validate_command(command: str) -> Tuple[bool, str, Optional[str], Optional[
     Returns:
         (is_valid, error_message, command_category, command_config)
     """
-    # Check blocked patterns first
-    for pattern in BLOCKED_PATTERNS:
-        if re.search(pattern, command, re.IGNORECASE):
-            return False, f"Command contains blocked pattern: {pattern}", None, None
-
-    # Parse command
+    # Parse command first to check for whitelisted multi-word commands
     parts = command.strip().split()
     if not parts:
         return False, "Empty command", None, None
 
-    # Check if command is whitelisted
     base_command = parts[0]
+
+    # Check for sudo journalctl (special case - whitelisted before blocked pattern check)
+    if base_command == "sudo" and len(parts) > 1 and parts[1] == "journalctl":
+        sudo_command = f"{parts[0]} {parts[1]}"
+        for category, commands in WHITELISTED_COMMANDS.items():
+            if sudo_command in commands:
+                config = commands[sudo_command]
+                # Validate argument count
+                arg_count = len(parts) - 2  # Exclude "sudo" and "journalctl"
+                if arg_count > config["max_args"]:
+                    return False, f"Too many arguments (max {config['max_args']})", None, None
+                return True, "", category, config
+
+    # Check blocked patterns (after whitelisted multi-word commands)
+    for pattern in BLOCKED_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return False, f"Command contains blocked pattern: {pattern}", None, None
 
     # Check for git commands (special case - "git status" is one command)
     if base_command == "git" and len(parts) > 1:
