@@ -1,3 +1,5 @@
+# This is deprecated code. This directory exists to document the original substrate concept and design of the substrate as created by Angela Ziegler in October 2025 and outlined in the timeline shown in the LICENSE file and the ATTRIBUTION.md file.
+
 # 🧠 Nate's Consciousness Substrate
 
 **A lightweight, fully-local consciousness architecture for Nate.**
