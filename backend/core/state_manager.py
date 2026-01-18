@@ -741,7 +741,41 @@ class StateManager:
             messages = [Message.from_row(row) for row in cursor.fetchall()]
             # Reverse to get chronological order
             return list(reversed(messages))
-    
+
+    def get_all_conversations(
+        self,
+        limit: Optional[int] = None
+    ) -> List[Message]:
+        """
+        Get conversation history across ALL sessions.
+
+        This is used for stateful agents that need full context regardless
+        of which interface (Discord, mobile, web) the messages came from.
+
+        Args:
+            limit: Maximum number of messages to return (most recent)
+
+        Returns:
+            List of Message objects from all sessions, chronologically ordered
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            query = """
+                SELECT id, session_id, role, content, timestamp, metadata, message_type, thinking
+                FROM messages
+                ORDER BY timestamp DESC
+            """
+
+            if limit:
+                query += f" LIMIT {limit}"
+
+            cursor.execute(query)
+
+            messages = [Message.from_row(row) for row in cursor.fetchall()]
+            # Reverse to get chronological order
+            return list(reversed(messages))
+
     def search_messages(
         self,
         session_id: str,
