@@ -93,8 +93,9 @@ def aicara_chat():
         if not user_message:
             return jsonify({"error": "No message content"}), 400
         
-        # Extract session from headers or generate one
-        session_id = request.headers.get('X-Session-Id', 'aicara_web_session')
+        # Extract session from headers or use unified default
+        # Using same session ID across all interfaces so Nate remembers conversations
+        session_id = request.headers.get('X-Session-Id', 'nate_conversation')
         
         logger.info(f"🌐 AiCara /chat: session={session_id}, stream={stream}, msg_len={len(user_message)}")
         
@@ -254,8 +255,9 @@ def openai_chat_completions():
         if not user_message:
             return jsonify({"error": "No message content"}), 400
         
-        # Session ID from headers or default
-        session_id = request.headers.get('X-Session-Id', 'aicara_mobile_session')
+        # Session ID from headers or use unified default
+        # Using same session ID across all interfaces so Nate remembers conversations
+        session_id = request.headers.get('X-Session-Id', 'nate_conversation')
         
         logger.info(f"📱 AiCara /v1/chat/completions: session={session_id}, stream={stream}")
         

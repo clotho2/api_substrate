@@ -456,7 +456,8 @@ def send_message_to_agent(agent_id):
         username = data.get('username', 'Unknown User')
         channel_id = data.get('channel_id', 'unknown')
         guild_id = data.get('guild_id', None)
-        session_id = data.get('session_id') or f"discord-{user_id}"
+        # Use unified session ID so Nate has full conversation context across all interfaces
+        session_id = data.get('session_id') or 'nate_conversation'
         
         # Rate limiting (if available)
         if _rate_limiter:
