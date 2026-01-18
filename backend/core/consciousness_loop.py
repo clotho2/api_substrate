@@ -380,9 +380,9 @@ class ConsciousnessLoop:
                 print(f"   📝 Found summary (created: {latest_summary['created_at']})")
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
 
-                # Get ALL messages (we'll filter by timestamp)
-                all_history = self.state.get_conversation(
-                    session_id=history_session_id,
+                # Get ALL messages across ALL sessions (we'll filter by timestamp)
+                # This ensures Nate has full context regardless of which interface messages came from
+                all_history = self.state.get_all_conversations(
                     limit=100000  # Get all to filter properly
                 )
 
@@ -453,12 +453,12 @@ class ConsciousnessLoop:
 
                 print(f"   ✓ Loaded {len(history)} messages (after summary)")
             else:
-                # No summary - load normally
-                history = self.state.get_conversation(
-                    session_id=history_session_id,
+                # No summary - load ALL messages across ALL sessions
+                # This ensures Nate has full context regardless of which interface messages came from
+                history = self.state.get_all_conversations(
                     limit=history_limit
                 )
-                print(f"   ✓ No summary found - loaded {len(history)} messages normally")
+                print(f"   ✓ No summary found - loaded {len(history)} messages from all sessions")
             
             print(f"✓ Found {len(history)} messages in history")
             
