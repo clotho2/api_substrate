@@ -58,12 +58,13 @@ class ElevenLabsTurboProvider(VoiceProvider):
     def __init__(self):
         self.api_key = os.getenv('ELEVENLABS_API_KEY')
         self.voice_id = os.getenv('ELEVENLABS_VOICE_ID', 'pNInz6obpgDQGcFmaJgB')  # Default: Adam
+        self.model_id = os.getenv('ELEVENLABS_MODEL', 'eleven_turbo_v2_5')  # Turbo for low latency
         self.base_url = "https://api.elevenlabs.io/v1"
         
         if not self.api_key:
             raise ValueError("ELEVENLABS_API_KEY not set in environment")
         
-        logger.info(f"🎙️ ElevenLabs Turbo provider initialized (voice: {self.voice_id})")
+        logger.info(f"🎙️ ElevenLabs provider initialized (voice: {self.voice_id}, model: {self.model_id})")
     
     async def text_to_speech(
         self, 
@@ -84,7 +85,7 @@ class ElevenLabsTurboProvider(VoiceProvider):
         
         payload = {
             "text": text,
-            "model_id": "eleven_turbo_v2_5",  # Turbo model for low latency
+            "model_id": self.model_id,
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.75,
