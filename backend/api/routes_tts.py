@@ -2,28 +2,34 @@
 TTS Routes for Mobile Voice Chat
 ================================
 
-Provides Text-to-Speech endpoints for the AiCara mobile app using Chatterbox TTS.
-This acts as a proxy/preprocessor between the mobile app and Chatterbox.
+Provides Text-to-Speech endpoints for the AiCara mobile app.
+Supports multiple TTS providers via voice_providers abstraction:
+- ElevenLabs Turbo v2.5 (fast, conversational)
+- Chatterbox (local fallback)
 
 Endpoints:
 - GET  /tts/health     - Health check for TTS service
 - POST /tts            - Convert text to speech
 - POST /tts/stream     - Stream audio chunks (for real-time playback)
 
-Why proxy through substrate instead of direct to Chatterbox?
+Why proxy through substrate instead of direct to provider?
 - Text preprocessing (clean markdown, emojis, normalize)
 - Request logging and monitoring
 - Rate limiting
+- Provider abstraction (switch providers without app changes)
 - Future: voice cloning, SSML support, caching
 """
 
 import os
 import re
 import logging
+import asyncio
 import requests
 from flask import Blueprint, Response, request, jsonify, stream_with_context
 from typing import Optional
 import base64
+
+from core.voice_providers import get_voice_provider
 
 logger = logging.getLogger(__name__)
 
@@ -141,132 +147,75 @@ def tts_health():
 
 
 # ============================================
-# TEXT TO SPEECH
+# PRIMARY TTS ENDPOINT - Uses Voice Provider
 # ============================================
 
 @tts_bp.route('/tts', methods=['POST'])
 def text_to_speech():
     """
-    Convert text to speech using Chatterbox TTS.
-
+    Convert text to speech using configured provider.
+    
+    Automatically uses ElevenLabs Turbo (fast) or Chatterbox (local fallback).
+    
     Request Body:
         {
-            "text": "Text to convert to speech",
-            "voice": "default",           // Optional: voice ID
-            "speed": 1.0,                 // Optional: speech speed
-            "preprocess": true,           // Optional: clean markdown (default: true)
-            "format": "wav"               // Optional: audio format (wav, mp3)
+            "text": "Text to convert",
+            "voice": "optional-voice-id",
+            "speed": 1.0
         }
-
-    Response Formats (based on Accept header or Chatterbox config):
-        1. Direct audio: Content-Type: audio/wav, body is raw audio
-        2. JSON with base64: {"audio": "base64-encoded-audio"}
-        3. JSON with URL: {"audio_url": "https://..."}
+    
+    Response:
+        Content-Type: audio/mpeg (ElevenLabs) or audio/wav (Chatterbox)
+        Body: Raw audio data
     """
     try:
-        # Parse request
         data = request.get_json() or {}
         text = data.get('text', '')
-        voice = data.get('voice', 'default')
+        voice = data.get('voice')
         speed = data.get('speed', 1.0)
-        preprocess = data.get('preprocess', True)
-        audio_format = data.get('format', 'wav')
-
-        # Validate text
+        
         if not text:
-            return jsonify({
-                "error": "Text is required",
-                "status": "error"
-            }), 400
-
-        # Preprocess text if enabled
-        if preprocess:
-            original_length = len(text)
-            text = _preprocess_text(text)
-            logger.debug(f"TTS preprocessing: {original_length} -> {len(text)} chars")
-
-        # Check text length
+            return jsonify({"error": "Text is required"}), 400
+        
+        # Preprocess text
+        text = _preprocess_text(text)
+        
         if len(text) > MAX_TEXT_LENGTH:
             return jsonify({
-                "error": f"Text too long ({len(text)} chars). Maximum is {MAX_TEXT_LENGTH}.",
-                "status": "error"
+                "error": f"Text too long ({len(text)} chars). Max: {MAX_TEXT_LENGTH}"
             }), 400
-
-        # Log request
-        logger.info(f"🎤 TTS request: {len(text)} chars, voice={voice}")
-
-        # Build Chatterbox request
-        chatterbox_payload = {
-            "text": text,
-            "voice": voice,
-            "speed": speed,
-            "format": audio_format
-        }
-
-        # Call Chatterbox
-        response = requests.post(
-            f"{CHATTERBOX_URL}/tts",
-            json=chatterbox_payload,
-            timeout=CHATTERBOX_TIMEOUT,
-            stream=True  # Allow streaming for large audio
-        )
-
-        if not response.ok:
-            logger.error(f"Chatterbox error: {response.status_code} - {response.text}")
-            return jsonify({
-                "error": f"TTS service error: {response.status_code}",
-                "status": "error"
-            }), response.status_code
-
-        # Check response type
-        content_type = response.headers.get('Content-Type', '')
-
-        # If Chatterbox returns direct audio, pass it through
-        if 'audio' in content_type:
-            logger.info(f"🔊 TTS response: direct audio ({content_type})")
-            return Response(
-                response.content,
-                mimetype=content_type,
-                headers={
-                    'Content-Length': response.headers.get('Content-Length', ''),
-                    'X-TTS-Engine': 'chatterbox'
-                }
+        
+        logger.info(f"🎤 TTS request: {len(text)} chars")
+        
+        # Get provider and generate audio
+        provider = get_voice_provider()
+        
+        # Run async in sync context
+        loop = asyncio.new_event_loop()
+        try:
+            audio_data = loop.run_until_complete(
+                provider.text_to_speech(text, voice_id=voice, speed=speed)
             )
-
-        # If Chatterbox returns JSON, parse and forward
-        elif 'application/json' in content_type:
-            result = response.json()
-            logger.info(f"🔊 TTS response: JSON format")
-
-            # Add metadata
-            result['tts_engine'] = 'chatterbox'
-            result['text_length'] = len(text)
-
-            return jsonify(result)
-
-        # Unknown format - return as-is
+        finally:
+            loop.close()
+        
+        # Determine content type based on provider
+        if provider.get_provider_name() == 'elevenlabs_turbo':
+            content_type = 'audio/mpeg'
         else:
-            logger.warning(f"Unknown Chatterbox response type: {content_type}")
-            return Response(
-                response.content,
-                mimetype=content_type
-            )
-
-    except requests.exceptions.Timeout:
-        logger.error("Chatterbox TTS timeout")
-        return jsonify({
-            "error": "TTS request timed out",
-            "status": "error"
-        }), 504
-
-    except requests.exceptions.ConnectionError:
-        logger.error(f"Cannot connect to Chatterbox at {CHATTERBOX_URL}")
-        return jsonify({
-            "error": "TTS service unavailable",
-            "status": "error",
-            "fallback_hint": "Use device TTS"
-        }), 503
-
+            content_type = 'audio/wav'
+        
+        logger.info(f"✅ TTS complete: {len(audio_data)} bytes via {provider.get_provider_name()}")
+        
+        return Response(
+            audio_data,
+            mimetype=content_type,
+            headers={
+                'X-TTS-Provider': provider.get_provider_name(),
+                'X-Text-Length': str(len(text))
+            }
+        )
+        
     except Exception as e:
         logger.exception(f"TTS error: {e}")
         return jsonify({

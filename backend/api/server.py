@@ -56,6 +56,7 @@ from api.routes_aicara_compat import aicara_bp, init_aicara_routes  # 🌐 AiCar
 from api.routes_places import places_bp  # 📍 Google Places + Guardian Mode
 from api.routes_tts import tts_bp  # 🎤 Chatterbox TTS for Voice Chat
 from api.routes_stt import stt_bp  # 🎙️ Whisper STT for Voice Chat
+from api.routes_guardian import guardian_bp, init_guardian_routes  # 🛡️ Guardian Mode!
 
 # 🏴‍☠️ LETTA MAGIC SAUCE!
 from core.postgres_manager import create_postgres_manager_from_env
@@ -363,6 +364,7 @@ app.register_blueprint(aicara_bp)  # 🌐 /chat and /v1/chat/completions
 app.register_blueprint(places_bp)  # 📍 Google Places + Guardian Mode
 app.register_blueprint(tts_bp)  # 🎤 Chatterbox TTS for Voice Chat
 app.register_blueprint(stt_bp)  # 🎙️ Whisper STT for Voice Chat
+app.register_blueprint(guardian_bp)  # 🛡️ Guardian Mode!
 
 # Initialize routes with dependencies
 init_agents_routes(state_manager, version_manager)
@@ -373,6 +375,7 @@ init_postgres_routes(postgres_manager, message_manager, memory_engine)  # 🏴�
 init_discord_routes(consciousness_loop, state_manager, rate_limiter, postgres_manager)  # 🎮 Discord Bot!
 init_chat_routes(consciousness_loop, state_manager, rate_limiter)  # 📱 Telegram/Chat API!
 init_aicara_routes(consciousness_loop, state_manager, rate_limiter)  # 🌐 AiCara Frontend Compatibility
+init_guardian_routes(consciousness_loop, state_manager, postgres_manager)  # 🛡️ Guardian Mode!
 
 
 # ============================================
