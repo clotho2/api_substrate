@@ -29,7 +29,7 @@ from flask import Blueprint, Response, request, jsonify, stream_with_context
 from typing import Optional
 import base64
 
-from core.voice_providers import get_voice_provider
+from core.voice_providers import get_voice_provider, reset_voice_provider
 
 logger = logging.getLogger(__name__)
 
@@ -130,20 +130,113 @@ def tts_health():
     Returns:
         200: TTS service is healthy
         503: TTS service is unavailable
+    """
+    try:
+        provider = get_voice_provider()
+        provider_name = provider.get_provider_name()
+        
+        health = {
+            "status": "healthy",
+            "provider": provider_name,
+        }
+        
+        # Add provider-specific info
+        if provider_name == 'elevenlabs_turbo':
+            health["elevenlabs"] = {
+                "voice_id": getattr(provider, 'voice_id', 'unknown'),
+                "model": getattr(provider, 'model_id', 'unknown')
+            }
+        else:
+            # Check Chatterbox health for fallback provider
+            chatterbox_health = _check_chatterbox_health()
+            health["chatterbox"] = chatterbox_health
+            if chatterbox_health["status"] != "healthy":
+                health["status"] = "degraded"
+        
+        return jsonify(health), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 503
 
+
+# ============================================
+# PROVIDER INFO - Debug which provider is active
+# ============================================
+
+@tts_bp.route('/tts/provider', methods=['GET', 'POST'])
+def tts_provider_info():
+    """
+    GET: Get current TTS provider information.
+    POST: Reset provider cache and re-initialize (use after changing .env)
+    
+    Useful for debugging which provider is active and why.
+    
     Response:
         {
-            "status": "healthy" | "unhealthy" | "unavailable",
-            "chatterbox_url": "http://...",
-            "response_time_ms": 50.5
+            "provider": "elevenlabs_turbo" | "chatterbox",
+            "config": {
+                "VOICE_PROVIDER": "auto",
+                "ELEVENLABS_API_KEY": "sk-...xxx (set)" | "(not set)",
+                "ELEVENLABS_VOICE_ID": "xxx",
+                "ELEVENLABS_MODEL": "eleven_turbo_v2_5"
+            }
         }
     """
-    health = _check_chatterbox_health()
-
-    if health["status"] == "healthy":
-        return jsonify(health), 200
-    else:
-        return jsonify(health), 503
+    try:
+        # POST = reset provider cache and re-initialize
+        if request.method == 'POST':
+            reset_voice_provider()
+            logger.info("🔄 Voice provider cache reset - re-initializing...")
+        
+        provider = get_voice_provider()
+        provider_name = provider.get_provider_name()
+        
+        # Get config (mask API key)
+        api_key = os.getenv('ELEVENLABS_API_KEY', '')
+        if api_key:
+            masked_key = f"{api_key[:6]}...{api_key[-3:]} (set)" if len(api_key) > 10 else "(set)"
+        else:
+            masked_key = "(not set)"
+        
+        config = {
+            "VOICE_PROVIDER": os.getenv('VOICE_PROVIDER', 'auto'),
+            "ELEVENLABS_API_KEY": masked_key,
+            "ELEVENLABS_VOICE_ID": os.getenv('ELEVENLABS_VOICE_ID', '(not set)'),
+            "ELEVENLABS_MODEL": os.getenv('ELEVENLABS_MODEL', 'eleven_turbo_v2_5'),
+            "CHATTERBOX_URL": os.getenv('CHATTERBOX_URL', 'http://localhost:8001')
+        }
+        
+        result = {
+            "provider": provider_name,
+            "config": config,
+            "reset": request.method == 'POST'
+        }
+        
+        # Add provider-specific details
+        if provider_name == 'elevenlabs_turbo':
+            result["elevenlabs"] = {
+                "voice_id": getattr(provider, 'voice_id', 'unknown'),
+                "model_id": getattr(provider, 'model_id', 'unknown'),
+                "base_url": getattr(provider, 'base_url', 'unknown')
+            }
+        else:
+            result["chatterbox"] = {
+                "url": getattr(provider, 'base_url', CHATTERBOX_URL)
+            }
+            # Explain why ElevenLabs isn't active
+            if not os.getenv('ELEVENLABS_API_KEY'):
+                result["note"] = "ElevenLabs not active: ELEVENLABS_API_KEY not set"
+            elif os.getenv('VOICE_PROVIDER') == 'chatterbox':
+                result["note"] = "ElevenLabs not active: VOICE_PROVIDER explicitly set to 'chatterbox'"
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.exception(f"Provider info error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================
@@ -304,34 +397,88 @@ def text_to_speech_stream():
 
 
 # ============================================
-# VOICE INFO (optional - for future voice selection)
+# VOICE INFO
 # ============================================
 
 @tts_bp.route('/tts/voices', methods=['GET'])
 def list_voices():
     """
-    List available TTS voices.
+    List available TTS voices from current provider.
 
     Returns:
         {
+            "provider": "elevenlabs_turbo" | "chatterbox",
             "voices": [
-                {"id": "default", "name": "Default Voice", "language": "en"},
+                {"id": "xxx", "name": "Voice Name", "language": "en"},
                 ...
             ]
         }
     """
     try:
-        # Try to get voices from Chatterbox
-        response = requests.get(
-            f"{CHATTERBOX_URL}/voices",
-            timeout=5
-        )
-
-        if response.ok:
-            return jsonify(response.json())
-        else:
-            # Return default if Chatterbox doesn't have this endpoint
+        provider = get_voice_provider()
+        provider_name = provider.get_provider_name()
+        
+        # ElevenLabs: Fetch voices from API
+        if provider_name == 'elevenlabs_turbo':
+            try:
+                response = requests.get(
+                    f"{provider.base_url}/voices",
+                    headers={"xi-api-key": provider.api_key},
+                    timeout=10
+                )
+                
+                if response.ok:
+                    data = response.json()
+                    voices = []
+                    for voice in data.get('voices', []):
+                        voices.append({
+                            "id": voice.get('voice_id'),
+                            "name": voice.get('name'),
+                            "language": voice.get('labels', {}).get('language', 'en'),
+                            "category": voice.get('category', 'unknown'),
+                            "description": voice.get('labels', {}).get('description', '')
+                        })
+                    
+                    return jsonify({
+                        "provider": provider_name,
+                        "current_voice_id": provider.voice_id,
+                        "current_model": provider.model_id,
+                        "voices": voices,
+                        "count": len(voices)
+                    })
+                else:
+                    logger.error(f"ElevenLabs voices API error: {response.status_code}")
+            except Exception as e:
+                logger.warning(f"Could not fetch ElevenLabs voices: {e}")
+            
+            # Fallback: Return current configured voice
             return jsonify({
+                "provider": provider_name,
+                "current_voice_id": provider.voice_id,
+                "current_model": provider.model_id,
+                "voices": [
+                    {"id": provider.voice_id, "name": "Configured Voice", "language": "en"}
+                ],
+                "note": "Could not fetch full voice list from ElevenLabs API"
+            })
+        
+        # Chatterbox: Try to fetch from local server
+        else:
+            try:
+                response = requests.get(
+                    f"{CHATTERBOX_URL}/voices",
+                    timeout=5
+                )
+                if response.ok:
+                    result = response.json()
+                    result["provider"] = provider_name
+                    return jsonify(result)
+            except Exception as e:
+                logger.warning(f"Could not fetch Chatterbox voices: {e}")
+            
+            # Fallback
+            return jsonify({
+                "provider": provider_name,
                 "voices": [
                     {"id": "default", "name": "Default", "language": "en"}
                 ],
@@ -339,10 +486,9 @@ def list_voices():
             })
 
     except Exception as e:
-        logger.warning(f"Could not fetch voices from Chatterbox: {e}")
+        logger.exception(f"List voices error: {e}")
         return jsonify({
-            "voices": [
-                {"id": "default", "name": "Default", "language": "en"}
-            ],
-            "source": "fallback"
-        })
+            "error": str(e),
+            "voices": [],
+            "source": "error"
+        }), 500
