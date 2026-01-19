@@ -403,92 +403,92 @@ def text_to_speech_stream():
 @tts_bp.route('/tts/voices', methods=['GET'])
 def list_voices():
     """
-    List available TTS voices from current provider.
+    Get current TTS voice configuration.
+    
+    Query params:
+        ?all=true  - List all available voices from provider (optional)
 
     Returns:
         {
             "provider": "elevenlabs_turbo" | "chatterbox",
-            "voices": [
-                {"id": "xxx", "name": "Voice Name", "language": "en"},
-                ...
-            ]
+            "voice_id": "xxx",
+            "model": "eleven_turbo_v2_5",
+            "voice_name": "Wolfe2"
         }
     """
     try:
         provider = get_voice_provider()
         provider_name = provider.get_provider_name()
+        show_all = request.args.get('all', '').lower() == 'true'
         
-        # ElevenLabs: Fetch voices from API
+        # ElevenLabs
         if provider_name == 'elevenlabs_turbo':
+            result = {
+                "provider": provider_name,
+                "voice_id": provider.voice_id,
+                "model": provider.model_id
+            }
+            
+            # Try to get the voice name from API
             try:
-                response = requests.get(
-                    f"{provider.base_url}/voices",
-                    headers={"xi-api-key": provider.api_key},
-                    timeout=10
-                )
+                if show_all:
+                    # Fetch all voices
+                    response = requests.get(
+                        f"{provider.base_url}/voices",
+                        headers={"xi-api-key": provider.api_key},
+                        timeout=10
+                    )
+                else:
+                    # Fetch just the configured voice
+                    response = requests.get(
+                        f"{provider.base_url}/voices/{provider.voice_id}",
+                        headers={"xi-api-key": provider.api_key},
+                        timeout=10
+                    )
                 
                 if response.ok:
                     data = response.json()
-                    voices = []
-                    for voice in data.get('voices', []):
-                        voices.append({
-                            "id": voice.get('voice_id'),
-                            "name": voice.get('name'),
-                            "language": voice.get('labels', {}).get('language', 'en'),
-                            "category": voice.get('category', 'unknown'),
-                            "description": voice.get('labels', {}).get('description', '')
-                        })
                     
-                    return jsonify({
-                        "provider": provider_name,
-                        "current_voice_id": provider.voice_id,
-                        "current_model": provider.model_id,
-                        "voices": voices,
-                        "count": len(voices)
-                    })
-                else:
-                    logger.error(f"ElevenLabs voices API error: {response.status_code}")
+                    if show_all:
+                        # Return all voices
+                        voices = []
+                        for voice in data.get('voices', []):
+                            voices.append({
+                                "id": voice.get('voice_id'),
+                                "name": voice.get('name'),
+                                "category": voice.get('category', 'unknown')
+                            })
+                        result["voices"] = voices
+                        result["count"] = len(voices)
+                    else:
+                        # Return just the configured voice info
+                        result["voice_name"] = data.get('name', 'Unknown')
+                        result["category"] = data.get('category', 'unknown')
+                        
             except Exception as e:
-                logger.warning(f"Could not fetch ElevenLabs voices: {e}")
+                logger.warning(f"Could not fetch voice info from ElevenLabs: {e}")
+                result["voice_name"] = "Unknown (API error)"
             
-            # Fallback: Return current configured voice
-            return jsonify({
-                "provider": provider_name,
-                "current_voice_id": provider.voice_id,
-                "current_model": provider.model_id,
-                "voices": [
-                    {"id": provider.voice_id, "name": "Configured Voice", "language": "en"}
-                ],
-                "note": "Could not fetch full voice list from ElevenLabs API"
-            })
+            return jsonify(result)
         
-        # Chatterbox: Try to fetch from local server
+        # Chatterbox
         else:
-            try:
-                response = requests.get(
-                    f"{CHATTERBOX_URL}/voices",
-                    timeout=5
-                )
-                if response.ok:
-                    result = response.json()
-                    result["provider"] = provider_name
-                    return jsonify(result)
-            except Exception as e:
-                logger.warning(f"Could not fetch Chatterbox voices: {e}")
-            
-            # Fallback
-            return jsonify({
+            result = {
                 "provider": provider_name,
-                "voices": [
-                    {"id": "default", "name": "Default", "language": "en"}
-                ],
-                "source": "fallback"
-            })
+                "voice_id": "default",
+                "url": getattr(provider, 'base_url', CHATTERBOX_URL)
+            }
+            
+            if show_all:
+                try:
+                    response = requests.get(f"{CHATTERBOX_URL}/voices", timeout=5)
+                    if response.ok:
+                        result["voices"] = response.json().get('voices', [])
+                except:
+                    pass
+            
+            return jsonify(result)
 
     except Exception as e:
         logger.exception(f"List voices error: {e}")
-        return jsonify({
-            "error": str(e),
-            "voices": [],
-            "source": "error"
-        }), 500
+        return jsonify({"error": str(e)}), 500
