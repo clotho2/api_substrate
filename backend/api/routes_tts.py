@@ -166,10 +166,11 @@ def tts_health():
 # PROVIDER INFO - Debug which provider is active
 # ============================================
 
-@tts_bp.route('/tts/provider', methods=['GET'])
+@tts_bp.route('/tts/provider', methods=['GET', 'POST'])
 def tts_provider_info():
     """
-    Get current TTS provider information.
+    GET: Get current TTS provider information.
+    POST: Reset provider cache and re-initialize (use after changing .env)
     
     Useful for debugging which provider is active and why.
     
@@ -185,6 +186,11 @@ def tts_provider_info():
         }
     """
     try:
+        # POST = reset provider cache and re-initialize
+        if request.method == 'POST':
+            reset_voice_provider()
+            logger.info("🔄 Voice provider cache reset - re-initializing...")
+        
         provider = get_voice_provider()
         provider_name = provider.get_provider_name()
         
@@ -205,7 +211,8 @@ def tts_provider_info():
         
         result = {
             "provider": provider_name,
-            "config": config
+            "config": config,
+            "reset": request.method == 'POST'
         }
         
         # Add provider-specific details
