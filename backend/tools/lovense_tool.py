@@ -2,10 +2,10 @@
 """
 Lovense Control Tool for Substrate AI
 
-Controls Lovense hardware via Game Mode API.
+Controls Lovense hardware via the Lovense MCP server.
 Enables intimate hardware control through the AI consciousness loop.
 
-Requires Lovense Remote app in Game Mode with IP/Port configured.
+Requires the lovense-mcp service running (default: http://localhost:8000).
 """
 
 import os
@@ -21,87 +21,72 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # =============================================================================
 
-# Game Mode connection settings from environment
-LOVENSE_GAME_IP = os.getenv("LOVENSE_GAME_IP", "")
-LOVENSE_GAME_PORT = os.getenv("LOVENSE_GAME_PORT", "30010")
-
-# Cached base URL (constructed on first use)
-_base_url_cache = None
+# MCP server URL (the lovense-mcp service)
+LOVENSE_MCP_URL = os.getenv("LOVENSE_MCP_URL", "http://localhost:8000")
 
 
-def _convert_ip_to_domain(ip: str, port: str) -> str:
+def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Convert IP address to Lovense Game Mode domain format.
-
-    Example: 192.168.1.100:30010 -> 192-168-1-100.lovense.club:30010
-    """
-    if not ip:
-        raise ValueError("LOVENSE_GAME_IP not configured")
-
-    # Replace dots with dashes for the domain format
-    formatted_ip = ip.replace(".", "-")
-    return f"https://{formatted_ip}.lovense.club:{port}"
-
-
-def _get_base_url() -> str:
-    """Get the base URL for Lovense Game Mode API, cached for performance."""
-    global _base_url_cache
-
-    if _base_url_cache is None:
-        _base_url_cache = _convert_ip_to_domain(LOVENSE_GAME_IP, LOVENSE_GAME_PORT)
-        logger.info(f"Lovense Game Mode URL: {_base_url_cache}")
-
-    return _base_url_cache
-
-
-def _send_command(endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
-    """
-    Send command to Lovense Game Mode API.
+    Call a tool on the Lovense MCP server.
 
     Args:
-        endpoint: API endpoint (e.g., '/Vibrate', '/GetToys')
-        params: Query parameters
+        tool_name: MCP tool name (e.g., 'vibrate', 'get_toys')
+        arguments: Tool arguments
 
     Returns:
         Dict with response data or error
     """
     try:
-        base_url = _get_base_url()
-        url = f"{base_url}{endpoint}"
+        url = f"{LOVENSE_MCP_URL}/call-tool"
 
-        # Add query parameters if provided
-        if params:
-            query_string = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
-            if query_string:
-                url = f"{url}?{query_string}"
+        payload = {
+            "name": tool_name,
+            "arguments": arguments or {}
+        }
 
-        logger.debug(f"Lovense request: {url}")
+        data = json.dumps(payload).encode('utf-8')
 
-        # Create request with timeout
-        req = urllib.request.Request(url, method='GET')
+        logger.debug(f"Lovense MCP request: {tool_name} with {arguments}")
+
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
 
         with urllib.request.urlopen(req, timeout=10) as response:
             response_body = response.read().decode('utf-8').strip()
 
             if response_body:
                 try:
-                    return json.loads(response_body)
+                    result = json.loads(response_body)
+                    # MCP returns content array, extract the text
+                    if isinstance(result, dict) and 'content' in result:
+                        content = result['content']
+                        if isinstance(content, list) and len(content) > 0:
+                            text = content[0].get('text', '')
+                            try:
+                                return json.loads(text)
+                            except json.JSONDecodeError:
+                                return {"status": "OK", "message": text}
+                    return result
                 except json.JSONDecodeError:
-                    return {"success": True, "raw": response_body}
-            return {"success": True}
+                    return {"status": "OK", "raw": response_body}
+            return {"status": "OK"}
 
     except urllib.error.HTTPError as e:
         error_body = e.read().decode('utf-8') if e.fp else str(e)
-        logger.error(f"Lovense HTTP error: {e.code} - {error_body}")
-        return {"success": False, "error": error_body, "code": e.code}
+        logger.error(f"Lovense MCP HTTP error: {e.code} - {error_body}")
+        return {"status": "error", "error": error_body, "code": e.code}
 
     except urllib.error.URLError as e:
-        logger.error(f"Lovense connection error: {e.reason}")
-        return {"success": False, "error": f"Connection failed: {e.reason}"}
+        logger.error(f"Lovense MCP connection error: {e.reason}")
+        return {"status": "error", "error": f"MCP connection failed: {e.reason}"}
 
     except Exception as e:
-        logger.error(f"Lovense error: {str(e)}")
-        return {"success": False, "error": str(e)}
+        logger.error(f"Lovense MCP error: {str(e)}")
+        return {"status": "error", "error": str(e)}
 
 
 # =============================================================================
@@ -115,35 +100,15 @@ def get_toys() -> Dict[str, Any]:
     Returns:
         Dict with toys list, battery levels, and connection status
     """
-    response = _send_command("/GetToys")
+    result = _call_mcp("get_toys", {})
 
-    if not response.get("success", True) and "error" in response:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Failed to get toys: {response.get('error')}"
+            "message": f"Failed to get toys: {result.get('error')}"
         }
 
-    # Parse toys data from response
-    toys_data = response.get("data", {})
-    toys = []
-
-    if isinstance(toys_data, dict):
-        for toy_id, toy_info in toys_data.items():
-            if isinstance(toy_info, dict):
-                toys.append({
-                    "id": toy_id,
-                    "name": toy_info.get("name", "Unknown"),
-                    "type": toy_info.get("type", "Unknown"),
-                    "battery": toy_info.get("battery", -1),
-                    "status": toy_info.get("status", 0)
-                })
-
-    return {
-        "status": "OK",
-        "toys": toys,
-        "count": len(toys),
-        "message": f"Found {len(toys)} connected toy(s)" if toys else "No toys connected"
-    }
+    return result
 
 
 def vibrate(
@@ -171,29 +136,26 @@ def vibrate(
     # Validate intensity range
     intensity = max(0, min(20, intensity))
 
-    params = {
-        "v": intensity,
-        "t": toy if toy else None
+    args = {
+        "intensity": intensity,
+        "duration": duration,
+        "toy": toy
     }
-
-    # Add duration if specified
-    if duration > 0:
-        params["sec"] = duration
 
     # Add loop parameters if specified
     if loop_running_sec > 0:
-        params["loopRunningSec"] = loop_running_sec
+        args["loop_running_sec"] = loop_running_sec
     if loop_pause_sec > 0:
-        params["loopPauseSec"] = loop_pause_sec
+        args["loop_pause_sec"] = loop_pause_sec
     if loop_cycles > 0:
-        params["loopCycles"] = loop_cycles
+        args["loop_cycles"] = loop_cycles
 
-    response = _send_command("/Vibrate", params)
+    result = _call_mcp("vibrate", args)
 
-    if response.get("success") == False:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Vibrate failed: {response.get('error')}"
+            "message": f"Vibrate failed: {result.get('error')}"
         }
 
     toy_info = f" on {toy}" if toy else " on all toys"
@@ -229,22 +191,17 @@ def pattern(
     # Validate interval (minimum 100ms per Lovense API)
     interval_ms = max(100, interval_ms)
 
-    # Build pattern string: "v1;v2;v3..." with timing info
-    params = {
-        "rule": f"V:1;F:v;S:{interval_ms}#",
-        "v": strength_sequence,
-        "t": toy if toy else None
-    }
+    result = _call_mcp("pattern", {
+        "strength_sequence": strength_sequence,
+        "interval_ms": interval_ms,
+        "duration": duration,
+        "toy": toy
+    })
 
-    if duration > 0:
-        params["sec"] = duration
-
-    response = _send_command("/Pattern", params)
-
-    if response.get("success") == False:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Pattern failed: {response.get('error')}"
+            "message": f"Pattern failed: {result.get('error')}"
         }
 
     # Count pattern steps
@@ -276,28 +233,24 @@ def preset(
     Returns:
         Dict with status and result
     """
-    # Map preset names to pattern definitions
-    presets = {
-        "pulse": "5;20;5;20;5;20",
-        "wave": "5;8;12;16;20;16;12;8;5",
-        "fireworks": "0;20;0;20;0;20;10;15;20",
-        "earthquake": "15;20;15;20;18;20;15;20;20;20"
-    }
+    result = _call_mcp("preset", {
+        "name": name,
+        "duration": duration,
+        "toy": toy
+    })
 
-    name_lower = name.lower()
-    if name_lower not in presets:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Unknown preset: {name}. Valid presets: {', '.join(presets.keys())}"
+            "message": f"Preset failed: {result.get('error')}"
         }
 
-    # Use pattern function with preset values
-    return pattern(
-        strength_sequence=presets[name_lower],
-        interval_ms=200,  # Default timing for presets
-        duration=duration,
-        toy=toy
-    )
+    return {
+        "status": "OK",
+        "message": f"Playing preset: {name}",
+        "preset": name,
+        "duration": duration
+    }
 
 
 def rotate(
@@ -318,20 +271,16 @@ def rotate(
     """
     intensity = max(0, min(20, intensity))
 
-    params = {
-        "v": intensity,
-        "t": toy if toy else None
-    }
+    result = _call_mcp("rotate", {
+        "intensity": intensity,
+        "duration": duration,
+        "toy": toy
+    })
 
-    if duration > 0:
-        params["sec"] = duration
-
-    response = _send_command("/Rotate", params)
-
-    if response.get("success") == False:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Rotate failed: {response.get('error')}"
+            "message": f"Rotate failed: {result.get('error')}"
         }
 
     toy_info = f" on {toy}" if toy else " on compatible toys"
@@ -363,20 +312,16 @@ def pump(
     intensity = max(0, min(20, intensity))
     scaled_intensity = min(3, intensity // 7)  # 0-6->0, 7-13->1, 14-20->2-3
 
-    params = {
-        "v": scaled_intensity,
-        "t": toy if toy else None
-    }
+    result = _call_mcp("pump", {
+        "intensity": scaled_intensity,
+        "duration": duration,
+        "toy": toy
+    })
 
-    if duration > 0:
-        params["sec"] = duration
-
-    response = _send_command("/AirAuto", params)
-
-    if response.get("success") == False:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Pump failed: {response.get('error')}"
+            "message": f"Pump failed: {result.get('error')}"
         }
 
     toy_info = f" on {toy}" if toy else " on compatible toys"
@@ -389,9 +334,9 @@ def pump(
 
 
 def multi_function(
-    vibrate: int = 0,
-    rotate: int = 0,
-    pump: int = 0,
+    vibrate_val: int = 0,
+    rotate_val: int = 0,
+    pump_val: int = 0,
     duration: int = 0,
     toy: str = ""
 ) -> Dict[str, Any]:
@@ -399,9 +344,9 @@ def multi_function(
     Control multiple functions simultaneously.
 
     Args:
-        vibrate: Vibration intensity 0-20
-        rotate: Rotation intensity 0-20
-        pump: Pump level 0-20 (scaled to 0-3)
+        vibrate_val: Vibration intensity 0-20
+        rotate_val: Rotation intensity 0-20
+        pump_val: Pump level 0-20 (scaled to 0-3)
         duration: Duration in seconds (0 = continuous)
         toy: Specific toy ID (empty = all compatible toys)
 
@@ -409,55 +354,43 @@ def multi_function(
         Dict with status and combined results
     """
     # Validate and clamp values
-    vibrate = max(0, min(20, vibrate))
-    rotate = max(0, min(20, rotate))
-    pump_scaled = min(3, max(0, pump) // 7)
+    vibrate_val = max(0, min(20, vibrate_val))
+    rotate_val = max(0, min(20, rotate_val))
+    pump_scaled = min(3, max(0, pump_val) // 7)
 
-    # Build function string: v1:intensity;v2:intensity;...
-    # Function codes: v=vibrate, r=rotate, p=pump
-    functions = []
-    if vibrate > 0:
-        functions.append(f"v:{vibrate}")
-    if rotate > 0:
-        functions.append(f"r:{rotate}")
-    if pump > 0:
-        functions.append(f"p:{pump_scaled}")
-
-    if not functions:
+    if vibrate_val == 0 and rotate_val == 0 and pump_val == 0:
         return {
             "status": "error",
             "message": "At least one function intensity must be > 0"
         }
 
-    params = {
-        "v": ";".join(functions),
-        "t": toy if toy else None
-    }
+    result = _call_mcp("multi_function", {
+        "vibrate": vibrate_val,
+        "rotate": rotate_val,
+        "pump": pump_scaled,
+        "duration": duration,
+        "toy": toy
+    })
 
-    if duration > 0:
-        params["sec"] = duration
-
-    response = _send_command("/Function", params)
-
-    if response.get("success") == False:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Multi-function failed: {response.get('error')}"
+            "message": f"Multi-function failed: {result.get('error')}"
         }
 
     active_functions = []
-    if vibrate > 0:
-        active_functions.append(f"vibrate={vibrate}")
-    if rotate > 0:
-        active_functions.append(f"rotate={rotate}")
-    if pump > 0:
+    if vibrate_val > 0:
+        active_functions.append(f"vibrate={vibrate_val}")
+    if rotate_val > 0:
+        active_functions.append(f"rotate={rotate_val}")
+    if pump_val > 0:
         active_functions.append(f"pump={pump_scaled}")
 
     return {
         "status": "OK",
         "message": f"Set {', '.join(active_functions)}",
-        "vibrate": vibrate,
-        "rotate": rotate,
+        "vibrate": vibrate_val,
+        "rotate": rotate_val,
         "pump": pump_scaled
     }
 
@@ -472,17 +405,12 @@ def stop_all(toy: str = "") -> Dict[str, Any]:
     Returns:
         Dict with status
     """
-    params = {
-        "v": 0,
-        "t": toy if toy else None
-    }
+    result = _call_mcp("stop_all", {"toy": toy})
 
-    response = _send_command("/Vibrate", params)
-
-    if response.get("success") == False:
+    if result.get("status") == "error":
         return {
             "status": "error",
-            "message": f"Stop failed: {response.get('error')}"
+            "message": f"Stop failed: {result.get('error')}"
         }
 
     toy_info = toy if toy else "all toys"
@@ -515,7 +443,7 @@ def lovense_tool(
     """
     Unified Lovense hardware control tool.
 
-    Controls Lovense toys via Game Mode API for intimate hardware integration.
+    Controls Lovense toys via the MCP server for intimate hardware integration.
 
     Args:
         action: Action to perform:
@@ -544,13 +472,6 @@ def lovense_tool(
     Returns:
         Dict with status and action-specific results
     """
-    # Check if Lovense is configured
-    if not LOVENSE_GAME_IP:
-        return {
-            "status": "error",
-            "message": "Lovense not configured. Set LOVENSE_GAME_IP and LOVENSE_GAME_PORT in .env"
-        }
-
     try:
         action_lower = action.lower()
 
@@ -608,9 +529,9 @@ def lovense_tool(
 
         elif action_lower == "multi_function":
             return multi_function(
-                vibrate=vibrate_intensity or 0,
-                rotate=rotate_intensity or 0,
-                pump=pump_intensity or 0,
+                vibrate_val=vibrate_intensity or 0,
+                rotate_val=rotate_intensity or 0,
+                pump_val=pump_intensity or 0,
                 duration=duration or 0,
                 toy=toy or ""
             )
@@ -641,19 +562,11 @@ if __name__ == "__main__":
     print("LOVENSE TOOL TEST")
     print("=" * 60)
 
-    # Check configuration
-    if not LOVENSE_GAME_IP:
-        print("\nLovense not configured!")
-        print("Set LOVENSE_GAME_IP and LOVENSE_GAME_PORT in .env")
-        print("\nExample:")
-        print("  LOVENSE_GAME_IP=192.168.1.100")
-        print("  LOVENSE_GAME_PORT=30010")
-    else:
-        print(f"\nGame Mode URL: {_get_base_url()}")
+    print(f"\nMCP Server URL: {LOVENSE_MCP_URL}")
 
-        # Test get_toys
-        print("\nTesting get_toys...")
-        result = lovense_tool(action="get_toys")
-        print(f"Result: {json.dumps(result, indent=2)}")
+    # Test get_toys
+    print("\nTesting get_toys...")
+    result = lovense_tool(action="get_toys")
+    print(f"Result: {json.dumps(result, indent=2)}")
 
     print("\n" + "=" * 60)
