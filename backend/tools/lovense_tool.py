@@ -13,6 +13,8 @@ import json
 import urllib.request
 import urllib.error
 import logging
+import threading
+import time
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -23,6 +25,72 @@ logger = logging.getLogger(__name__)
 
 # MCP server URL (the lovense-mcp service)
 LOVENSE_MCP_URL = os.getenv("LOVENSE_MCP_URL", "http://localhost:8000")
+
+# Session management
+_session_id = None
+_session_lock = threading.Lock()
+
+
+def _get_session_id() -> Optional[str]:
+    """
+    Get a session ID from the MCP SSE endpoint.
+
+    The MCP SSE protocol requires connecting to /sse first to get a session_id,
+    which is then used for subsequent /messages/ requests.
+    """
+    global _session_id
+
+    try:
+        sse_url = f"{LOVENSE_MCP_URL}/sse"
+
+        req = urllib.request.Request(sse_url, method='GET')
+        req.add_header('Accept', 'text/event-stream')
+        req.add_header('Cache-Control', 'no-cache')
+
+        with urllib.request.urlopen(req, timeout=5) as response:
+            # Read SSE events to find session_id
+            # SSE format: "event: endpoint\ndata: /messages/?session_id=xxx\n\n"
+            buffer = ""
+            start_time = time.time()
+
+            while time.time() - start_time < 3:  # Max 3 seconds to get session
+                chunk = response.read(1024).decode('utf-8')
+                if not chunk:
+                    break
+                buffer += chunk
+
+                # Look for session_id in the SSE data
+                if 'session_id=' in buffer:
+                    # Extract session_id from URL like "/messages/?session_id=xxx"
+                    import re
+                    match = re.search(r'session_id=([a-zA-Z0-9_-]+)', buffer)
+                    if match:
+                        _session_id = match.group(1)
+                        logger.info(f"Got MCP session_id: {_session_id[:8]}...")
+                        return _session_id
+
+                # Also check for JSON format session info
+                if '"session_id"' in buffer or "'session_id'" in buffer:
+                    try:
+                        # Try to parse as JSON
+                        for line in buffer.split('\n'):
+                            if line.startswith('data:'):
+                                data_str = line[5:].strip()
+                                if data_str:
+                                    data = json.loads(data_str)
+                                    if 'session_id' in data:
+                                        _session_id = data['session_id']
+                                        logger.info(f"Got MCP session_id: {_session_id[:8]}...")
+                                        return _session_id
+                    except:
+                        pass
+
+        logger.warning("Could not extract session_id from SSE stream")
+        return None
+
+    except Exception as e:
+        logger.error(f"Failed to get SSE session: {e}")
+        return None
 
 
 def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -37,10 +105,19 @@ def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any
         Dict with response data or error
     """
     import uuid
+    global _session_id
 
     try:
-        # MCP SSE protocol uses /messages/ endpoint with JSON-RPC format
-        url = f"{LOVENSE_MCP_URL}/messages/"
+        # Get session_id if we don't have one
+        with _session_lock:
+            if not _session_id:
+                _session_id = _get_session_id()
+
+        if not _session_id:
+            return {"status": "error", "error": "Failed to establish MCP session"}
+
+        # MCP SSE protocol uses /messages/ endpoint with session_id
+        url = f"{LOVENSE_MCP_URL}/messages/?session_id={_session_id}"
 
         # JSON-RPC 2.0 format for MCP tool calls
         payload = {
@@ -73,7 +150,13 @@ def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any
 
                     # JSON-RPC response format
                     if 'error' in result:
-                        return {"status": "error", "error": result['error'].get('message', str(result['error']))}
+                        error_msg = result['error']
+                        if isinstance(error_msg, dict):
+                            error_msg = error_msg.get('message', str(error_msg))
+                        # Session might have expired, clear it
+                        if 'session' in str(error_msg).lower():
+                            _session_id = None
+                        return {"status": "error", "error": error_msg}
 
                     if 'result' in result:
                         mcp_result = result['result']
@@ -96,7 +179,18 @@ def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any
     except urllib.error.HTTPError as e:
         error_body = e.read().decode('utf-8') if e.fp else str(e)
         logger.error(f"Lovense MCP HTTP error: {e.code} - {error_body}")
+        # Clear session on auth errors
+        if e.code in (400, 401, 403):
+            _session_id = None
         return {"status": "error", "error": error_body, "code": e.code}
+
+    except urllib.error.URLError as e:
+        logger.error(f"Lovense MCP connection error: {e.reason}")
+        return {"status": "error", "error": f"MCP connection failed: {e.reason}"}
+
+    except Exception as e:
+        logger.error(f"Lovense MCP error: {str(e)}")
+        return {"status": "error", "error": str(e)}
 
     except urllib.error.URLError as e:
         logger.error(f"Lovense MCP connection error: {e.reason}")
