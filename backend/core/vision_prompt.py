@@ -87,8 +87,10 @@ MULTIMODAL_MODELS = [
     "openai/gpt-4o",
     "openai/gpt-4-vision",
     "openai/gpt-4-turbo",  # Also multimodal
+    "openai/gpt-4.1",  # GPT-4.1 has vision support
     "gpt-4o",  # Short form
     "gpt-4-vision",  # Short form
+    "gpt-4.1",  # Short form
     
     # Google models
     "google/gemini",
