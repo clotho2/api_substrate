@@ -39,8 +39,8 @@ def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any
     import uuid
 
     try:
-        # MCP SSE protocol uses /messages endpoint with JSON-RPC format
-        url = f"{LOVENSE_MCP_URL}/messages"
+        # MCP SSE protocol uses /messages/ endpoint with JSON-RPC format
+        url = f"{LOVENSE_MCP_URL}/messages/"
 
         # JSON-RPC 2.0 format for MCP tool calls
         payload = {
