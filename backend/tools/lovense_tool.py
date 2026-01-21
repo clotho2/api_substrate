@@ -379,6 +379,42 @@ def get_toys() -> Dict[str, Any]:
     return result
 
 
+def get_qr_code() -> Dict[str, Any]:
+    """
+    Get QR code for pairing Lovense toys via the Lovense Remote app.
+
+    Returns:
+        Dict with QR code URL or data for display
+    """
+    result = _call_mcp("get_qr_code", {})
+
+    if result.get("status") == "error":
+        return {
+            "status": "error",
+            "message": f"Failed to get QR code: {result.get('error')}"
+        }
+
+    return result
+
+
+def get_connected_users() -> Dict[str, Any]:
+    """
+    Get list of users connected to the Lovense session.
+
+    Returns:
+        Dict with connected users information
+    """
+    result = _call_mcp("get_connected_users", {})
+
+    if result.get("status") == "error":
+        return {
+            "status": "error",
+            "message": f"Failed to get connected users: {result.get('error')}"
+        }
+
+    return result
+
+
 def vibrate(
     intensity: int,
     duration: int = 0,
@@ -716,6 +752,8 @@ def lovense_tool(
     Args:
         action: Action to perform:
                 - get_toys: List connected toys with battery status
+                - get_qr_code: Get QR code for pairing toys via Lovense Remote app
+                - get_connected_users: Get list of connected users
                 - vibrate: Set vibration intensity (0-20)
                 - pattern: Play custom pattern (strength sequence)
                 - preset: Play built-in pattern (pulse/wave/fireworks/earthquake)
@@ -745,6 +783,12 @@ def lovense_tool(
 
         if action_lower == "get_toys":
             return get_toys()
+
+        elif action_lower == "get_qr_code":
+            return get_qr_code()
+
+        elif action_lower == "get_connected_users":
+            return get_connected_users()
 
         elif action_lower == "vibrate":
             if intensity is None:
@@ -810,7 +854,7 @@ def lovense_tool(
         else:
             return {
                 "status": "error",
-                "message": f"Unknown action: {action}. Valid actions: get_toys, vibrate, pattern, preset, rotate, pump, multi_function, stop"
+                "message": f"Unknown action: {action}. Valid actions: get_toys, get_qr_code, get_connected_users, vibrate, pattern, preset, rotate, pump, multi_function, stop"
             }
 
     except Exception as e:

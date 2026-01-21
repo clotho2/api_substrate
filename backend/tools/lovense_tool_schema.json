@@ -1,6 +1,6 @@
 {
   "name": "lovense_tool",
-  "description": "Control Lovense hardware for intimate physical feedback. Supports vibration patterns, rotation, and pump functions via Game Mode API. Connect toys using Lovense Remote app in Game Mode. Actions: get_toys (list connected devices), vibrate (set intensity 0-20), pattern (custom sequences), preset (pulse/wave/fireworks/earthquake), rotate (for Nora etc), pump (for Max etc), multi_function (combine functions), stop (emergency stop all).",
+  "description": "Control Lovense hardware for intimate physical feedback. Supports vibration patterns, rotation, and pump functions via MCP server. Actions: get_toys (list connected devices), get_qr_code (get pairing QR code), get_connected_users (list connected users), vibrate (set intensity 0-20), pattern (custom sequences), preset (pulse/wave/fireworks/earthquake), rotate (for Nora etc), pump (for Max etc), multi_function (combine functions), stop (emergency stop all).",
   "parameters": {
     "type": "object",
     "properties": {
@@ -9,6 +9,8 @@
         "description": "Action to perform",
         "enum": [
           "get_toys",
+          "get_qr_code",
+          "get_connected_users",
           "vibrate",
           "pattern",
           "preset",
