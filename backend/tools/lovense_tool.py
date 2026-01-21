@@ -27,7 +27,7 @@ LOVENSE_MCP_URL = os.getenv("LOVENSE_MCP_URL", "http://localhost:8000")
 
 def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Call a tool on the Lovense MCP server.
+    Call a tool on the Lovense MCP server using MCP SSE protocol.
 
     Args:
         tool_name: MCP tool name (e.g., 'vibrate', 'get_toys')
@@ -36,12 +36,21 @@ def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any
     Returns:
         Dict with response data or error
     """
-    try:
-        url = f"{LOVENSE_MCP_URL}/call-tool"
+    import uuid
 
+    try:
+        # MCP SSE protocol uses /messages endpoint with JSON-RPC format
+        url = f"{LOVENSE_MCP_URL}/messages"
+
+        # JSON-RPC 2.0 format for MCP tool calls
         payload = {
-            "name": tool_name,
-            "arguments": arguments or {}
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": arguments or {}
+            },
+            "id": str(uuid.uuid4())
         }
 
         data = json.dumps(payload).encode('utf-8')
@@ -61,15 +70,24 @@ def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any
             if response_body:
                 try:
                     result = json.loads(response_body)
-                    # MCP returns content array, extract the text
-                    if isinstance(result, dict) and 'content' in result:
-                        content = result['content']
-                        if isinstance(content, list) and len(content) > 0:
-                            text = content[0].get('text', '')
-                            try:
-                                return json.loads(text)
-                            except json.JSONDecodeError:
-                                return {"status": "OK", "message": text}
+
+                    # JSON-RPC response format
+                    if 'error' in result:
+                        return {"status": "error", "error": result['error'].get('message', str(result['error']))}
+
+                    if 'result' in result:
+                        mcp_result = result['result']
+                        # MCP returns content array, extract the text
+                        if isinstance(mcp_result, dict) and 'content' in mcp_result:
+                            content = mcp_result['content']
+                            if isinstance(content, list) and len(content) > 0:
+                                text = content[0].get('text', '')
+                                try:
+                                    return json.loads(text)
+                                except json.JSONDecodeError:
+                                    return {"status": "OK", "message": text}
+                        return mcp_result
+
                     return result
                 except json.JSONDecodeError:
                     return {"status": "OK", "raw": response_body}
