@@ -250,9 +250,16 @@ def discord_tool(
 def _send_message(bot_token, message, target, target_type, mention_users=None, ping_everyone=False, ping_here=False):
     """Send a message to Discord (DM or channel) with mentions/pings and auto-chunking."""
     headers = {"Authorization": f"Bot {bot_token}", "Content-Type": "application/json"}
-    
+
     # Auto-detect target type if not specified
+    # WARNING: This can lead to unexpected behavior! The model should always specify target_type explicitly.
     if not target_type:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"⚠️ discord_tool send_message called without target_type! "
+            f"Target: {target}. This may cause DM/channel confusion. "
+            f"The model should specify target_type='user' or target_type='channel' explicitly."
+        )
         # Try user first (DMs), then channel
         try:
             dm_url = f"https://discord.com/api/v10/users/@me/channels"

@@ -13,9 +13,14 @@ NATIVE_REASONING_MODELS = {
     'deepseek/deepseek-reasoner',
     'moonshotai/kimi-k2-thinking',
     'moonshotai/moonshot-v1-thinking',
-    # Venice AI thinking models
+    # Venice AI thinking/reasoning models
     'qwen3-235b-a22b-thinking-2507',
     'qwen3-235b-a22b-thinking',
+    # GLM 4.7 (Z-AI) - has built-in reasoning and tool calling
+    'zai-org-glm-4.7',      # Venice
+    'z-ai/glm-4.7',         # OpenRouter
+    'glm-4.7',              # Fallback variations
+    'glm-4-7',
 }
 
 # NOTE: Models NOT in this list (like Mistral Large 3) are treated as standard models

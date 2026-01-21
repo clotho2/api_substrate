@@ -119,7 +119,8 @@ def chat():
             return jsonify({'error': 'Consciousness loop not initialized'}), 500
 
         data = request.json
-        session_id = data.get('session_id', 'default')
+        # Use unified session ID so Nate has full conversation context across all interfaces
+        session_id = data.get('session_id', 'nate_conversation')
         stream = data.get('stream', False)
 
         # Rate limiting

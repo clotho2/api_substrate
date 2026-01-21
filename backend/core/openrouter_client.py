@@ -252,11 +252,13 @@ class OpenRouterClient:
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
         stream: bool = False,
+        session_id: Optional[str] = None,
+        enable_prompt_caching: bool = True,
         **kwargs
     ) -> Dict[str, Any]:
         """
         Send chat completion request to OpenRouter.
-        
+
         Args:
             messages: List of message dicts with 'role' and 'content'
             model: Model to use (defaults to self.default_model)
@@ -265,11 +267,13 @@ class OpenRouterClient:
             temperature: Sampling temperature (0-2)
             max_tokens: Max tokens to generate
             stream: Whether to stream response
+            session_id: Optional session ID (for compatibility, not used by OpenRouter)
+            enable_prompt_caching: Enable prompt caching for system messages (default: True)
             **kwargs: Additional model parameters
-            
+
         Returns:
             Response dict with 'choices', 'usage', etc.
-            
+
         Raises:
             OpenRouterError: If request fails
         """
@@ -296,9 +300,26 @@ class OpenRouterClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
-        
+
+        # Apply prompt caching to system messages
+        # OpenRouter supports cache_control for cost savings on repeated static content
+        # Cached tokens are charged at 0.25x the original input token cost
+        if enable_prompt_caching:
+            cached_messages = []
+            for msg in messages:
+                if msg.get('role') == 'system':
+                    # Add cache_control to system messages for caching
+                    cached_msg = msg.copy()
+                    cached_msg['cache_control'] = {'type': 'ephemeral'}
+                    cached_messages.append(cached_msg)
+                else:
+                    cached_messages.append(msg)
+            payload['messages'] = cached_messages
+
         # Add any extra kwargs (can override max_completion_tokens!)
-        payload.update(kwargs)
+        # Filter out our custom params
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['session_id', 'enable_prompt_caching']}
+        payload.update(filtered_kwargs)
         
         # Log request (helpful for debugging!)
         print(f"\n📤 OpenRouter Request:")
@@ -392,36 +413,55 @@ class OpenRouterClient:
         messages: List[Dict[str, Any]],
         model: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
+        session_id: Optional[str] = None,
+        enable_prompt_caching: bool = True,
         **kwargs
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream chat completion from OpenRouter.
-        
+
         Args:
             messages: List of message dicts
             model: Model to use
             tools: Tool definitions
+            session_id: Optional session ID (for compatibility, not used by OpenRouter)
+            enable_prompt_caching: Enable prompt caching for system messages (default: True)
             **kwargs: Additional parameters
-            
+
         Yields:
             Delta dicts from streaming response
-            
+
         Raises:
             OpenRouterError: If request fails
         """
         model = model or self.default_model
         url = f"{self.base_url}/chat/completions"
         
+        # Filter out our custom params from kwargs
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['session_id', 'enable_prompt_caching']}
+
         payload = {
             "model": model,
             "messages": messages,
             "stream": True,
-            **kwargs
+            **filtered_kwargs
         }
-        
+
         if tools:
             payload["tools"] = tools
-        
+
+        # Apply prompt caching to system messages
+        if enable_prompt_caching:
+            cached_messages = []
+            for msg in messages:
+                if msg.get('role') == 'system':
+                    cached_msg = msg.copy()
+                    cached_msg['cache_control'] = {'type': 'ephemeral'}
+                    cached_messages.append(cached_msg)
+                else:
+                    cached_messages.append(msg)
+            payload['messages'] = cached_messages
+
         print(f"\n📡 Streaming from: {model}")
         
         try:

@@ -739,7 +739,34 @@ class MemoryTools:
         Search for locations using OpenStreetMap.
         """
         return self.integrations.search_places(**kwargs)
-    
+
+    def google_places_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Google Places tool (wrapper).
+        Search for places and get location details using Google Places API.
+
+        Actions:
+        - search_nearby: Search for nearby places (restaurants, gas stations, etc.)
+        - get_details: Get detailed info about a specific place
+        - find_gas: Guardian Mode - Find nearby gas stations with urgency
+        - find_hotel: Guardian Mode - Find nearby hotels/lodging
+        """
+        return self.integrations.google_places_tool(**kwargs)
+
+    def lovense_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Lovense hardware control tool (wrapper).
+        Control Lovense devices for physical feedback.
+        """
+        return self.integrations.lovense_tool(**kwargs)
+
+    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Nate self-development tool (wrapper).
+        Read-only access to inspect codebase, logs, and system health.
+        """
+        return self.integrations.nate_dev_tool(**kwargs)
+
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT
     # ============================================

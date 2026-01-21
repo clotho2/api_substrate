@@ -3,7 +3,7 @@
 Conversation Summary Generator
 
 Handles context window overflow by creating concise summaries
-in a separate OpenRouter session.
+using the active API provider (Venice, Grok, or OpenRouter).
 """
 
 import os
@@ -16,25 +16,47 @@ from core.token_counter import TokenCounter
 class SummaryGenerator:
     """
     Generates conversation summaries when context window is full.
-    
-    Uses a SEPARATE OpenRouter session to avoid polluting the main conversation.
+
+    Uses the active API provider (Venice, Grok, or OpenRouter) in a SEPARATE session
+    to avoid polluting the main conversation.
     """
-    
+
     def __init__(self, api_key: str = None, state_manager=None):
         """
         Initialize summary generator.
-        
+
         Args:
-            api_key: OpenRouter API key (defaults to env var)
+            api_key: API key (auto-detected from active provider if not specified)
             state_manager: StateManager instance (for agent's memory/prompt)
         """
-        self.api_key = api_key or os.getenv('OPENROUTER_API_KEY')
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY not found!")
-        
-        self.api_url = "https://openrouter.ai/api/v1/chat/completions"
+        from core.config import get_api_provider, VENICE_API_KEY, GROK_API_KEY, OPENROUTER_API_KEY
+        from core.config import VENICE_BASE_URL, GROK_BASE_URL, OPENROUTER_BASE_URL
+
+        # Detect active provider
+        self.provider = get_api_provider()
+
+        # Set API key and URL based on provider
+        if self.provider == 'venice':
+            self.api_key = api_key or VENICE_API_KEY
+            self.api_url = f"{VENICE_BASE_URL}/chat/completions"
+            if not self.api_key:
+                raise ValueError("VENICE_API_KEY not found!")
+        elif self.provider == 'grok':
+            self.api_key = api_key or GROK_API_KEY
+            self.api_url = f"{GROK_BASE_URL}/chat/completions"
+            if not self.api_key:
+                raise ValueError("GROK_API_KEY not found!")
+        elif self.provider == 'openrouter':
+            self.api_key = api_key or OPENROUTER_API_KEY
+            self.api_url = f"{OPENROUTER_BASE_URL}/chat/completions"
+            if not self.api_key:
+                raise ValueError("OPENROUTER_API_KEY not found!")
+        else:
+            raise ValueError(f"No API provider configured! Set VENICE_API_KEY, GROK_API_KEY, or OPENROUTER_API_KEY")
+
         self.state = state_manager
-    
+        print(f"📝 Summary generator initialized with provider: {self.provider}")
+
     def generate_summary(
         self,
         messages: List[Dict[str, Any]],
@@ -73,12 +95,13 @@ class SummaryGenerator:
         # Build summary prompt
         summary_prompt = self._build_summary_prompt(messages, from_time, to_time)
         
-        # Call OpenRouter in SEPARATE session
+        # Call API provider in SEPARATE session
         print(f"📝 Generating summary for {len(messages)} messages...")
+        print(f"   Provider: {self.provider}")
         print(f"   Timeframe: {from_time} → {to_time}")
-        
+
         try:
-            summary_text = self._call_openrouter(summary_prompt)
+            summary_text = self._call_api(summary_prompt)
             
             # Count tokens in summary
             counter = TokenCounter()
@@ -200,20 +223,27 @@ class SummaryGenerator:
 
         return prompt
     
-    def _call_openrouter(self, prompt: str) -> str:
+    def _call_api(self, prompt: str) -> str:
         """
-        Call OpenRouter API to generate summary.
+        Call active API provider to generate summary.
         Uses the agent's own model + system prompt for authentic character!
-        
+
         Args:
             prompt: Summary generation prompt
 
         Returns:
             Summary text (in the agent's voice!)
         """
-        # Use fallback model from config for summaries
-        from core.config import get_fallback_model
-        model = get_fallback_model()
+        # Use active model, or fallback model if active model fails
+        from core.config import get_default_model, get_fallback_model
+
+        # Try to use the active model first
+        try:
+            model = get_default_model()
+        except ValueError:
+            # If no active model, use fallback
+            model = get_fallback_model()
+            print(f"   Using fallback model: {model}")
 
         if self.state:
             # Get the agent's system prompt (but streamlined for summaries)
@@ -249,12 +279,16 @@ class SummaryGenerator:
             "max_tokens": 2000
         }
         
+        # Build headers - OpenRouter has extra headers
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json; charset=utf-8",
-            "HTTP-Referer": "https://github.com/yourusername/substrate-ai",
-            "X-Title": "Substrate Context Summary"  # ASCII only for HTTP headers
+            "Content-Type": "application/json; charset=utf-8"
         }
+
+        # OpenRouter-specific headers
+        if self.provider == 'openrouter':
+            headers["HTTP-Referer"] = "https://github.com/yourusername/substrate-ai"
+            headers["X-Title"] = "Substrate Context Summary"
         
         with httpx.Client(timeout=60.0) as client:
             response = client.post(

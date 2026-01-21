@@ -82,6 +82,9 @@ data/miu_full_identity.txt
 # Memory files (duplicates - use backend/ versions)
 /nate_real_memories.jsonl
 
+# Audio sample
+.wav
+
 # Build files
 *.pyc
 *.pyo

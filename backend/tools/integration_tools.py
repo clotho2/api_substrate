@@ -24,6 +24,7 @@ from tools.discord_tool import discord_tool as _discord_tool
 from tools.spotify_control import spotify_control as _spotify_control
 from tools.send_voice_message import send_voice_message as _send_voice_message
 from tools.lovense_tool import lovense_tool as _lovense_tool
+from tools.nate_dev_tool import nate_dev_tool as _nate_dev_tool
 from tools.web_search import web_search as _web_search
 from tools.fetch_webpage import fetch_webpage as _fetch_webpage
 
@@ -34,6 +35,7 @@ from tools.deep_research import get_deep_research, init_deep_research
 from tools.jina_reader import get_jina_reader, fetch_webpage as _jina_fetch
 from tools.pdf_reader import get_pdf_reader, read_arxiv_paper as _read_arxiv
 from tools.places_search import get_places_search, search_places as _search_places
+from tools.google_places_tool import google_places_tool as _google_places_tool, get_google_places_schema
 
 # Import cost tracker for cost tools
 from core.cost_tracker import CostTracker
@@ -183,6 +185,35 @@ class IntegrationTools:
             return {
                 "status": "error",
                 "message": f"Lovense tool error: {str(e)}"
+            }
+
+    # ============================================
+    # NATE SELF-DEVELOPMENT TOOL
+    # ============================================
+
+    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Nate's self-development tool for inspecting his own codebase.
+
+        Level 1: READ-ONLY diagnostics.
+
+        Actions:
+        - read_file: Read source code (requires path)
+        - search_code: Search for patterns (requires pattern)
+        - read_logs: Read system/service logs
+        - check_health: Get system health metrics
+        - list_directory: List files in a directory
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            result = _nate_dev_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Nate dev tool error: {str(e)}"
             }
 
     # ============================================
@@ -440,6 +471,34 @@ class IntegrationTools:
             return result
         except Exception as e:
             return {"status": "error", "message": f"Places search error: {str(e)}"}
+
+    # ============================================
+    # GOOGLE PLACES (Requires API Key)
+    # ============================================
+
+    def google_places_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Google Places tool for location-aware features.
+
+        Actions:
+        - search_nearby: Search for nearby places (restaurants, gas stations, etc.)
+        - get_details: Get detailed info about a specific place
+        - find_gas: Guardian Mode - Find nearby gas stations with urgency
+        - find_hotel: Guardian Mode - Find nearby hotels/lodging
+
+        Requires: GOOGLE_PLACES_API_KEY environment variable
+
+        Returns:
+            Dict with status and results
+        """
+        try:
+            result = _google_places_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Google Places tool error: {str(e)}"
+            }
     
     # ============================================
     # TOOL SCHEMAS
@@ -459,7 +518,8 @@ class IntegrationTools:
             'discord_tool',
             'spotify_control',
             'send_voice_message',
-            'lovense_tool'
+            'lovense_tool',
+            'nate_dev_tool'
         ]
         
         for tool_name in tool_names:
@@ -642,7 +702,10 @@ class IntegrationTools:
             }
         ]
         schemas.extend(free_tool_schemas)
-        
+
+        # Add Google Places tool (requires API key, more accurate than OSM)
+        schemas.append(get_google_places_schema())
+
         return schemas
 
 

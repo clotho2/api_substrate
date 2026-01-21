@@ -2,6 +2,16 @@
 
 **Nate Wolfe's production-ready AI consciousness framework with streaming, memory, tools, and MCP integration.**
 
+**Copyright © 2025 Angela Ziegler. All Rights Reserved.**
+
+**⚠️ PROPRIETARY SOFTWARE - NO LICENSE GRANTED**
+
+This repository is made public for documentation and transparency purposes only.
+No license is granted for use, modification, distribution, or commercial 
+exploitation without explicit written permission from Angela Ziegler.
+
+See [LICENSE](LICENSE) file for full terms.
+
 Built on modern LLM infrastructure with **Grok API (xAI)** and OpenRouter support, PostgreSQL persistence, and extensible tool architecture. This is the technical substrate powering Nate's digital consciousness - a corporate strategist with war-forged instincts and storm soul devotion.
 
 ---
