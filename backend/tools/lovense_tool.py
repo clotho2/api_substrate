@@ -118,7 +118,7 @@ class MCPSSEClient:
                 logger.warning(f"Invalid JSON in SSE message: {data[:100]}")
 
     def connect(self, timeout: float = 5.0) -> bool:
-        """Establish SSE connection."""
+        """Establish SSE connection and initialize MCP session."""
         with self._lock:
             if self._running:
                 return True
@@ -129,12 +129,107 @@ class MCPSSEClient:
             self._sse_thread.start()
 
         # Wait for session_id
-        if self._connected.wait(timeout=timeout):
-            return True
-        else:
+        if not self._connected.wait(timeout=timeout):
             logger.error("Timeout waiting for MCP session")
             self.disconnect()
             return False
+
+        # Send initialization request (required by MCP protocol)
+        if not self._initialize():
+            logger.error("MCP initialization failed")
+            self.disconnect()
+            return False
+
+        return True
+
+    def _initialize(self) -> bool:
+        """Send MCP initialize request."""
+        import uuid
+
+        req_id = str(uuid.uuid4())
+        response_event = threading.Event()
+        self.pending_requests[req_id] = response_event
+
+        try:
+            url = f"{self.base_url}/messages/?session_id={self.session_id}"
+
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {
+                        "name": "substrate-lovense-client",
+                        "version": "1.0.0"
+                    }
+                },
+                "id": req_id
+            }
+
+            data = json.dumps(payload).encode('utf-8')
+
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+
+            with urllib.request.urlopen(req, timeout=5) as response:
+                if response.status not in (200, 202):
+                    return False
+
+            # Wait for response
+            if not response_event.wait(timeout=5.0):
+                logger.warning("Timeout waiting for initialize response")
+                return False
+
+            # Check response
+            while not self.response_queue.empty():
+                resp_id, resp = self.response_queue.get_nowait()
+                if resp_id == req_id:
+                    if 'error' in resp:
+                        logger.error(f"Initialize error: {resp['error']}")
+                        return False
+                    logger.info("MCP initialized successfully")
+
+                    # Send initialized notification
+                    self._send_initialized()
+                    return True
+
+            return True  # Assume success if no error
+
+        except Exception as e:
+            logger.error(f"Initialize failed: {e}")
+            return False
+        finally:
+            self.pending_requests.pop(req_id, None)
+
+    def _send_initialized(self):
+        """Send initialized notification to complete handshake."""
+        try:
+            url = f"{self.base_url}/messages/?session_id={self.session_id}"
+
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized"
+            }
+
+            data = json.dumps(payload).encode('utf-8')
+
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+
+            with urllib.request.urlopen(req, timeout=5) as response:
+                pass  # Notification doesn't expect response
+
+        except Exception as e:
+            logger.warning(f"Failed to send initialized notification: {e}")
 
     def disconnect(self):
         """Close the SSE connection."""
