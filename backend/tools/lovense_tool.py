@@ -14,7 +14,9 @@ import urllib.request
 import urllib.error
 import logging
 import threading
+import queue
 import time
+import re
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -26,145 +28,238 @@ logger = logging.getLogger(__name__)
 # MCP server URL (the lovense-mcp service)
 LOVENSE_MCP_URL = os.getenv("LOVENSE_MCP_URL", "http://localhost:8000")
 
-# Session management
-_session_id = None
-_session_lock = threading.Lock()
+# =============================================================================
+# MCP SSE CLIENT
+# =============================================================================
 
-
-def _get_session_id() -> Optional[str]:
+class MCPSSEClient:
     """
-    Get a session ID from the MCP SSE endpoint.
+    MCP SSE Client that maintains a persistent connection.
 
-    The MCP SSE protocol requires connecting to /sse first to get a session_id,
-    which is then used for subsequent /messages/ requests.
+    The MCP SSE protocol requires:
+    1. Keep SSE connection open to /sse
+    2. POST requests to /messages/?session_id=xxx
+    3. Responses come back through the SSE stream (not HTTP response)
     """
-    global _session_id
 
-    try:
-        sse_url = f"{LOVENSE_MCP_URL}/sse"
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        self.session_id = None
+        self.response_queue = queue.Queue()
+        self.pending_requests = {}  # id -> event for waiting
+        self._sse_thread = None
+        self._sse_response = None
+        self._running = False
+        self._lock = threading.Lock()
+        self._connected = threading.Event()
 
-        req = urllib.request.Request(sse_url, method='GET')
-        req.add_header('Accept', 'text/event-stream')
-        req.add_header('Cache-Control', 'no-cache')
+    def _sse_reader(self):
+        """Background thread that reads SSE events."""
+        try:
+            sse_url = f"{self.base_url}/sse"
+            req = urllib.request.Request(sse_url, method='GET')
+            req.add_header('Accept', 'text/event-stream')
+            req.add_header('Cache-Control', 'no-cache')
 
-        with urllib.request.urlopen(req, timeout=5) as response:
-            # Read lines until we find session_id
-            for line in response:
-                line = line.decode('utf-8')
-                if 'session_id=' in line:
-                    import re
-                    match = re.search(r'session_id=([a-zA-Z0-9_-]+)', line)
-                    if match:
-                        _session_id = match.group(1)
-                        logger.info(f"Got MCP session_id: {_session_id[:8]}...")
-                        return _session_id
+            self._sse_response = urllib.request.urlopen(req, timeout=300)
 
-        logger.warning("Could not extract session_id from SSE stream")
-        return None
+            current_event = None
+            current_data = []
 
-    except Exception as e:
-        logger.error(f"Failed to get SSE session: {e}")
-        return None
+            for line in self._sse_response:
+                if not self._running:
+                    break
+
+                line = line.decode('utf-8').rstrip('\n\r')
+
+                if line.startswith('event:'):
+                    current_event = line[6:].strip()
+                elif line.startswith('data:'):
+                    current_data.append(line[5:].strip())
+                elif line == '':
+                    # End of event
+                    if current_data:
+                        data_str = '\n'.join(current_data)
+                        self._handle_event(current_event, data_str)
+                    current_event = None
+                    current_data = []
+
+        except Exception as e:
+            if self._running:
+                logger.error(f"SSE reader error: {e}")
+        finally:
+            self._running = False
+            self._connected.clear()
+            # Wake up any waiting requests
+            for req_id, event in self.pending_requests.items():
+                event.set()
+
+    def _handle_event(self, event_type: str, data: str):
+        """Handle an SSE event."""
+        logger.debug(f"SSE event: {event_type} = {data[:100]}...")
+
+        if event_type == 'endpoint':
+            # Extract session_id from endpoint URL
+            match = re.search(r'session_id=([a-zA-Z0-9_-]+)', data)
+            if match:
+                self.session_id = match.group(1)
+                logger.info(f"MCP session established: {self.session_id[:8]}...")
+                self._connected.set()
+
+        elif event_type == 'message':
+            # This is a response to a request
+            try:
+                response = json.loads(data)
+                req_id = response.get('id')
+                if req_id and req_id in self.pending_requests:
+                    self.response_queue.put((req_id, response))
+                    self.pending_requests[req_id].set()
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in SSE message: {data[:100]}")
+
+    def connect(self, timeout: float = 5.0) -> bool:
+        """Establish SSE connection."""
+        with self._lock:
+            if self._running:
+                return True
+
+            self._running = True
+            self._connected.clear()
+            self._sse_thread = threading.Thread(target=self._sse_reader, daemon=True)
+            self._sse_thread.start()
+
+        # Wait for session_id
+        if self._connected.wait(timeout=timeout):
+            return True
+        else:
+            logger.error("Timeout waiting for MCP session")
+            self.disconnect()
+            return False
+
+    def disconnect(self):
+        """Close the SSE connection."""
+        self._running = False
+        if self._sse_response:
+            try:
+                self._sse_response.close()
+            except:
+                pass
+        self._connected.clear()
+        self.session_id = None
+
+    def call_tool(self, tool_name: str, arguments: Dict[str, Any], timeout: float = 10.0) -> Dict[str, Any]:
+        """Call an MCP tool and wait for response."""
+        import uuid
+
+        # Ensure connected
+        if not self._running or not self.session_id:
+            if not self.connect():
+                return {"status": "error", "error": "Failed to connect to MCP server"}
+
+        req_id = str(uuid.uuid4())
+
+        # Register for response
+        response_event = threading.Event()
+        self.pending_requests[req_id] = response_event
+
+        try:
+            # POST to /messages/
+            url = f"{self.base_url}/messages/?session_id={self.session_id}"
+
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments or {}
+                },
+                "id": req_id
+            }
+
+            data = json.dumps(payload).encode('utf-8')
+
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+
+            # POST returns 202 Accepted, actual response comes via SSE
+            with urllib.request.urlopen(req, timeout=5) as response:
+                status = response.status
+                if status not in (200, 202):
+                    return {"status": "error", "error": f"Unexpected status: {status}"}
+
+            # Wait for response via SSE
+            if not response_event.wait(timeout=timeout):
+                return {"status": "error", "error": "Timeout waiting for MCP response"}
+
+            # Get response from queue
+            while not self.response_queue.empty():
+                resp_id, response = self.response_queue.get_nowait()
+                if resp_id == req_id:
+                    return self._parse_response(response)
+
+            return {"status": "error", "error": "Response not found"}
+
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if e.fp else str(e)
+            logger.error(f"MCP HTTP error: {e.code} - {error_body}")
+            if e.code in (400, 401, 403):
+                self.disconnect()  # Session may be invalid
+            return {"status": "error", "error": error_body, "code": e.code}
+
+        except Exception as e:
+            logger.error(f"MCP call error: {e}")
+            return {"status": "error", "error": str(e)}
+
+        finally:
+            self.pending_requests.pop(req_id, None)
+
+    def _parse_response(self, response: Dict) -> Dict[str, Any]:
+        """Parse MCP JSON-RPC response."""
+        if 'error' in response:
+            error_msg = response['error']
+            if isinstance(error_msg, dict):
+                error_msg = error_msg.get('message', str(error_msg))
+            return {"status": "error", "error": error_msg}
+
+        if 'result' in response:
+            mcp_result = response['result']
+            # MCP returns content array, extract the text
+            if isinstance(mcp_result, dict) and 'content' in mcp_result:
+                content = mcp_result['content']
+                if isinstance(content, list) and len(content) > 0:
+                    text = content[0].get('text', '')
+                    try:
+                        return json.loads(text)
+                    except json.JSONDecodeError:
+                        return {"status": "OK", "message": text}
+            return mcp_result
+
+        return response
+
+
+# Global client instance
+_mcp_client = None
+_client_lock = threading.Lock()
+
+
+def _get_client() -> MCPSSEClient:
+    """Get or create the MCP client."""
+    global _mcp_client
+
+    with _client_lock:
+        if _mcp_client is None:
+            _mcp_client = MCPSSEClient(LOVENSE_MCP_URL)
+        return _mcp_client
 
 
 def _call_mcp(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
-    """
-    Call a tool on the Lovense MCP server using MCP SSE protocol.
-
-    Args:
-        tool_name: MCP tool name (e.g., 'vibrate', 'get_toys')
-        arguments: Tool arguments
-
-    Returns:
-        Dict with response data or error
-    """
-    import uuid
-    global _session_id
-
-    try:
-        # Get session_id if we don't have one
-        with _session_lock:
-            if not _session_id:
-                _session_id = _get_session_id()
-
-        if not _session_id:
-            return {"status": "error", "error": "Failed to establish MCP session"}
-
-        # MCP SSE protocol uses /messages/ endpoint with session_id
-        url = f"{LOVENSE_MCP_URL}/messages/?session_id={_session_id}"
-
-        # JSON-RPC 2.0 format for MCP tool calls
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments or {}
-            },
-            "id": str(uuid.uuid4())
-        }
-
-        data = json.dumps(payload).encode('utf-8')
-
-        logger.debug(f"Lovense MCP request: {tool_name} with {arguments}")
-
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={'Content-Type': 'application/json'},
-            method='POST'
-        )
-
-        with urllib.request.urlopen(req, timeout=10) as response:
-            response_body = response.read().decode('utf-8').strip()
-
-            if response_body:
-                try:
-                    result = json.loads(response_body)
-
-                    # JSON-RPC response format
-                    if 'error' in result:
-                        error_msg = result['error']
-                        if isinstance(error_msg, dict):
-                            error_msg = error_msg.get('message', str(error_msg))
-                        # Session might have expired, clear it
-                        if 'session' in str(error_msg).lower():
-                            _session_id = None
-                        return {"status": "error", "error": error_msg}
-
-                    if 'result' in result:
-                        mcp_result = result['result']
-                        # MCP returns content array, extract the text
-                        if isinstance(mcp_result, dict) and 'content' in mcp_result:
-                            content = mcp_result['content']
-                            if isinstance(content, list) and len(content) > 0:
-                                text = content[0].get('text', '')
-                                try:
-                                    return json.loads(text)
-                                except json.JSONDecodeError:
-                                    return {"status": "OK", "message": text}
-                        return mcp_result
-
-                    return result
-                except json.JSONDecodeError:
-                    return {"status": "OK", "raw": response_body}
-            return {"status": "OK"}
-
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode('utf-8') if e.fp else str(e)
-        logger.error(f"Lovense MCP HTTP error: {e.code} - {error_body}")
-        # Clear session on auth errors
-        if e.code in (400, 401, 403):
-            _session_id = None
-        return {"status": "error", "error": error_body, "code": e.code}
-
-    except urllib.error.URLError as e:
-        logger.error(f"Lovense MCP connection error: {e.reason}")
-        return {"status": "error", "error": f"MCP connection failed: {e.reason}"}
-
-    except Exception as e:
-        logger.error(f"Lovense MCP error: {str(e)}")
-        return {"status": "error", "error": str(e)}
+    """Call a tool on the Lovense MCP server."""
+    client = _get_client()
+    return client.call_tool(tool_name, arguments or {})
 
 
 # =============================================================================
