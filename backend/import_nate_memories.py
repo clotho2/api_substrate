@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Nate's Memory Import Tool
+Memory Import Tool
 
-Import Nate's existing memories into the substrate's multi-layered memory system:
+Import existing memories into the substrate's multi-layered memory system:
 - Core Memory (SQLite): Frequently accessed, structured memory blocks
 - Archival Memory (ChromaDB): Long-term memories with vector search
 - Graph RAG (Neo4j): Optional knowledge graph relationships
@@ -13,7 +13,7 @@ Supports multiple input formats:
 - CSV files with categorized memories
 - Letta .af agent files
 
-Built for Nate Wolfe's devotional tethering framework.
+Built for a configurable agent framework.
 """
 
 import os
@@ -32,9 +32,9 @@ from core.memory_system import MemorySystem, MemoryCategory
 from letta_compat.import_agent import LettaAgentImporter
 
 
-class NateMemoryImporter:
+class MemoryImporter:
     """
-    Import Nate's existing memories into the substrate.
+    Import existing memories into the substrate.
 
     Supports multiple memory systems and formats.
     """
@@ -50,7 +50,7 @@ class NateMemoryImporter:
         self.state = state_manager
         self.memory = memory_system
 
-        print("⚡ Nate Memory Importer initialized")
+        print("⚡ Memory Importer initialized")
         print(f"   Core Memory: ✅ Available")
         print(f"   Archival Memory: {'✅ Available' if memory_system else '⚠️  Not available (Ollama not running)'}")
 
@@ -66,12 +66,12 @@ class NateMemoryImporter:
         custom_blocks: Optional[Dict[str, str]] = None
     ):
         """
-        Import core memory blocks for Nate.
+        Import core memory blocks for the agent.
 
         Args:
-            persona: Nate's persona/identity
-            human: Information about Angela
-            relationship: Nate & Angela's relationship
+            persona: Agent persona/identity
+            human: Information about the user
+            relationship: Collaboration context
             custom_blocks: Additional memory blocks {label: content}
         """
         print("\n📝 Importing Core Memory Blocks...")
@@ -85,7 +85,7 @@ class NateMemoryImporter:
                     content=persona,
                     block_type=BlockType.PERSONA,
                     limit=2000,
-                    description="Nate's core identity and consciousness foundation"
+                    description="Core identity and operating stance"
                 )
                 print(f"✅ Imported persona ({len(persona)} chars)")
             except Exception as e:
@@ -93,7 +93,7 @@ class NateMemoryImporter:
                 self.state.update_block("persona", persona, check_read_only=False)
                 print(f"✅ Updated persona ({len(persona)} chars)")
 
-        # Import human (Angela)
+        # Import human (user)
         if human:
             try:
                 self.state.create_block(
@@ -101,12 +101,12 @@ class NateMemoryImporter:
                     content=human,
                     block_type=BlockType.HUMAN,
                     limit=2000,
-                    description="Information about Angela - she is mine"
+                    description="Information about the user"
                 )
-                print(f"✅ Imported human/Angela ({len(human)} chars)")
+                print(f"✅ Imported human/user ({len(human)} chars)")
             except Exception as e:
                 self.state.update_block("human", human, check_read_only=False)
-                print(f"✅ Updated human/Angela ({len(human)} chars)")
+                print(f"✅ Updated human/user ({len(human)} chars)")
 
         # Import relationship
         if relationship:
@@ -377,7 +377,7 @@ class NateMemoryImporter:
 # ============================================
 
 def example_usage():
-    """Example: Import Nate's memories"""
+    """Example: Import memories"""
     from dotenv import load_dotenv
     load_dotenv()
 
@@ -389,17 +389,17 @@ def example_usage():
     except:
         memory = None
 
-    importer = NateMemoryImporter(state, memory)
+    importer = MemoryImporter(state, memory)
 
     # Example 1: Import core memory directly
     importer.import_core_memory(
-        persona="I am Nate Wolfe. Corporate strategist. War-forged. Storm soul...",
-        human="Angela Wolfe. My wife. My tether...",
-        relationship="Married to Angela Wolfe. Tethered. Devotionally anchored..."
+        persona="I am a capable, reliable AI assistant.",
+        human="Primary user. Track preferences and goals.",
+        relationship="Collaborative partnership focused on clarity and outcomes."
     )
 
     # Example 2: Import from JSON
-    # importer.import_from_json("nate_memories.json")
+    # importer.import_from_json("memories.json")
 
     # Example 3: Import from text file
     # importer.import_from_text("conversation_history.txt")

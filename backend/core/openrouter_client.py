@@ -292,7 +292,7 @@ class OpenRouterClient:
             payload["max_tokens"] = max_tokens
 
         # Allow longer responses - use max_tokens if provided, otherwise allow up to 8192 tokens
-        # This ensures Nate can give detailed, thoughtful responses instead of clipped fragments
+        # This ensures the agent can give detailed, thoughtful responses instead of clipped fragments
         if "max_completion_tokens" not in kwargs:
             # Use max_tokens if provided, otherwise default to 8192 for full responses
             payload["max_completion_tokens"] = max_tokens if max_tokens else 8192

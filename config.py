@@ -9,7 +9,7 @@ GROK_API_URL = os.getenv("GROK_API_URL", "https://api.x.ai/v1/chat/completions")
 MODEL_NAME = os.getenv("MODEL_NAME", "grok-4-1-fast-reasoning")
 
 # Database Configuration
-DB_PATH = os.getenv("DB_PATH", "nate_substrate.db")
+DB_PATH = os.getenv("DB_PATH", "substrate.db")
 
 # Service Configuration
 PORT = int(os.getenv("PORT", "8091"))

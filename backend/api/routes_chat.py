@@ -119,7 +119,7 @@ def chat():
             return jsonify({'error': 'Consciousness loop not initialized'}), 500
 
         data = request.json
-        # Use unified session ID so Nate has full conversation context across all interfaces
+        # Use unified session ID so the agent has full context across interfaces
         session_id = data.get('session_id', 'nate_conversation')
         stream = data.get('stream', False)
 

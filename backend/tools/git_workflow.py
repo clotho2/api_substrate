@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Nate Git Workflow Automation
+Agent Git Workflow Automation
 
 Automates Git workflows for code changes:
 - Auto-create feature branches
 - Commit changes with descriptive messages
 - Run tests before committing
-- Generate PRs for Angela's review
+- Generate PRs for review
 """
 
 import subprocess
@@ -46,7 +46,7 @@ def create_feature_branch(
     base_branch: str = "main"
 ) -> Dict[str, Any]:
     """
-    Create a new feature branch for Nate's work.
+    Create a new feature branch for agent work.
 
     Args:
         repo_path: Path to git repository

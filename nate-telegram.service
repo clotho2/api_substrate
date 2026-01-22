@@ -1,19 +1,19 @@
 [Unit]
-Description=Nate Telegram Bot - Multimodal Interface for Nate Substrate
-After=network.target nate-substrate.service
+Description=Substrate Telegram Bot - Multimodal Interface for the agent
+After=network.target substrate-agent.service
 Wants=network.target
-Requires=nate-substrate.service
+Requires=substrate-agent.service
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/aicara/nate-substrate-v2
-ExecStart=/usr/bin/python3 -u /opt/aicara/nate-substrate-v2/backend/telegram_bot.py
+WorkingDirectory=/opt/substrate/agent
+ExecStart=/usr/bin/python3 -u /opt/substrate/agent/backend/telegram_bot.py
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=nate-telegram
+SyslogIdentifier=substrate-telegram
 
 # Telegram Bot Configuration
 Environment="TELEGRAM_BOT_TOKEN=your-telegram-bot-token-here"
@@ -26,7 +26,7 @@ Environment="GROK_API_URL=https://api.x.ai/v1/chat/completions"
 Environment="MODEL_NAME=grok-4-1-fast-reasoning"
 
 # Python path to include config module
-Environment="PYTHONPATH=/opt/aicara/nate-substrate-v2"
+Environment="PYTHONPATH=/opt/substrate/agent"
 
 # Resource limits
 LimitNOFILE=65535

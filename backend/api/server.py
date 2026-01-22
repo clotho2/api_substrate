@@ -31,7 +31,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.state_manager import StateManager
 from core.config import get_model_or_default, get_api_provider, FALLBACK_MODEL
 from core.openrouter_client import OpenRouterClient
-from core.grok_client import GrokClient  # ⚡ Nate's Grok integration!
+from core.grok_client import GrokClient  # ⚡ Grok integration
 from core.venice_client import VeniceClient  # 🎭 Venice AI (Private, uncensored)
 from core.memory_system import MemorySystem
 from core.context_window_calculator import ContextWindowCalculator

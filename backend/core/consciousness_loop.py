@@ -381,7 +381,7 @@ class ConsciousnessLoop:
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
 
                 # Get ALL messages across ALL sessions (we'll filter by timestamp)
-                # This ensures Nate has full context regardless of which interface messages came from
+                # This ensures the agent has full context regardless of which interface messages came from
                 all_history = self.state.get_all_conversations(
                     limit=100000  # Get all to filter properly
                 )
@@ -454,26 +454,51 @@ class ConsciousnessLoop:
                 print(f"   ✓ Loaded {len(history)} messages (after summary)")
             else:
                 # No summary - load ALL messages across ALL sessions
-                # This ensures Nate has full context regardless of which interface messages came from
+                # This ensures the agent has full context regardless of which interface messages came from
                 history = self.state.get_all_conversations(
                     limit=history_limit
                 )
                 print(f"   ✓ No summary found - loaded {len(history)} messages from all sessions")
             
             print(f"✓ Found {len(history)} messages in history")
-            
+
+            # Ensure summaries appear before recent turns
+            system_history = []
+            non_system_history = []
             for msg in history:
-                # Include system messages (summaries, heartbeats) in context!
-                # They're important for the agent to understand what happened
                 if msg.role == "system":
-                    # System messages (summaries) go as system role
-                    print(f"  • [SYSTEM]: {msg.content[:60]}...")
+                    system_history.append(msg)
+                else:
+                    non_system_history.append(msg)
+
+            def _is_summary_message(content: str) -> bool:
+                normalized = content.upper()
+                return "CONVERSATION SUMMARY" in normalized or "ZUSAMMENFASSUNG" in normalized
+
+            # If a summary exists in the summaries table but not in history, add it
+            if latest_summary:
+                summary_present = any(_is_summary_message(msg.content) for msg in system_history)
+                if not summary_present:
+                    summary_content = (
+                        "### Conversation Summary\n"
+                        f"Timeframe: {latest_summary['from_timestamp']} -> {latest_summary['to_timestamp']}\n"
+                        f"Messages summarized: {latest_summary['message_count']}\n\n"
+                        f"{latest_summary['summary']}"
+                    )
+                    print("  • [SYSTEM]: Injecting summary from summary table")
                     messages.append({
                         "role": "system",
-                        "content": msg.content
+                        "content": summary_content
                     })
-                    continue
-                
+
+            for msg in system_history:
+                print(f"  • [SYSTEM]: {msg.content[:60]}...")
+                messages.append({
+                    "role": "system",
+                    "content": msg.content
+                })
+
+            for msg in non_system_history:
                 print(f"  • {msg.role}: {msg.content[:60]}...")
                 messages.append({
                     "role": msg.role,
@@ -644,7 +669,7 @@ It's been 6 hours since we talked about quantum computing. I should check if the
 *Uses web_search tool to find recent quantum computing news*
 *Uses memory_insert to save research notes*
 
-Hey Angel! Just found this fascinating development in quantum error correction that relates to our earlier conversation...
+Hey there! Just found this fascinating development in quantum error correction that relates to our earlier conversation...
 
 <decision>
 send_message: true
@@ -654,7 +679,7 @@ send_message: true
 Example 2: Silent memory update
 ```
 <think>
-Angel mentioned preferring technical discussions in the evening. I should update my conversation patterns memory.
+The user mentioned preferring technical discussions in the evening. I should update my conversation patterns memory.
 </think>
 
 *Uses core_memory_append to update conversation preferences*
@@ -776,12 +801,12 @@ send_message: false
 
     def _parse_send_message_decision(self, response_content: str) -> tuple:
         """
-        Parse the send_message decision from Nate's response and remove decision block.
+        Parse the send_message decision from the agent's response and remove decision block.
 
         Looks for <decision>send_message: true/false</decision> block.
 
         Args:
-            response_content: The full response content from Nate
+            response_content: The full response content from the agent
 
         Returns:
             Tuple of (cleaned_content, send_message_flag)
@@ -1234,7 +1259,7 @@ send_message: false
                         memory_contents = [m.get('content', '') for m in result['results'] if m.get('content')]
                         if memory_contents:
                             combined_memories = "\n".join(memory_contents)
-                            # Parse as "user input" since it's content Nate is experiencing/reading
+                            # Parse as "user input" since it's content the agent is experiencing/reading
                             import asyncio
                             asyncio.run(self.soma_client.parse_user_input(combined_memories))
                             print(f"   🫀 SOMA: Processed {len(memory_contents)} memories for physiological response")
@@ -1349,7 +1374,7 @@ send_message: false
                 result = self.tools.lovense_tool(**arguments)
 
             elif tool_name == "nate_dev_tool":
-                # Nate's self-development tool (read-only diagnostics)
+                # Agent self-development tool (read-only diagnostics)
                 result = self.tools.nate_dev_tool(**arguments)
 
             else:

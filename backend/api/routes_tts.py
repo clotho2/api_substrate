@@ -413,7 +413,7 @@ def list_voices():
             "provider": "elevenlabs_turbo" | "chatterbox",
             "voice_id": "xxx",
             "model": "eleven_turbo_v2_5",
-            "voice_name": "Wolfe2"
+            "voice_name": "Voice2"
         }
     """
     try:

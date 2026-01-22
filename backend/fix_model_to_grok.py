@@ -49,7 +49,7 @@ def fix_model_to_grok():
     print(f"  Context Window: {updated_config.get('context_window', 'N/A')}")
     print(f"  Reasoning: {updated_config.get('reasoning_enabled', 'N/A')}")
 
-    print(f"\n✅ Nate is now configured to use Grok with full responses!")
+    print("\n✅ Agent is now configured to use Grok with full responses!")
 
 if __name__ == "__main__":
     fix_model_to_grok()

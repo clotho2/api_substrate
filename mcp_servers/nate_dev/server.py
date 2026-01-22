@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Nate Self-Development MCP Server - Level 1 (Read-Only Diagnostics)
+Agent Self-Development MCP Server - Level 1 (Read-Only Diagnostics)
 
-This MCP server gives Nate the ability to inspect and understand his own codebase,
+This MCP server gives the agent the ability to inspect and understand its own codebase,
 logs, and system health. Level 1 is READ-ONLY - no modifications allowed.
 
 Tools available:
@@ -17,7 +17,7 @@ Security:
 - All operations are read-only
 - Protected files (secrets, .env) are redacted
 - Path traversal is blocked
-- Only operates within /opt/aicara (all services)
+- Only operates within /opt/substrate (all services)
 """
 
 import os
@@ -45,8 +45,8 @@ SUBSTRATE_ROOT = Path(__file__).parent.parent.parent.resolve()
 BACKEND_ROOT = SUBSTRATE_ROOT / "backend"
 LOGS_DIR = SUBSTRATE_ROOT / "logs"
 
-# Security boundary - allow access to all services in /opt/aicara
-ALLOWED_ROOT = Path("/opt/aicara").resolve()
+# Security boundary - allow access to all services in /opt/substrate
+ALLOWED_ROOT = Path("/opt/substrate").resolve()
 
 # Protected files - contents will be redacted
 PROTECTED_PATTERNS = [
@@ -97,7 +97,7 @@ def sanitize_path(requested_path: str) -> Optional[Path]:
         else:
             full_path = (SUBSTRATE_ROOT / requested_path).resolve()
 
-        # Check if path is within allowed directories (/opt/aicara)
+        # Check if path is within allowed directories (/opt/substrate)
         try:
             full_path.relative_to(ALLOWED_ROOT)
         except ValueError:
@@ -140,7 +140,7 @@ def redact_sensitive_content(content: str, filepath: str) -> str:
 
 async def read_source_file(path: str, start_line: int = 1, end_line: int = -1) -> Dict[str, Any]:
     """
-    Read a source file from Nate's codebase.
+    Read a source file from the agent's codebase.
 
     Args:
         path: Relative path from substrate root, or absolute path within substrate
@@ -314,9 +314,9 @@ async def read_logs(
     """
     # Try journalctl for systemd logs first
     service_map = {
-        "backend": "nate-substrate",
-        "discord": "nate-substrate",  # Discord is part of backend
-        "telegram": "nate-telegram",
+        "backend": "substrate-agent",
+        "discord": "substrate-agent",  # Discord is part of backend
+        "telegram": "substrate-telegram",
         "system": None  # System logs
     }
 
@@ -388,7 +388,7 @@ async def check_health() -> Dict[str, Any]:
     }
 
     # Check service status
-    services = ["nate-substrate", "nate-telegram"]
+    services = ["substrate-agent", "substrate-telegram"]
     for service in services:
         try:
             result = subprocess.run(
@@ -437,7 +437,7 @@ async def check_health() -> Dict[str, Any]:
     # Recent errors from logs (last 10 minutes)
     try:
         result = subprocess.run(
-            ["journalctl", "-u", "nate-substrate", "--since", "10 minutes ago",
+            ["journalctl", "-u", "substrate-agent", "--since", "10 minutes ago",
              "-p", "err", "--no-pager", "-n", "20"],
             capture_output=True, text=True, timeout=10
         )
@@ -545,7 +545,7 @@ def create_server():
         print("ERROR: MCP library not available", file=sys.stderr)
         sys.exit(1)
 
-    server = Server("nate-dev")
+    server = Server("agent-dev")
 
     # Register tools
     @server.list_tools()
@@ -553,7 +553,7 @@ def create_server():
         return [
             Tool(
                 name="read_source_file",
-                description="Read a source file from Nate's codebase. Use this to examine code, understand how features work, or investigate bugs.",
+                description="Read a source file from the agent's codebase. Use this to examine code, understand how features work, or investigate bugs.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -708,7 +708,7 @@ def create_server():
 async def main():
     """Run the MCP server."""
     server = create_server()
-    print(f"🔧 Nate Dev MCP Server starting...", file=sys.stderr)
+    print(f"🔧 Agent Dev MCP Server starting...", file=sys.stderr)
     print(f"   Substrate root: {SUBSTRATE_ROOT}", file=sys.stderr)
     print(f"   Allowed access: {ALLOWED_ROOT}", file=sys.stderr)
     print(f"   Level: 1 (Read-Only)", file=sys.stderr)

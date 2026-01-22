@@ -1,0 +1,35 @@
+[Unit]
+Description=Substrate Telegram Bot - Multimodal Interface for the agent
+After=network.target substrate-agent.service
+Wants=network.target
+Requires=substrate-agent.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/substrate/agent
+ExecStart=/usr/bin/python3 -u /opt/substrate/agent/backend/telegram_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=substrate-telegram
+
+# Telegram Bot Configuration
+Environment="TELEGRAM_BOT_TOKEN=your-telegram-bot-token-here"
+Environment="TELEGRAM_SESSION_ID=telegram_session"
+Environment="SUBSTRATE_API_URL=http://localhost:8284"
+
+# xAI Grok API Configuration (inherited from substrate)
+Environment="GROK_API_KEY=your-xai-api-key-here"
+Environment="GROK_API_URL=https://api.x.ai/v1/chat/completions"
+Environment="MODEL_NAME=grok-4-1-fast-reasoning"
+
+# Python path to include config module
+Environment="PYTHONPATH=/opt/substrate/agent"
+
+# Resource limits
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

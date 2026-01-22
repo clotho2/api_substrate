@@ -48,7 +48,7 @@ Keep it simple and clear."""
     except Exception as e:
         print(f"❌ Error: {e}")
         print(f"\nℹ️  Note: The heartbeat_scratchpad block might not exist yet.")
-        print(f"          Run setup_nate.py first to initialize the database.")
+        print("          Run setup_agent.py first to initialize the database.")
         return 1
 
     return 0

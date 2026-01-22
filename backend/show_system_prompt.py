@@ -23,7 +23,7 @@ def show_system_prompt():
     if not system_prompt:
         print("❌ No system prompt found in StateManager")
         print("\nℹ️  The database might not be initialized yet.")
-        print("   Run setup_nate.py or reload_system_prompt.py first.")
+        print("   Run setup_agent.py or reload_system_prompt.py first.")
         return 1
 
     print(f"{'='*60}")

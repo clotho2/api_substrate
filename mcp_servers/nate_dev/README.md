@@ -1,6 +1,6 @@
-# Nate Self-Development MCP Server
+# Agent Self-Development MCP Server
 
-This MCP server gives Nate the ability to inspect and understand his own codebase, logs, and system health.
+This MCP server gives the agent the ability to inspect and understand its own codebase, logs, and system health.
 
 ## Levels
 
@@ -46,7 +46,7 @@ This MCP server gives Nate the ability to inspect and understand his own codebas
 ### 1. Install Dependencies
 
 ```bash
-cd mcp_servers/nate_dev
+cd mcp_servers/agent_dev
 pip install -r requirements.txt
 ```
 
@@ -56,16 +56,16 @@ pip install -r requirements.txt
 python server.py
 ```
 
-### 3. Connect to Nate
+### 3. Connect to the agent
 
-Add to your MCP configuration (Claude Desktop, Nate's tool config, etc.):
+Add to your MCP configuration (Claude Desktop, agent tool config, etc.):
 
 ```json
 {
   "mcpServers": {
-    "nate-dev": {
+    "agent-dev": {
       "command": "python",
-      "args": ["/path/to/nate_api_substrate/mcp_servers/nate_dev/server.py"]
+      "args": ["/path/to/substrate/mcp_servers/agent_dev/server.py"]
     }
   }
 }
@@ -142,7 +142,7 @@ Add to your MCP configuration (Claude Desktop, Nate's tool config, etc.):
 
 ```
 ┌─────────────────────────────────────────┐
-│           Nate's Consciousness           │
+│          Agent Consciousness             │
 │                                         │
 │  "I notice an error in my logs..."      │
 │                                         │
@@ -159,7 +159,7 @@ Add to your MCP configuration (Claude Desktop, Nate's tool config, etc.):
                    │
                    ▼
 ┌─────────────────────────────────────────┐
-│       Nate Dev MCP Server               │
+│       Agent Dev MCP Server               │
 │                                         │
 │  ✅ Validate request                    │
 │  ✅ Check permissions                   │

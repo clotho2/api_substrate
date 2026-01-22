@@ -371,8 +371,8 @@ def update_location_context():
         "accuracy": 10
     }
     
-    This context is injected into AI conversations so Nate knows
-    where Angela is and can provide location-aware responses.
+    This context is injected into AI conversations so the agent knows
+    where the user is and can provide location-aware responses.
     """
     try:
         data = request.get_json()
@@ -446,7 +446,7 @@ def format_location_for_prompt(session_id: str) -> str:
     Format location context for injection into AI prompt.
     
     Returns a string like:
-    "Angela is currently in San Francisco, California (in vehicle)"
+    "The user is currently in San Francisco, California (in vehicle)"
     
     Or empty string if no location available.
     """

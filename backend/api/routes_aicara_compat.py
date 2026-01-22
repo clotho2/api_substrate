@@ -94,7 +94,7 @@ def aicara_chat():
             return jsonify({"error": "No message content"}), 400
         
         # Extract session from headers or use unified default
-        # Using same session ID across all interfaces so Nate remembers conversations
+        # Using same session ID across all interfaces so the agent retains context
         session_id = request.headers.get('X-Session-Id', 'nate_conversation')
         
         logger.info(f"🌐 AiCara /chat: session={session_id}, stream={stream}, msg_len={len(user_message)}")
@@ -256,7 +256,7 @@ def openai_chat_completions():
             return jsonify({"error": "No message content"}), 400
         
         # Session ID from headers or use unified default
-        # Using same session ID across all interfaces so Nate remembers conversations
+        # Using same session ID across all interfaces so the agent retains context
         session_id = request.headers.get('X-Session-Id', 'nate_conversation')
         
         logger.info(f"📱 AiCara /v1/chat/completions: session={session_id}, stream={stream}")
@@ -418,7 +418,7 @@ def aicara_health():
     """
     return jsonify({
         "status": "ok",
-        "service": "nate-substrate",
+        "service": "substrate-agent",
         "aicara_compat": True,
         "endpoints": {
             "/chat": "wolfeEngine.ts (web)",

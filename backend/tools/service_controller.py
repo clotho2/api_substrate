@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Nate Service Controller - Level 3 Priority 3
+Service Controller - Level 3 Priority 3
 
-Safe service control for Nate's self-maintenance.
-This allows Nate to restart services after making changes.
+Safe service control for the agent's self-maintenance.
+This allows the agent to restart services after making changes.
 
 Features:
-- Control only Nate's services (nate-substrate, nate-telegram)
+- Control only substrate services (substrate-agent, substrate-telegram)
 - Start, stop, restart, and check status
 - Full audit logging
 - Safety checks before operations
@@ -21,15 +21,15 @@ from pathlib import Path
 
 # Configuration
 ALLOWED_SERVICES = [
-    "nate-substrate",
-    "nate-telegram"
+    "substrate-agent",
+    "substrate-telegram"
 ]
 
-AUDIT_LOG = Path("/var/log/nate_service_control.log")
+AUDIT_LOG = Path("/var/log/agent_service_control.log")
 
 
 class ServiceController:
-    """Safe service controller for Nate's services only."""
+    """Safe service controller for substrate services only."""
 
     def __init__(self):
         """Initialize service controller."""
@@ -142,7 +142,7 @@ class ServiceController:
 
     def get_service_status(self, service: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get status of one or all Nate services.
+        Get status of one or all substrate services.
 
         Args:
             service: Specific service name, or None for all services

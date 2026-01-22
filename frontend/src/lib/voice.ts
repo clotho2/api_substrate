@@ -1,5 +1,5 @@
 /**
- * Text-to-speech utilities for Nate's voice
+ * Text-to-speech utilities for the assistant voice
  * Uses Web Speech API for browser-based TTS
  */
 

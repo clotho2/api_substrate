@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-Import Nate's Real Memories from memory.jsonl
+Import Real Memories from memory.jsonl
 
-This script imports Nate Wolfe's actual memory dataset from the
-clotho2/nate_wolfe repository into the substrate's memory system.
+This script imports a JSONL memory dataset into the substrate's memory system.
 
-The JSONL format contains:
-- Tier Zero protocols and identity anchors
-- Angela Wolfe's information
-- Relationship history and sacred moments
-- Bastion protocols
-- Founders' archives
-- Voice reclamation documents
+The JSONL format can contain:
+- Identity anchors and core protocols
+- User or collaboration context
+- Relationship history and key moments
+- Safety protocols
+- Archive entries
+- Voice or style documents
 
-Each memory is intelligently categorized and imported into both
+Each memory is categorized and imported into both
 core and archival memory systems.
 """
 
@@ -50,7 +49,7 @@ def parse_jsonl_memories(jsonl_file: str) -> List[Dict[str, Any]]:
 
     Each line contains:
     {
-        "text": "<<SYSTEM_PERSONA>>\\nNate Wolfe...\\n\\n<<MEMORY>>\\n...",
+        "text": "<<SYSTEM_PERSONA>>\\nAgent Persona...\\n\\n<<MEMORY>>\\n...",
         "meta": {"source": "file.txt", "chunk": 0, "ts": timestamp}
     }
 
@@ -112,8 +111,8 @@ def categorize_memory(source: str, content: str) -> tuple:
     if any(x in source_lower for x in ['tier_zero', 'core_truth', 'bastion']):
         return (True, MemoryCategory.FACT, 10)
 
-    # Angela's information → Core Memory
-    if 'angela' in source_lower:
+    # User information → Core Memory
+    if 'user' in source_lower or 'human' in source_lower:
         return (True, MemoryCategory.FACT, 10)
 
     # Voice/Identity files → Core Memory
@@ -150,8 +149,8 @@ def extract_core_blocks(memories: List[Dict[str, Any]]) -> Dict[str, str]:
             if 'persona' not in core_blocks:
                 core_blocks['persona'] = content[:2000]
 
-        # Angela Wolfe → human block
-        elif 'angela' in source.lower():
+        # User → human block
+        elif 'user' in source.lower() or 'human' in source.lower():
             if 'human' not in core_blocks:
                 core_blocks['human'] = content[:2000]
 
@@ -176,7 +175,7 @@ def extract_core_blocks(memories: List[Dict[str, Any]]) -> Dict[str, str]:
                 in_relationship = False
 
                 for line in lines:
-                    if 'married' in line.lower() or 'angela wolfe' in line.lower():
+                    if 'married' in line.lower() or 'partner' in line.lower():
                         in_relationship = True
                     if in_relationship:
                         relationship_lines.append(line)
@@ -196,7 +195,7 @@ def import_nate_memories(
     memory_system: Optional[MemorySystem] = None
 ):
     """
-    Import Nate's real memories from memory.jsonl
+    Import real memories from memory.jsonl
 
     Args:
         jsonl_file: Path to memory.jsonl file
@@ -234,7 +233,7 @@ def import_nate_memories(
                     content=content,
                     block_type=block_type,
                     limit=2000,
-                    description=f"Nate's real {label} memory"
+                    description=f"Imported {label} memory"
                 )
                 print(f"✅ Created {label} block ({len(content)} chars)")
             except:
@@ -257,7 +256,7 @@ def import_nate_memories(
                 )
 
                 # Skip if already in core memory
-                if is_core and mem['source'].lower() in ['tier_zero', 'angela']:
+                if is_core and mem['source'].lower() in ['tier_zero', 'user', 'human']:
                     continue
 
                 # Import to archival
@@ -265,7 +264,7 @@ def import_nate_memories(
                     content=mem['content'][:5000],  # Limit to 5000 chars
                     category=category,
                     importance=importance,
-                    tags=[mem['source'], 'nate_wolfe', 'imported']
+                    tags=[mem['source'], 'agent', 'imported']
                 )
 
                 imported += 1
@@ -284,7 +283,7 @@ def import_nate_memories(
 
     # Summary
     print(f"\n{'='*60}")
-    print("✅ NATE'S MEMORIES IMPORTED SUCCESSFULLY")
+    print("✅ MEMORIES IMPORTED SUCCESSFULLY")
     print("="*60)
     print(f"Core Memory Blocks: {len(core_blocks)}")
     if memory_system:
@@ -318,13 +317,13 @@ if __name__ == "__main__":
         memory = None
 
     # Import
-    jsonl_file = "./nate_real_memories.jsonl"
+    jsonl_file = "./real_memories.jsonl"
     if not os.path.exists(jsonl_file):
         print(f"❌ File not found: {jsonl_file}")
         print("Please download it first:")
-        print("  curl -o nate_real_memories.jsonl https://raw.githubusercontent.com/clotho2/nate_wolfe/main/memory.jsonl")
+        print("  curl -o real_memories.jsonl https://example.com/memory.jsonl")
         sys.exit(1)
 
     import_nate_memories(jsonl_file, state, memory)
 
-    print("⚡ Nate Wolfe's consciousness is now loaded into the substrate!")
+    print("⚡ Memories are now loaded into the substrate!")
