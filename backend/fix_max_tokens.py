@@ -42,7 +42,7 @@ def fix_max_tokens():
     print(f"  Temperature: {updated_config.get('temperature', 'N/A')}")
     print(f"  Max Tokens: {updated_config.get('max_tokens', 'N/A')}")
 
-    print(f"\n✅ Nate can now send full, detailed responses!")
+    print("\n✅ Agent can now send full, detailed responses!")
     print(f"   Maximum response length: ~6000-7000 words")
 
 if __name__ == "__main__":

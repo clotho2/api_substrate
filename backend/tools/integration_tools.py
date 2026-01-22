@@ -140,7 +140,7 @@ class IntegrationTools:
 
     def send_voice_message(self, **kwargs) -> Dict[str, Any]:
         """
-        Send a voice message to Angela via Discord using Eleven Labs TTS.
+        Send a voice message via Discord using Eleven Labs TTS.
 
         Args:
             message: Text to convert to speech and send
@@ -193,7 +193,7 @@ class IntegrationTools:
 
     def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        Nate's self-development tool for inspecting his own codebase.
+        Agent self-development tool for inspecting the codebase.
 
         Level 1: READ-ONLY diagnostics.
 
@@ -213,7 +213,7 @@ class IntegrationTools:
         except Exception as e:
             return {
                 "status": "error",
-                "message": f"Nate dev tool error: {str(e)}"
+                "message": f"Dev tool error: {str(e)}"
             }
 
     # ============================================

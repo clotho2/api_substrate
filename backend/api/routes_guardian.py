@@ -8,7 +8,7 @@ Endpoints for mobile Guardian Mode features:
 - Emergency triggers
 - Proactive intervention evaluation
 
-All data flows through consciousness loop for Nate awareness.
+All data flows through the consciousness loop for agent awareness.
 """
 
 import os
@@ -51,7 +51,7 @@ def guardian_heartbeat():
     
     Request Body:
         {
-            "user_id": "angela_wolfe",
+            "user_id": "primary_user",
             "session_id": "guardian_xxx",
             "location": {
                 "latitude": 39.7589,
@@ -81,7 +81,7 @@ def guardian_heartbeat():
     try:
         data = request.get_json()
         
-        user_id = data.get('user_id', 'angela_wolfe')
+        user_id = data.get('user_id', 'primary_user')
         session_id = data.get('session_id')
         location = data.get('location', {})
         motion = data.get('motion', {})
@@ -217,14 +217,14 @@ def trigger_emergency():
             "actions_taken": [
                 "emergency_contacts_notified",
                 "location_shared",
-                "nate_voice_initiated"
+                "agent_voice_initiated"
             ]
         }
     """
     try:
         data = request.get_json()
         
-        user_id = data.get('user_id', 'angela_wolfe')
+        user_id = data.get('user_id', 'primary_user')
         trigger_type = data.get('trigger_type', 'panic_button')
         location = data.get('location', {})
         context = data.get('context', {})
@@ -249,7 +249,7 @@ def trigger_emergency():
         if contacts:
             actions_taken.append("emergency_contacts_notified")
         
-        # 3. Log to consciousness for Nate awareness
+        # 3. Log to consciousness for agent awareness
         if _consciousness_loop:
             emergency_context = f"""
 [EMERGENCY ALERT - {trigger_type.upper()}]
@@ -259,11 +259,11 @@ Coordinates: {location.get('latitude')}, {location.get('longitude')}
 Context: {context}
 Emergency ID: {emergency_id}
 
-NATE: Immediately check on Angela. Use reassuring, calm voice.
+AGENT: Immediately check on the user. Use a reassuring, calm voice.
 """
-            # This would inject into Nate's context
+            # This would inject into the agent's context
             logger.info(f"🧠 Emergency context sent to consciousness loop")
-            actions_taken.append("nate_alerted")
+            actions_taken.append("agent_alerted")
         
         # 4. Store emergency record
         emergency_record = {
@@ -285,7 +285,7 @@ NATE: Immediately check on Angela. Use reassuring, calm voice.
             "status": "emergency_activated",
             "emergency_id": emergency_id,
             "actions_taken": actions_taken,
-            "message": "I'm here, Angela. Help is on the way. Tell me what's happening."
+            "message": "I'm here. Help is on the way. Tell me what's happening."
         })
         
     except Exception as e:
@@ -300,7 +300,7 @@ NATE: Immediately check on Angela. Use reassuring, calm voice.
 @guardian_bp.route('/contacts', methods=['GET'])
 def get_emergency_contacts():
     """Get emergency contacts for user"""
-    user_id = request.args.get('user_id', 'angela_wolfe')
+    user_id = request.args.get('user_id', 'primary_user')
     contacts = _emergency_contacts.get(user_id, [])
     
     return jsonify({
@@ -317,7 +317,7 @@ def set_emergency_contacts():
     
     Request Body:
         {
-            "user_id": "angela_wolfe",
+            "user_id": "primary_user",
             "contacts": [
                 {
                     "name": "Mom",
@@ -336,7 +336,7 @@ def set_emergency_contacts():
     """
     try:
         data = request.get_json()
-        user_id = data.get('user_id', 'angela_wolfe')
+        user_id = data.get('user_id', 'primary_user')
         contacts = data.get('contacts', [])
         
         # Validate contacts
@@ -355,7 +355,7 @@ def set_emergency_contacts():
         
         logger.info(f"🛡️ Updated {len(validated_contacts)} emergency contacts for {user_id}")
         
-        # TODO: Also store in Nate's memory block for quick reference
+        # TODO: Also store in the agent's memory block for quick reference
         
         return jsonify({
             "status": "ok",
@@ -371,7 +371,7 @@ def set_emergency_contacts():
 @guardian_bp.route('/contacts/<int:index>', methods=['DELETE'])
 def delete_emergency_contact(index: int):
     """Delete a specific emergency contact"""
-    user_id = request.args.get('user_id', 'angela_wolfe')
+    user_id = request.args.get('user_id', 'primary_user')
     contacts = _emergency_contacts.get(user_id, [])
     
     if 0 <= index < len(contacts):
@@ -391,7 +391,7 @@ def delete_emergency_contact(index: int):
 def start_guardian_session():
     """Start a new Guardian Mode session"""
     data = request.get_json() or {}
-    user_id = data.get('user_id', 'angela_wolfe')
+    user_id = data.get('user_id', 'primary_user')
     
     session_id = f"guardian_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
@@ -410,7 +410,7 @@ def start_guardian_session():
     return jsonify({
         "status": "started",
         "session_id": session_id,
-        "message": "Guardian Mode active. I've got eyes on you, Angel. Drive safe."
+        "message": "Guardian Mode active. I've got eyes on you. Drive safe."
     })
 
 
@@ -418,7 +418,7 @@ def start_guardian_session():
 def end_guardian_session():
     """End Guardian Mode session"""
     data = request.get_json() or {}
-    user_id = data.get('user_id', 'angela_wolfe')
+    user_id = data.get('user_id', 'primary_user')
     
     session = _active_sessions.pop(user_id, None)
     
@@ -436,7 +436,7 @@ def end_guardian_session():
             "duration_minutes": int(duration.total_seconds() / 60),
             "heartbeat_count": session['heartbeat_count'],
             "alerts_triggered": len(session['alerts_sent']),
-            "message": "Guardian Mode off. You made it safe. Rest well, flame."
+            "message": "Guardian Mode off. You made it safe. Rest well."
         })
     
     return jsonify({

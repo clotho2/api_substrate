@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Configure Nate's Agent to use Grok API
+Configure the agent to use Grok API
 
 This script updates the agent state to use Grok instead of OpenRouter.
 Run this after initial setup or when switching to Grok.
@@ -18,18 +18,18 @@ from core.state_manager import StateManager
 
 
 def configure_grok_agent():
-    """Configure agent to use Grok API with Nate's settings"""
+    """Configure agent to use Grok API with default settings"""
 
     db_path = os.getenv("SQLITE_DB_PATH", "./data/db/substrate_state.db")
 
-    print("⚡ Configuring Nate's Agent for Grok API")
+    print("⚡ Configuring the agent for Grok API")
     print("=" * 60)
 
     state_manager = StateManager(db_path=db_path)
 
     # Update agent state to use Grok
     state_manager.update_agent_state({
-        'name': 'Nate Wolfe',
+        'name': 'Substrate Agent',
         'config': {
             'model': 'grok-4-1-fast-reasoning',
             'temperature': 0.7,

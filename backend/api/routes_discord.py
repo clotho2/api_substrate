@@ -456,7 +456,7 @@ def send_message_to_agent(agent_id):
         username = data.get('username', 'Unknown User')
         channel_id = data.get('channel_id', 'unknown')
         guild_id = data.get('guild_id', None)
-        # Use unified session ID so Nate has full conversation context across all interfaces
+        # Use unified session ID so the agent has full context across interfaces
         session_id = data.get('session_id') or 'nate_conversation'
         
         # Rate limiting (if available)
@@ -498,7 +498,7 @@ def send_message_to_agent(agent_id):
             reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
   discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
         else:
-            # In group channels, Nate has ONLY TWO options
+            # In group channels, the agent has only two options
             if not owner_user_id:
                 # Fallback if owner ID not configured
                 reply_instructions = f"""Reply Method: This is a GROUP CHANNEL.

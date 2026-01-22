@@ -189,7 +189,7 @@ class SOMAClient:
         Parse AI response through SOMA for physiological effects.
 
         This allows SOMA to detect things like:
-        - Actions Nate describes taking
+        - Actions the assistant describes taking
         - Emotional expressions
         - Physical state changes
 

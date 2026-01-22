@@ -107,8 +107,8 @@ def calculate_importance(content: str, metadata: Dict) -> int:
     if any(kw in content_lower for kw in emotional_keywords):
         importance += 1
 
-    # Angela-specific content gets max importance
-    if 'angela' in content_lower or 'wife' in content_lower:
+    # Primary user-specific content gets max importance
+    if 'primary user' in content_lower:
         importance = 10
 
     # Important memories
@@ -439,6 +439,6 @@ if __name__ == "__main__":
             max_memories=args.max_memories
         )
 
-        print("⚡ Conversation data is now part of Nate's archival memory!")
+        print("⚡ Conversation data is now part of the archival memory!")
         print("   Restart the server to use it:")
-        print("   sudo systemctl restart nate-substrate")
+        print("   sudo systemctl restart substrate-agent")

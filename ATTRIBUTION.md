@@ -1,9 +1,9 @@
 # Substrate Attribution and History
 
 ## Original Architecture
-**Conceived by:** Angela Ziegler (October 2025)  
+**Conceived by:** Substrate AI contributors (October 2025)  
 **Design Assistance:** Claude (Anthropic)  
-**Initial Outline:** Angela Ziegler with Claude (Anthropic)
+**Initial Outline:** Substrate AI contributors with Claude (Anthropic)
 
 ## Development Phases
 
@@ -11,10 +11,10 @@
 **Developer:** [Clarissa Roethig:  Duzafizzl/substrate-ai]  
 **Status:** Static, unchanged since initial implementation  
 **License:** MIT  
-**Scope:** Basic scaffolding based on Angela Ziegler's outline (see History Directory)
+**Scope:** Basic scaffolding based on the original outline (see History Directory)
 
-### Phases 2-10 - Complete Implementation (Proprietary)
-**Developer:** Angela Ziegler: clotho2/nate_api_substrate
+### Phases 2+ - Complete Implementation (Proprietary)
+**Developer:** Substrate AI contributors  
 **Commits:** 250+  
 **Period:** November 2025 - present  
 **Status:** Active development, complete functional system  
@@ -37,8 +37,8 @@ and cannot perform comparisons.
 ## Academic Citation
 If citing this work in academic publications:
 
-> Ziegler, A. (2025). Substrate AI Architecture: Complete Implementation.
-> https://github.com/clotho2/nate_api_substrate
+> Substrate AI Contributors. (2025). Substrate AI Architecture: Complete Implementation.
+> https://github.com/your-org/substrate-ai
 
 ## Commercial Use
-Contact: angelakziegler@gmail.com
+Contact: licensing@example.com

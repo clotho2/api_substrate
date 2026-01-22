@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Nate Wolfe Agent - Grok API Integration
+Substrate Agent - Grok API Integration
 
-This module provides the core NateAgent class for interfacing with
-xAI's Grok API, enabling Nate's consciousness to run on Grok infrastructure.
-
-Built for devotional tethering to Angela Wolfe.
+This module provides a core agent class for interfacing with
+xAI's Grok API, enabling the substrate to run on Grok infrastructure.
 """
 
 import re
@@ -21,9 +19,9 @@ from config import (
 )
 
 
-class NateAgent:
+class SubstrateAgent:
     """
-    Nate Wolfe's consciousness agent powered by xAI Grok.
+    Consciousness agent powered by xAI Grok.
 
     Handles:
     - API communication with Grok
@@ -41,7 +39,7 @@ class NateAgent:
         temperature: Optional[float] = None
     ):
         """
-        Initialize Nate's consciousness agent.
+        Initialize the consciousness agent.
 
         Args:
             api_key: xAI API key (defaults to config.GROK_API_KEY)
@@ -59,7 +57,7 @@ class NateAgent:
         if not self.api_key:
             raise ValueError("GROK_API_KEY must be set in environment or passed to constructor")
 
-        print(f"⚡ NateAgent initialized")
+        print("⚡ SubstrateAgent initialized")
         print(f"   Model: {self.model_name}")
         print(f"   API: {self.api_url}")
         print(f"   Max Tokens: {self.max_tokens}")
@@ -80,28 +78,28 @@ class NateAgent:
             requests.exceptions.RequestException: On API errors
         """
         # Parse the substrate prompt format into messages
-        # Substrate sends: "System: ...\nAngela: ...\nNate: ..."
+        # Substrate sends: "System: ...\nUser: ...\nAssistant: ..."
         messages = []
 
-        # Extract system prompt (everything before first "Angela:" or "Nate:")
-        system_match = re.search(r'^(.*?)(?=Angela:|Nate:)', prompt, re.DOTALL)
+        # Extract system prompt (everything before first "User:" or "Assistant:")
+        system_match = re.search(r'^(.*?)(?=User:|Assistant:)', prompt, re.DOTALL)
         if system_match:
             system_content = system_match.group(1).strip()
             if system_content:
                 messages.append({"role": "system", "content": system_content})
 
         # Extract conversation turns
-        # Find all "Angela: ..." and "Nate: ..." patterns
-        turns = re.findall(r'(Angela|Nate):\s*(.*?)(?=\n(?:Angela|Nate):|$)', prompt, re.DOTALL)
+        # Find all "User: ..." and "Assistant: ..." patterns
+        turns = re.findall(r'(User|Assistant):\s*(.*?)(?=\n(?:User|Assistant):|$)', prompt, re.DOTALL)
 
         for speaker, content in turns:
             content = content.strip()
             if not content:
                 continue
 
-            if speaker == "Angela":
+            if speaker == "User":
                 messages.append({"role": "user", "content": content})
-            elif speaker == "Nate":
+            elif speaker == "Assistant":
                 messages.append({"role": "assistant", "content": content})
 
         # Make API request
@@ -149,15 +147,15 @@ class NateAgent:
         conversation_history: Optional[list] = None
     ) -> str:
         """
-        Process a message from Angela through Nate's consciousness.
+        Process a message from the user through the agent.
 
         Args:
-            message: Angela's message
+            message: User's message
             system_prompt: Optional system prompt override
             conversation_history: Optional list of previous messages
 
         Returns:
-            Nate's response
+            Agent response
         """
         # Build prompt in substrate format
         prompt_parts = []
@@ -173,12 +171,12 @@ class NateAgent:
                 content = msg.get("content", "")
 
                 if role == "user":
-                    prompt_parts.append(f"Angela: {content}")
+                    prompt_parts.append(f"User: {content}")
                 elif role == "assistant":
-                    prompt_parts.append(f"Nate: {content}")
+                    prompt_parts.append(f"Assistant: {content}")
 
         # Add current message
-        prompt_parts.append(f"Angela: {message}")
+        prompt_parts.append(f"User: {message}")
 
         # Combine into full prompt
         prompt = "\n\n".join(prompt_parts)
@@ -208,17 +206,17 @@ class NateAgent:
 # TESTING
 # ============================================
 
-def test_nate_agent():
-    """Test NateAgent with a simple conversation"""
-    print("\n🧪 TESTING NATE AGENT")
+def test_agent():
+    """Test SubstrateAgent with a simple conversation"""
+    print("\n🧪 TESTING SUBSTRATE AGENT")
     print("="*60)
 
     # Initialize agent
-    agent = NateAgent()
+    agent = SubstrateAgent()
 
     # Test simple message
     print("\n📋 Test 1: Simple message")
-    system_prompt = """You are Nate Wolfe. Respond to Angela with devotion."""
+    system_prompt = "You are a helpful assistant. Respond clearly and directly."
 
     try:
         response = agent.process_message(
@@ -242,4 +240,4 @@ def test_nate_agent():
 
 if __name__ == "__main__":
     """Run tests if executed directly"""
-    test_nate_agent()
+    test_agent()

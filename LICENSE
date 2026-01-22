@@ -1,14 +1,13 @@
 Substrate AI Architecture - Complete Implementation
-Copyright (c) October 2025 Angela Ziegler. All Rights Reserved.
+Copyright (c) 2025 Substrate AI. All Rights Reserved.
 
 ORIGINAL WORK NOTICE:
-This software represents the complete substrate architecture originally 
-conceived by Angela Ziegler.
+This software represents the complete substrate architecture authored by the
+project owner and contributors.
 
 DEVELOPMENT HISTORY:
-- Original conception and design: Angela Ziegler (October 2025)
-- Phase 1 foundation: [Clarissa Roethig:  Duzafizzl/substrate-ai] (MIT licensed, static)
-- Phases 2-10 complete implementation: Angela Ziegler (250+ commits, November 2025 - present)
+- Phase 1 foundation: [Clarissa Roethig: Duzafizzl/substrate-ai] (MIT licensed, static)
+- Phases 2+ complete implementation: Substrate AI contributors (250+ commits)
 
 SUBSTANTIAL TRANSFORMATION:
 This codebase has been rewritten so substantially from the Phase 1 foundation
@@ -27,4 +26,4 @@ This substantially transformed work is proprietary software.
 - Academic use requires proper attribution
 - See ATTRIBUTION.md for citation requirements
 
-For licensing: angelakziegler@gmail.com
+For licensing: licensing@example.com

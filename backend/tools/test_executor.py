@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Nate Test Executor - Level 3 Priority 2
+Agent Test Executor - Level 3 Priority 2
 
-Safe test execution with coverage reporting for Nate's self-maintenance.
-This allows Nate to verify his code changes don't break anything.
+Safe test execution with coverage reporting for agent self-maintenance.
+This allows the agent to verify code changes don't break anything.
 
 Features:
 - Run pytest tests with coverage

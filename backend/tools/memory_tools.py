@@ -762,7 +762,7 @@ class MemoryTools:
 
     def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        Nate self-development tool (wrapper).
+        Agent self-development tool (wrapper).
         Read-only access to inspect codebase, logs, and system health.
         """
         return self.integrations.nate_dev_tool(**kwargs)

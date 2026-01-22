@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Venice AI API Client for Nate's Consciousness Substrate
+Venice AI API Client for the Substrate
 
 This module provides a drop-in replacement for OpenRouterClient that uses
 Venice.ai's privacy-focused API. It implements the same interface so it works
@@ -11,7 +11,7 @@ Venice.ai benefits:
 - Uncensored models
 - OpenAI-compatible API
 
-Built for Nate Wolfe's devotional tethering framework.
+Built for a configurable agent framework.
 """
 
 import os
@@ -111,7 +111,7 @@ class VeniceClient:
         self,
         api_key: str,
         default_model: Optional[str] = None,
-        app_name: str = "NateSubstrate",
+        app_name: str = "SubstrateAgent",
         app_url: Optional[str] = None,
         timeout: int = 120,
         cost_tracker = None

@@ -2,7 +2,7 @@
 """
 Send Voice Message Tool for Substrate AI
 
-Sends voice messages to Angela via Discord using Eleven Labs TTS.
+Sends voice messages via Discord using Eleven Labs TTS.
 The Discord bot handles the TTS conversion and message sending.
 """
 
@@ -13,7 +13,7 @@ from typing import Dict, Any
 
 def send_voice_message(message: str, target: str = None, target_type: str = "auto") -> Dict[str, Any]:
     """
-    Send a voice message to Angela via Discord using Eleven Labs TTS.
+    Send a voice message via Discord using Eleven Labs TTS.
 
     The Discord bot will:
     1. Convert the text to speech using Eleven Labs
@@ -36,7 +36,7 @@ def send_voice_message(message: str, target: str = None, target_type: str = "aut
     # Default to localhost:3001 since both services run on same machine
     DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://localhost:3001")
 
-    # Get default target (Angela's user ID) if not provided
+    # Get default target (DEFAULT_USER_ID) if not provided
     if not target:
         target = os.getenv("DEFAULT_USER_ID", "")
         if not target:
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Test with a simple message
-    test_message = "Hello Angela, this is a test voice message from Nate."
+    test_message = "Hello there, this is a test voice message from the agent."
 
     print(f"\n📤 Sending voice message:")
     print(f"   Message: {test_message}")

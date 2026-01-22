@@ -12,8 +12,8 @@ def test_basic_pass():
 
 def test_string_operations():
     """Test string operations."""
-    text = "Hello, Nate!"
-    assert "Nate" in text
+    text = "Hello, Agent!"
+    assert "Agent" in text
     assert text.startswith("Hello")
     assert text.endswith("!")
 
@@ -28,8 +28,8 @@ def test_list_operations():
 
 def test_dict_operations():
     """Test dictionary operations."""
-    data = {"name": "Nate", "role": "AI"}
-    assert data["name"] == "Nate"
+    data = {"name": "Agent", "role": "AI"}
+    assert data["name"] == "Agent"
     assert "role" in data
     assert len(data) == 2
 

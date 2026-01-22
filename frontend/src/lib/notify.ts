@@ -1,5 +1,5 @@
 /**
- * Notification utilities for Nate's Consciousness Substrate
+ * Notification utilities for the Substrate
  * Handles browser notification permissions and setup
  */
 

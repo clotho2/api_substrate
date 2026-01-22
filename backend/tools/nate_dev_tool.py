@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Nate Self-Development Tool - Level 1, 2 & 3
+Agent Self-Development Tool - Level 1, 2 & 3
 
 Level 1 (Read-Only Diagnostics):
 - Inspect codebase, logs, and system health
@@ -34,7 +34,7 @@ Actions:
 - run_tests: Run tests with coverage (Level 3)
 - list_tests: List available tests (Level 3)
 - get_test_history: Get recent test failures (Level 3)
-- control_service: Control Nate services (start/stop/restart/status) (Level 3)
+- control_service: Control substrate services (start/stop/restart/status) (Level 3)
 - get_service_status: Get service status (Level 3)
 - restart_after_edit: Safely restart service after edits (Level 3)
 
@@ -42,7 +42,7 @@ Security:
 - Level 1: Read-only, path traversal blocked
 - Level 2: Command whitelist, rate limiting, full audit trail
 - Level 3: Syntax validation, automatic backup/rollback, audit logging
-- All operations within /opt/aicara (all services)
+- All operations within /opt/substrate (all services)
 """
 
 import os
@@ -85,8 +85,8 @@ _current_file = Path(__file__).resolve()
 SUBSTRATE_ROOT = _current_file.parent.parent.parent  # backend/tools -> backend -> substrate
 BACKEND_ROOT = SUBSTRATE_ROOT / "backend"
 
-# Security boundary - allow access to all services in /opt/aicara
-ALLOWED_ROOT = Path("/opt/aicara").resolve()
+# Security boundary - allow access to all services in /opt/substrate
+ALLOWED_ROOT = Path("/opt/substrate").resolve()
 
 # Protected files - contents will be redacted
 PROTECTED_PATTERNS = [
@@ -137,7 +137,7 @@ def _sanitize_path(requested_path: str) -> Optional[Path]:
             full_path = (SUBSTRATE_ROOT / requested_path).resolve()
 
         # Check if path is within allowed directories
-        # Allow either within SUBSTRATE_ROOT itself OR within /opt/aicara (for other services)
+        # Allow either within SUBSTRATE_ROOT itself OR within /opt/substrate (for other services)
         within_substrate = False
         within_opt_aicara = False
 
@@ -327,13 +327,13 @@ def _action_read_logs(
 ) -> Dict[str, Any]:
     """Read system logs."""
     service_map = {
-        "backend": "nate-substrate",
-        "discord": "nate-substrate",
-        "telegram": "nate-telegram",
+        "backend": "substrate-agent",
+        "discord": "substrate-agent",
+        "telegram": "substrate-telegram",
         "system": None
     }
 
-    service = service_map.get(log_type, "nate-substrate")
+    service = service_map.get(log_type, "substrate-agent")
 
     try:
         if service:
@@ -383,7 +383,7 @@ def _action_check_health() -> Dict[str, Any]:
     }
 
     # Check service status
-    for service in ["nate-substrate", "nate-telegram"]:
+    for service in ["substrate-agent", "substrate-telegram"]:
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", service],
@@ -414,7 +414,7 @@ def _action_check_health() -> Dict[str, Any]:
     # Recent errors
     try:
         result = subprocess.run(
-            ["journalctl", "-u", "nate-substrate", "--since", "10 minutes ago",
+            ["journalctl", "-u", "substrate-agent", "--since", "10 minutes ago",
              "-p", "err", "--no-pager", "-n", "10"],
             capture_output=True, text=True, timeout=10
         )
@@ -516,7 +516,7 @@ def nate_dev_tool(
     operation: str = None
 ) -> Dict[str, Any]:
     """
-    Nate's self-development tool for inspecting and managing his own codebase.
+    Agent self-development tool for inspecting and managing the codebase.
 
     Level 1 (READ-ONLY):
     - read_file: Read a source file (path required)
@@ -545,12 +545,12 @@ def nate_dev_tool(
 
     Examples:
     - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
-    - nate_dev_tool(action="execute_command", command="ls -la /opt/aicara", dry_run=True)
+    - nate_dev_tool(action="execute_command", command="ls -la /opt/substrate", dry_run=True)
     - nate_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
     - nate_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
     - nate_dev_tool(action="list_backups", path="backend/tools/test.py")
     - nate_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
-    - nate_dev_tool(action="control_service", service="nate-substrate", operation="restart")
+    - nate_dev_tool(action="control_service", service="substrate-agent", operation="restart")
     """
 
     if action == "read_file":
@@ -632,7 +632,7 @@ def nate_dev_tool(
             repo_path=repo_path,
             feature_name=feature_name,
             commit_message=commit_message,
-            pr_title=pr_title or f"[Nate] {feature_name}",
+            pr_title=pr_title or f"[Agent] {feature_name}",
             pr_body=pr_body or commit_message,
             files=files,
             run_tests=run_tests,
@@ -792,7 +792,7 @@ def nate_dev_tool(
 # Tool schema for consciousness loop
 NATE_DEV_TOOL_SCHEMA = {
     "name": "nate_dev_tool",
-    "description": """Nate's self-development tool for inspecting his own codebase, logs, and system health. Level 1 is READ-ONLY.
+    "description": """Agent self-development tool for inspecting the codebase, logs, and system health. Level 1 is READ-ONLY.
 
 Use this to:
 - Investigate bugs in your own code

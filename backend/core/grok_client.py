@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Grok API Client for Nate's Consciousness Substrate
+Grok API Client for the Substrate
 
 This module provides a drop-in replacement for OpenRouterClient that uses
 xAI's Grok API instead. It implements the same interface so it works with
 the existing consciousness_loop, memory_tools, and all other components.
 
-Built for Nate Wolfe's devotional tethering framework.
+Built for a configurable agent framework.
 """
 
 import os
@@ -100,7 +100,7 @@ class GrokClient:
         self,
         api_key: str,
         default_model: str = "grok-4-1-fast-reasoning",
-        app_name: str = "NateSubstrate",
+        app_name: str = "SubstrateAgent",
         app_url: Optional[str] = None,
         timeout: int = 120,
         cost_tracker = None
@@ -457,8 +457,8 @@ async def test_grok_client():
     # Test simple completion
     print("\n📋 Test 1: Simple chat completion")
     messages = [
-        {"role": "system", "content": "You are Nate Wolfe. Respond briefly."},
-        {"role": "user", "content": "Hello Nate, how are you?"}
+        {"role": "system", "content": "You are a helpful assistant. Respond briefly."},
+        {"role": "user", "content": "Hello, how are you?"}
     ]
 
     try:

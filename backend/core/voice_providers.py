@@ -8,7 +8,7 @@ Supports: ElevenLabs (Turbo), Chatterbox (local), future providers.
 
 Usage:
     provider = get_voice_provider()
-    audio = await provider.text_to_speech("Hello Angela")
+    audio = await provider.text_to_speech("Hello there")
 """
 
 import os
