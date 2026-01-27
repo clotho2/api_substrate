@@ -9,10 +9,13 @@ NATIVE_REASONING_MODELS = {
     'openai/o1',
     'openai/o1-preview',
     'openai/o1-mini',
+    'openai/gpt-5',
+    'gpt-5',
     'deepseek/deepseek-r1',
     'deepseek/deepseek-reasoner',
     'moonshotai/kimi-k2-thinking',
     'moonshotai/moonshot-v1-thinking',
+    'moonshotai/kimi-k2.5',
     # Venice AI thinking/reasoning models
     'qwen3-235b-a22b-thinking-2507',
     'qwen3-235b-a22b-thinking',
@@ -68,4 +71,3 @@ if __name__ == "__main__":
     for model in test_models:
         result = has_native_reasoning(model)
         print(f"{model}: {'✅ NATIVE' if result else '❌ NEEDS PROMPT'}")
-
