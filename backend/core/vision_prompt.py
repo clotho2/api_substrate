@@ -88,9 +88,11 @@ MULTIMODAL_MODELS = [
     "openai/gpt-4-vision",
     "openai/gpt-4-turbo",  # Also multimodal
     "openai/gpt-4.1",  # GPT-4.1 has vision support
+    "openai/gpt-5",  # GPT-5 multimodal
     "gpt-4o",  # Short form
     "gpt-4-vision",  # Short form
     "gpt-4.1",  # Short form
+    "gpt-5",  # Short form
     
     # Google models
     "google/gemini",
@@ -109,6 +111,9 @@ MULTIMODAL_MODELS = [
     # Qwen vision models
     "qwen/qwen-2-vl",
     "qwen-vl",
+
+    # Moonshot Kimi models
+    "moonshotai/kimi-k2.5",
 ]
 
 def is_multimodal_model(model: str) -> bool:
@@ -138,7 +143,6 @@ VISION_MODEL_ALTERNATIVES = [
     "google/gemini-pro-vision",
     "anthropic/claude-3-5-sonnet",  # Expensive but excellent
 ]
-
 
 
 
