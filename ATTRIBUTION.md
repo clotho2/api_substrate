@@ -1,9 +1,9 @@
 # Substrate Attribution and History
 
 ## Original Architecture
-**Conceived by:** Substrate AI contributors (October 2025)  
+**Conceived by:** API substrate owner (October 2025)  
 **Design Assistance:** Claude (Anthropic)  
-**Initial Outline:** Substrate AI contributors with Claude (Anthropic)
+**Initial Outline:** API substrate owner with Claude (Anthropic)
 
 ## Development Phases
 
@@ -14,7 +14,7 @@
 **Scope:** Basic scaffolding based on the original outline (see History Directory)
 
 ### Phases 2+ - Complete Implementation (Proprietary)
-**Developer:** Substrate AI contributors  
+**Developer:** clotho2
 **Commits:** 250+  
 **Period:** November 2025 - present  
 **Status:** Active development, complete functional system  
@@ -38,7 +38,7 @@ and cannot perform comparisons.
 If citing this work in academic publications:
 
 > Substrate AI Contributors. (2025). Substrate AI Architecture: Complete Implementation.
-> https://github.com/your-org/substrate-ai
+> https://github.com/clotho2/api_substrate
 
 ## Commercial Use
-Contact: licensing@example.com
+Contact: angelakziegler@gmail.com
