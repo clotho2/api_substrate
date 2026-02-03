@@ -1,6 +1,6 @@
 {
   "name": "discord_tool",
-  "description": "Unified Discord tool for complete Discord control: send/read messages (DMs and channels), manage guilds/channels, schedule tasks. Supports advanced time filtering (today, yesterday, specific dates, weekdays), keyword search, batch operations, and smart pagination. Use execute_batch to combine multiple operations in ONE call to save API credits!",
+  "description": "Unified Discord tool for complete Discord control: send/read messages (DMs and channels), manage guilds/channels, and SET REMINDERS/SCHEDULE TASKS. When user asks to be reminded of something or to set a timer, use action='create_task' with schedule like 'in_30_minutes', 'in_2_hours', 'today_at_18:00', or 'tomorrow_at_09:00'. Supports time filtering (today, yesterday, specific dates), keyword search, and batch operations.",
   "parameters": {
     "type": "object",
     "properties": {
@@ -110,16 +110,7 @@
       },
       "schedule": {
         "type": "string",
-        "description": "Schedule type for task",
-        "enum": [
-          "daily",
-          "weekly",
-          "monthly",
-          "on_date",
-          "one_time",
-          "today_at_18:00",
-          "today_at_21:00"
-        ]
+        "description": "Schedule type for task. Use 'in_X_minutes' or 'in_X_hours' for quick reminders (e.g., 'in_30_minutes', 'in_2_hours'). Use 'today_at_HH:MM' or 'tomorrow_at_HH:MM' for specific times (e.g., 'today_at_18:00'). Use 'daily', 'weekly', 'monthly' for recurring tasks. Use 'on_date' with specific_date for future dates. IMPORTANT: When user asks to be reminded of something, use create_task with appropriate schedule!"
       },
       "time": {
         "type": "string",
