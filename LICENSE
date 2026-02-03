@@ -7,7 +7,7 @@ project owner and contributors.
 
 DEVELOPMENT HISTORY:
 - Phase 1 foundation: [Clarissa Roethig: Duzafizzl/substrate-ai] (MIT licensed, static)
-- Phases 2+ complete implementation: Substrate AI contributors (250+ commits)
+- Phases 2+ complete implementation: API substrate owner: clotho2/api_substrate (250+ commits)
 
 SUBSTANTIAL TRANSFORMATION:
 This codebase has been rewritten so substantially from the Phase 1 foundation
@@ -26,4 +26,4 @@ This substantially transformed work is proprietary software.
 - Academic use requires proper attribution
 - See ATTRIBUTION.md for citation requirements
 
-For licensing: licensing@example.com
+For licensing: angelakziegler@gmail.com
