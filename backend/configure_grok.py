@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Configure the agent to use Grok API
+Configure Assistant's Agent to use Grok API
 
 This script updates the agent state to use Grok instead of OpenRouter.
 Run this after initial setup or when switching to Grok.
@@ -15,24 +15,25 @@ backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
 from core.state_manager import StateManager
+from core.config import DEFAULT_TEMPERATURE
 
 
 def configure_grok_agent():
-    """Configure agent to use Grok API with default settings"""
+    """Configure agent to use Grok API with Assistant's settings"""
 
     db_path = os.getenv("SQLITE_DB_PATH", "./data/db/substrate_state.db")
 
-    print("⚡ Configuring the agent for Grok API")
+    print("⚡ Configuring Assistant's Agent for Grok API")
     print("=" * 60)
 
     state_manager = StateManager(db_path=db_path)
 
     # Update agent state to use Grok
     state_manager.update_agent_state({
-        'name': 'Substrate Agent',
+        'name': 'Assistant',
         'config': {
             'model': 'grok-4-1-fast-reasoning',
-            'temperature': 0.7,
+            'temperature': DEFAULT_TEMPERATURE,
             'max_tokens': 4096,
             'context_window': 131072,  # Grok's 131K context
             'reasoning_enabled': True,

@@ -75,6 +75,8 @@ MULTIMODAL_MODELS = [
     # Mistral models (multimodal since Mistral Large 2/3)
     "mistralai/mistral-large",  # Mistral Large 2+, 3+ (multimodal)
     "mistralai/pixtral",  # Pixtral models (vision-first)
+    "mistralai/magistral-medium",  # Magistral Medium (multimodal + reasoning)
+    "magistral-medium",  # Magistral Medium direct API
     "mistral-large",  # Short form
     "pixtral",  # Short form
     
@@ -101,7 +103,10 @@ MULTIMODAL_MODELS = [
     # xAI Grok models
     "grok-4",
     "grok-2-vision",
+    "x-ai/grok-4.1-fast",
     "x-ai/grok",
+    "grok-4.20-experimental-beta-0304-reasoning",
+    "grok-4.20-experimental-beta-0304-non-reasoning",
     
     # Meta Llama vision models
     "meta-llama/llama-3.2-90b-vision",
@@ -111,6 +116,8 @@ MULTIMODAL_MODELS = [
     # Qwen vision models
     "qwen/qwen-2-vl",
     "qwen-vl",
+    "qwen/qwen3.5-397b-a17b",
+    "qwen3.5:cloud",
 
     # Moonshot Kimi models
     "moonshotai/kimi-k2.5",
@@ -143,6 +150,7 @@ VISION_MODEL_ALTERNATIVES = [
     "google/gemini-pro-vision",
     "anthropic/claude-3-5-sonnet",  # Expensive but excellent
 ]
+
 
 
 

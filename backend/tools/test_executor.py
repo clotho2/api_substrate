@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Agent Test Executor - Level 3 Priority 2
+Assistant Test Executor - Level 3 Priority 2
 
-Safe test execution with coverage reporting for agent self-maintenance.
-This allows the agent to verify code changes don't break anything.
+Safe test execution with coverage reporting for Assistant's self-maintenance.
+This allows Assistant to verify his code changes don't break anything.
 
 Features:
 - Run pytest tests with coverage

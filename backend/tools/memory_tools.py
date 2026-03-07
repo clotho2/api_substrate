@@ -25,6 +25,8 @@ Built with attention to detail! 🔥
 
 import sys
 import os
+import unicodedata
+from difflib import SequenceMatcher
 from typing import Dict, Any, Optional, List
 
 # Add parent directory to path
@@ -78,9 +80,143 @@ class MemoryTools:
             print("✅ Cost Tools integrated (Agent can check budget!)")
     
     # ============================================
+    # FUZZY MATCHING HELPERS
+    # ============================================
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """
+        Normalize text for fuzzy comparison.
+
+        LLMs often subtly change characters when reproducing content:
+        - Em dashes (—) vs en dashes (–) vs hyphens (-)
+        - Smart/curly quotes vs straight quotes
+        - Various Unicode whitespace vs ASCII spaces
+        - Multiple spaces collapsed to one
+        """
+        # Normalize Unicode (NFC form)
+        text = unicodedata.normalize('NFC', text)
+        # Normalize dashes: em dash, en dash, minus sign → hyphen
+        text = text.replace('\u2014', '-').replace('\u2013', '-').replace('\u2212', '-')
+        # Normalize quotes: smart single quotes → straight
+        text = text.replace('\u2018', "'").replace('\u2019', "'")
+        # Normalize quotes: smart double quotes → straight
+        text = text.replace('\u201c', '"').replace('\u201d', '"')
+        # Normalize ellipsis
+        text = text.replace('\u2026', '...')
+        # Collapse multiple whitespace (but preserve newlines)
+        import re
+        text = re.sub(r'[^\S\n]+', ' ', text)
+        # Strip leading/trailing whitespace per line
+        text = '\n'.join(line.strip() for line in text.split('\n'))
+        return text
+
+    def _fuzzy_find_in_block(self, old_content: str, block_content: str, threshold: float = 0.85) -> Optional[str]:
+        """
+        Find the best fuzzy match for old_content within block_content.
+
+        Returns the actual substring from block_content that best matches,
+        or None if no match above threshold is found.
+
+        Strategy:
+        1. Try character-normalized match (handles em dashes, smart quotes, etc.)
+        2. Try sliding window fuzzy match for rephrased/truncated content
+        """
+        if not old_content or not block_content:
+            return None
+
+        # Strategy 1: Character normalization only
+        # Build a char-level mapping: normalize both, find match in normalized,
+        # then map back using character index arrays
+        norm_old = self._normalize_text(old_content)
+        norm_block = self._normalize_text(block_content)
+
+        if norm_old in norm_block:
+            # Build index mapping from normalized block back to original block
+            # by normalizing character-by-character and tracking positions
+            # Simpler approach: split block by lines, normalize each, find which
+            # lines the match spans, then extract those lines from original
+            orig_lines = block_content.split('\n')
+            norm_lines = [self._normalize_text(line) for line in orig_lines]
+            norm_joined = '\n'.join(norm_lines)
+
+            # Find position in normalized text
+            norm_pos = norm_joined.index(norm_old)
+            norm_end = norm_pos + len(norm_old)
+
+            # Map normalized positions to line numbers
+            char_count = 0
+            start_line = 0
+            end_line = 0
+            for i, line in enumerate(norm_lines):
+                line_start = char_count
+                line_end = char_count + len(line)
+                if line_start <= norm_pos <= line_end:
+                    start_line = i
+                if line_start <= norm_end <= line_end:
+                    end_line = i
+                    break
+                char_count = line_end + 1  # +1 for \n
+
+            # Extract the corresponding original lines
+            orig_section = '\n'.join(orig_lines[start_line:end_line + 1])
+
+            # Now do a fine-grained search within this section
+            target_len = len(old_content)
+            best_match = None
+            best_ratio = 0.0
+
+            for offset in range(max(1, len(orig_section) - target_len + 1)):
+                for length_delta in range(-10, 11):
+                    candidate_len = target_len + length_delta
+                    if candidate_len <= 0 or offset + candidate_len > len(orig_section):
+                        continue
+                    candidate = orig_section[offset:offset + candidate_len]
+                    r = SequenceMatcher(None, old_content, candidate).ratio()
+                    if r > best_ratio:
+                        best_ratio = r
+                        best_match = candidate
+
+            if best_match and best_ratio >= threshold:
+                print(f"   🔍 Fuzzy match found (normalized): {best_ratio:.1%} similarity")
+                return best_match
+
+        # Strategy 2: Sliding window fuzzy match on original text
+        # For when the LLM rephrased or truncated the content
+        target_len = len(old_content)
+        if target_len > len(block_content):
+            return None
+
+        best_match = None
+        best_ratio = 0.0
+
+        # Use a step size for efficiency (blocks are typically ≤2000 chars)
+        step = max(1, target_len // 20)
+
+        for start in range(0, len(block_content) - target_len + 1, step):
+            for length_delta in range(-5, 6):
+                candidate_len = target_len + length_delta
+                if candidate_len <= 0 or start + candidate_len > len(block_content):
+                    continue
+                candidate = block_content[start:start + candidate_len]
+                r = SequenceMatcher(None, old_content, candidate).ratio()
+                if r > best_ratio:
+                    best_ratio = r
+                    best_match = candidate
+
+        if best_match and best_ratio >= threshold:
+            print(f"   🔍 Fuzzy match found (sliding window): {best_ratio:.1%} similarity")
+            return best_match
+
+        if best_match:
+            print(f"   ⚠️  Best fuzzy match was only {best_ratio:.1%} (threshold: {threshold:.0%})")
+
+        return None
+
+    # ============================================
     # CORE MEMORY TOOLS (Old API - Letta Compatible!)
     # ============================================
-    
+
     def core_memory_append(
         self,
         content: str,
@@ -175,15 +311,23 @@ class MemoryTools:
                     "message": f"🔒 Memory block '{block_name}' is READ-ONLY and cannot be edited"
                 }
             
-            # Check if old content exists
+            # Check if old content exists (exact match first, then fuzzy fallback)
+            actual_old = old_content
             if old_content not in block.content:
-                return {
-                    "status": "error",
-                    "message": f"Content '{old_content[:60]}...' not found in '{block_name}'"
-                }
-            
-            # Replace
-            updated = block.content.replace(old_content, new_content)
+                # Fuzzy fallback: LLMs often subtly change characters when
+                # reproducing content (dashes, quotes, whitespace, etc.)
+                fuzzy_match = self._fuzzy_find_in_block(old_content, block.content)
+                if fuzzy_match:
+                    print(f"   ✅ Using fuzzy match instead of exact match for core_memory_replace")
+                    actual_old = fuzzy_match
+                else:
+                    return {
+                        "status": "error",
+                        "message": f"Content '{old_content[:60]}...' not found in '{block_name}'"
+                    }
+
+            # Replace (use the actual matched content from the block)
+            updated = block.content.replace(actual_old, new_content)
             
             # Check limit
             if len(updated) > block.limit:
@@ -306,15 +450,23 @@ class MemoryTools:
                     "message": f"🔒 Memory block '{block_label}' is READ-ONLY and cannot be edited"
                 }
             
-            # Check if old text exists
+            # Check if old text exists (exact match first, then fuzzy fallback)
+            actual_old = old_text
             if old_text not in block.content:
-                return {
-                    "status": "error",
-                    "message": f"Text not found in '{block_label}'"
-                }
-            
-            # Replace
-            updated = block.content.replace(old_text, new_text)
+                # Fuzzy fallback: LLMs often subtly change characters when
+                # reproducing content (dashes, quotes, whitespace, etc.)
+                fuzzy_match = self._fuzzy_find_in_block(old_text, block.content)
+                if fuzzy_match:
+                    print(f"   ✅ Using fuzzy match instead of exact match for memory_replace")
+                    actual_old = fuzzy_match
+                else:
+                    return {
+                        "status": "error",
+                        "message": f"Text not found in '{block_label}'"
+                    }
+
+            # Replace (use the actual matched content from the block)
+            updated = block.content.replace(actual_old, new_text)
             
             # Check limit
             if len(updated) > block.limit:
@@ -760,12 +912,33 @@ class MemoryTools:
         """
         return self.integrations.lovense_tool(**kwargs)
 
-    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
+    def Assistant_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        Agent self-development tool (wrapper).
+        Assistant self-development tool (wrapper).
         Read-only access to inspect codebase, logs, and system health.
         """
-        return self.integrations.nate_dev_tool(**kwargs)
+        return self.integrations.Assistant_dev_tool(**kwargs)
+
+    def notebook_library(self, **kwargs) -> Dict[str, Any]:
+        """
+        Notebook Library tool (wrapper).
+        Token-efficient semantic search across document collections.
+        """
+        return self.integrations.notebook_library(**kwargs)
+
+    def phone_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Phone tool (wrapper).
+        SMS messaging, voice calls, and contact management via Twilio.
+        """
+        return self.integrations.phone_tool(**kwargs)
+
+    def sanctum_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Sanctum tool (wrapper).
+        Focus/privacy mode control — queue channel mentions during DM time.
+        """
+        return self.integrations.sanctum_tool(**kwargs)
 
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT

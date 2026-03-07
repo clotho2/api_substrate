@@ -41,4 +41,4 @@ If citing this work in academic publications:
 > https://github.com/clotho2/api_substrate
 
 ## Commercial Use
-Contact: angelakziegler@gmail.com
+Contact: Userkziegler@gmail.com

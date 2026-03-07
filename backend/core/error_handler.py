@@ -254,10 +254,10 @@ def validate_environment():
     Note: We allow the server to start without a valid API key so users
     can enter their key via the welcome modal on first launch.
 
-    Supports Venice AI, Grok API (xAI), OpenRouter, or any combination.
-    API key can be added via welcome modal after startup.
+    Main LLM providers (mutually exclusive): Mistral, Grok, OpenRouter, Ollama Cloud.
+    Local Ollama (USE_OLLAMA=true) is independent — for vision/embedding fallback only.
 
-    One of MODEL_NAME, DEFAULT_LLM_MODEL, or VENICE_MODEL is required.
+    One of MODEL_NAME, DEFAULT_LLM_MODEL, MISTRAL_MODEL, or OLLAMA_MODEL (with OLLAMA_API_URL) is required.
     """
     import os
     import logging
@@ -265,10 +265,12 @@ def validate_environment():
     logger = logging.getLogger(__name__)
 
     # Only require model - API key can be added via welcome modal
+    has_ollama_cloud_url = bool(os.getenv('OLLAMA_API_URL'))
     has_model = bool(
         os.getenv('MODEL_NAME') or
         os.getenv('DEFAULT_LLM_MODEL') or
-        os.getenv('VENICE_MODEL')
+        os.getenv('MISTRAL_MODEL') or
+        (has_ollama_cloud_url and os.getenv('OLLAMA_MODEL', '').strip())
     )
 
     if not has_model:
@@ -276,27 +278,32 @@ def validate_environment():
             message="No model configured",
             context={
                 'missing': [
-                    'One of MODEL_NAME, DEFAULT_LLM_MODEL, or VENICE_MODEL must be set',
+                    'One of MODEL_NAME, DEFAULT_LLM_MODEL, MISTRAL_MODEL, or OLLAMA_MODEL must be set',
                     'MODEL_NAME: For Grok model (e.g., grok-4-1-fast-reasoning)',
                     'DEFAULT_LLM_MODEL: For OpenRouter model',
-                    'VENICE_MODEL: For Venice AI model (e.g., qwen3-235b-a22b-instruct-2507)'
+                    'MISTRAL_MODEL: For Mistral AI model (e.g., magistral-medium-2509)',
+                    'OLLAMA_MODEL + OLLAMA_API_URL: For Ollama Cloud (e.g., OLLAMA_API_URL=https://api.ollama.com)',
+                    'NOTE: USE_OLLAMA=true is for local vision/embeddings only, not a main provider'
                 ]
             },
             suggestions=[
-                "Set VENICE_MODEL in your .env file for Venice AI (privacy-focused)",
+                "Set MISTRAL_MODEL in your .env file for Mistral AI",
                 "Or set MODEL_NAME for Grok",
                 "Or set DEFAULT_LLM_MODEL for OpenRouter",
+                "Or set OLLAMA_API_URL + OLLAMA_MODEL + OLLAMA_API_KEY for Ollama Cloud",
                 "Check .env.example for reference"
             ]
         )
 
     # Warn about missing API keys but don't fail (allows setup mode)
-    has_venice = bool(os.getenv('VENICE_API_KEY'))
+    has_mistral = bool(os.getenv('MISTRAL_API_KEY'))
     has_grok = bool(os.getenv('GROK_API_KEY'))
     has_openrouter = bool(os.getenv('OPENROUTER_API_KEY'))
+    from core.config import is_ollama_cloud_configured
+    has_ollama_cloud = is_ollama_cloud_configured()
 
-    if not has_venice and not has_grok and not has_openrouter:
-        logger.warning("⚠️  No valid API key configured (checked VENICE_API_KEY, GROK_API_KEY, OPENROUTER_API_KEY)")
+    if not has_mistral and not has_grok and not has_openrouter and not has_ollama_cloud:
+        logger.warning("⚠️  No main LLM provider configured (checked MISTRAL_API_KEY, GROK_API_KEY, OPENROUTER_API_KEY, OLLAMA_API_URL + OLLAMA_MODEL)")
         logger.warning("   → Users will be prompted to enter API key via welcome modal")
 
 

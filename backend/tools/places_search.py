@@ -6,8 +6,8 @@ Uses OpenStreetMap (Nominatim + Overpass API) - NO API KEY!
 
 Features:
 - Search places (restaurants, cafes, shops, etc.)
-- Geocoding (address → coordinates)
-- Reverse geocoding (coordinates → address)
+- Geocoding (address → coordiAssistants)
+- Reverse geocoding (coordiAssistants → address)
 - POI details (opening hours, phone, website)
 
 100% FREE! No Google API key needed!
@@ -197,7 +197,7 @@ class PlacesSearch:
         lon: float
     ) -> Dict[str, Any]:
         """
-        Reverse geocode coordinates to address.
+        Reverse geocode coordiAssistants to address.
         
         Args:
             lat: Latitude

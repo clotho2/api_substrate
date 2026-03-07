@@ -12,16 +12,30 @@ NATIVE_THINKING_MODELS = [
     "openai/o1",
     "openai/o1-preview",
     "openai/o1-mini",
+    "openai/gpt-5",
     
     # DeepSeek R1 series
     "deepseek/deepseek-r1",
+    "deepseek/deepseek-v3.2",
+    "deepseek/deepseek-v3.1-terminus",
     "deepseek/deepseek-r1-distill-qwen-32b",
     "deepseek/deepseek-r1-distill-llama-70b",
-    
+
+    # GLM series
+    "z-ai/glm-5",
+    "z-ai/glm-4.7",
+    "z-ai/glm-4.6",
+    "moonshotai/kimi-k2.5",
+    "minimax/minimax-m2.5",
+    "x-ai/grok-4.1-fast",
+    "grok-4.20-experimental-beta-0304-reasoning",
+        
     # Qwen thinking variants
     "qwen/qwq-32b-preview",
     "qwen/qwen3-vl-235b-a22b-thinking",
     "qwen/qwen3-vl-30b-a3b-thinking",
+    "qwen/qwen3.5-397b-a17b",
+    "qwen3.5:cloud",
     
     # Google Gemini thinking
     "google/gemini-2.0-flash-thinking-exp:free",

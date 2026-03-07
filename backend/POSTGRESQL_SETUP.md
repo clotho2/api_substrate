@@ -118,7 +118,7 @@ You'll see:
 
 ### Multi-Agent Support
 - Multiple agents share database
-- Coordinated memory access
+- CoordiAssistantd memory access
 - Conflict resolution
 
 ## Disable PostgreSQL

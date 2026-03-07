@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Agent File Editor - Level 3
+Assistant File Editor - Level 3
 
 Safe file editing with validation, backup, and auto-rollback.
-This allows the agent to fix bugs and make improvements, not just point at them.
+This allows Assistant to fix bugs and make improvements, not just point at them.
 
 Features:
 - Syntax validation (Python, JSON, YAML, JS, etc.)
@@ -28,8 +28,8 @@ from datetime import datetime
 # Configuration
 _current_file = Path(__file__).resolve()
 SUBSTRATE_ROOT = _current_file.parent.parent.parent  # backend/tools -> backend -> substrate
-ALLOWED_ROOT = Path("/opt/substrate")
-BACKUP_DIR = Path("/opt/substrate/.backups")
+ALLOWED_ROOT = Path("/home/user")
+BACKUP_DIR = Path("/home/user/.Assistant_backups")
 MAX_FILE_SIZE = 1_000_000  # 1MB max for safety
 
 
@@ -52,7 +52,7 @@ class FileEditor:
         Edit a file with validation and backup.
 
         Args:
-            filepath: Path to file (within /opt/substrate)
+            filepath: Path to file (within /home/user)
             changes: List of change dicts with:
                 - type: "replace", "insert", "delete", "whole_file"
                 - line: Line number (1-indexed) for replace/insert/delete
@@ -189,14 +189,14 @@ class FileEditor:
     def _validate_path(self, filepath: str) -> Optional[Path]:
         """Validate path is within allowed roots."""
         try:
-            # Resolve path (prepend SUBSTRATE_ROOT for relative paths like nate_dev_tool)
+            # Resolve path (prepend SUBSTRATE_ROOT for relative paths like Assistant_dev_tool)
             if filepath.startswith('/'):
                 full_path = Path(filepath).resolve()
             else:
                 full_path = (SUBSTRATE_ROOT / filepath).resolve()
 
             # Check if path is within allowed directories
-            # Allow either within SUBSTRATE_ROOT itself OR within /opt/substrate (for other services)
+            # Allow either within SUBSTRATE_ROOT itself OR within /home/user (for other services)
             within_substrate = False
             within_opt_aicara = False
 
@@ -355,7 +355,7 @@ class FileEditor:
             'file_editor.py',
             'command_executor.py',
             'test_executor.py',
-            'nate_dev_tool.py'
+            'Assistant_dev_tool.py'
         ]
         is_security_tool = filepath and any(filepath.name == f for f in security_tool_files)
 

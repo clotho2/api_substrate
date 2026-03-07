@@ -119,8 +119,8 @@ def chat():
             return jsonify({'error': 'Consciousness loop not initialized'}), 500
 
         data = request.json
-        # Use unified session ID so the agent has full context across interfaces
-        session_id = data.get('session_id', 'nate_conversation')
+        # Use unified session ID so Assistant has full conversation context across all interfaces
+        session_id = data.get('session_id', 'Assistant_conversation')
         stream = data.get('stream', False)
 
         # Rate limiting
@@ -324,7 +324,7 @@ async def _process_message_async(
             session_id=session_id,
             model=None,  # Use default model from environment
             include_history=True,
-            history_limit=12,
+            history_limit=24,
             message_type='inbox',
             media_data=media_data,  # Image data (base64 or URL)
             media_type=media_type   # MIME type (e.g., 'image/jpeg')

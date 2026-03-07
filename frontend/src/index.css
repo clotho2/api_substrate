@@ -83,7 +83,7 @@
 
 /* Animations for background elements */
 .orb-animation-wrapper {
-  animation: orb-animation 20s infinite alternate ease-in-out;
+  animation: orb-animation 20s infinite alterAssistant ease-in-out;
 }
 
 @keyframes orb-animation {

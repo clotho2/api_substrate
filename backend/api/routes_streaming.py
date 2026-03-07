@@ -199,14 +199,18 @@ def stream_chat():
                                 # Stream content chunk
                                 yield f"event: content\ndata: {json.dumps(event)}\n\n"
                             
+                            elif event_type == 'content_reset':
+                                # Tool call XML was streamed as content - tell client to discard it
+                                yield f"event: content_reset\ndata: {json.dumps(event)}\n\n"
+
                             elif event_type == 'tool_call':
                                 # Stream tool call
                                 yield f"event: tool_call\ndata: {json.dumps(event.get('data', {}))}\n\n"
                             
                             elif event_type == 'done':
-                                # Final result
-                                result = event.get('result', {})
-                                yield f"event: done\ndata: {json.dumps({'success': True, **result})}\n\n"
+                                # Final result - response fields are at top level of event, not under 'result'
+                                event_data = {k: v for k, v in event.items() if k != 'type'}
+                                yield f"event: done\ndata: {json.dumps({'success': True, **event_data})}\n\n"
                                 break  # Stream complete!
                             
                             elif event_type == 'error':

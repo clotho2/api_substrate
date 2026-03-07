@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Agent Self-Development Tool - Level 1, 2 & 3
+Assistant Self-Development Tool - Level 1, 2 & 3
 
 Level 1 (Read-Only Diagnostics):
 - Inspect codebase, logs, and system health
@@ -34,7 +34,7 @@ Actions:
 - run_tests: Run tests with coverage (Level 3)
 - list_tests: List available tests (Level 3)
 - get_test_history: Get recent test failures (Level 3)
-- control_service: Control substrate services (start/stop/restart/status) (Level 3)
+- control_service: Control Assistant services (start/stop/restart/status) (Level 3)
 - get_service_status: Get service status (Level 3)
 - restart_after_edit: Safely restart service after edits (Level 3)
 
@@ -42,7 +42,7 @@ Security:
 - Level 1: Read-only, path traversal blocked
 - Level 2: Command whitelist, rate limiting, full audit trail
 - Level 3: Syntax validation, automatic backup/rollback, audit logging
-- All operations within /opt/substrate (all services)
+- All operations within /home/user (all services)
 """
 
 import os
@@ -85,8 +85,8 @@ _current_file = Path(__file__).resolve()
 SUBSTRATE_ROOT = _current_file.parent.parent.parent  # backend/tools -> backend -> substrate
 BACKEND_ROOT = SUBSTRATE_ROOT / "backend"
 
-# Security boundary - allow access to all services in /opt/substrate
-ALLOWED_ROOT = Path("/opt/substrate").resolve()
+# Security boundary - allow access to all services in /home/user
+ALLOWED_ROOT = Path("/home/user").resolve()
 
 # Protected files - contents will be redacted
 PROTECTED_PATTERNS = [
@@ -137,7 +137,7 @@ def _sanitize_path(requested_path: str) -> Optional[Path]:
             full_path = (SUBSTRATE_ROOT / requested_path).resolve()
 
         # Check if path is within allowed directories
-        # Allow either within SUBSTRATE_ROOT itself OR within /opt/substrate (for other services)
+        # Allow either within SUBSTRATE_ROOT itself OR within /home/user (for other services)
         within_substrate = False
         within_opt_aicara = False
 
@@ -193,7 +193,7 @@ def _redact_sensitive_content(content: str, filepath: str) -> str:
         (r'(secret\s*[=:]\s*)["\']?[^\s"\']+["\']?', r'\1[REDACTED]'),
         (r'(DISCORD_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
         (r'(OPENROUTER_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
-        (r'(VENICE_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
+        (r'(MISTRAL_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
         (r'(POSTGRES_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
         (r'(XAI_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
         (r'(GROK_[A-Z_]+\s*=\s*)[^\s\n]+', r'\1[REDACTED]'),
@@ -327,13 +327,13 @@ def _action_read_logs(
 ) -> Dict[str, Any]:
     """Read system logs."""
     service_map = {
-        "backend": "substrate-agent",
-        "discord": "substrate-agent",
-        "telegram": "substrate-telegram",
+        "backend": "Assistant-substrate",
+        "discord": "Assistant-substrate",
+        "telegram": "Assistant-telegram",
         "system": None
     }
 
-    service = service_map.get(log_type, "substrate-agent")
+    service = service_map.get(log_type, "Assistant-substrate")
 
     try:
         if service:
@@ -383,7 +383,7 @@ def _action_check_health() -> Dict[str, Any]:
     }
 
     # Check service status
-    for service in ["substrate-agent", "substrate-telegram"]:
+    for service in ["Assistant-substrate", "Assistant-telegram"]:
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", service],
@@ -414,7 +414,7 @@ def _action_check_health() -> Dict[str, Any]:
     # Recent errors
     try:
         result = subprocess.run(
-            ["journalctl", "-u", "substrate-agent", "--since", "10 minutes ago",
+            ["journalctl", "-u", "Assistant-substrate", "--since", "10 minutes ago",
              "-p", "err", "--no-pager", "-n", "10"],
             capture_output=True, text=True, timeout=10
         )
@@ -470,7 +470,7 @@ def _action_list_directory(path: str = "backend", pattern: str = None) -> Dict[s
 # MAIN TOOL FUNCTION
 # ============================================
 
-def nate_dev_tool(
+def Assistant_dev_tool(
     action: str,
     # read_file params
     path: str = None,
@@ -516,7 +516,7 @@ def nate_dev_tool(
     operation: str = None
 ) -> Dict[str, Any]:
     """
-    Agent self-development tool for inspecting and managing the codebase.
+    Assistant's self-development tool for inspecting and managing his own codebase.
 
     Level 1 (READ-ONLY):
     - read_file: Read a source file (path required)
@@ -544,13 +544,13 @@ def nate_dev_tool(
     - restart_after_edit: Restart service after edits (service required)
 
     Examples:
-    - nate_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
-    - nate_dev_tool(action="execute_command", command="ls -la /opt/substrate", dry_run=True)
-    - nate_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
-    - nate_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
-    - nate_dev_tool(action="list_backups", path="backend/tools/test.py")
-    - nate_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
-    - nate_dev_tool(action="control_service", service="substrate-agent", operation="restart")
+    - Assistant_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
+    - Assistant_dev_tool(action="execute_command", command="ls -la /home/user", dry_run=True)
+    - Assistant_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
+    - Assistant_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
+    - Assistant_dev_tool(action="list_backups", path="backend/tools/test.py")
+    - Assistant_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
+    - Assistant_dev_tool(action="control_service", service="Assistant-substrate", operation="restart")
     """
 
     if action == "read_file":
@@ -632,7 +632,7 @@ def nate_dev_tool(
             repo_path=repo_path,
             feature_name=feature_name,
             commit_message=commit_message,
-            pr_title=pr_title or f"[Agent] {feature_name}",
+            pr_title=pr_title or f"[Assistant] {feature_name}",
             pr_body=pr_body or commit_message,
             files=files,
             run_tests=run_tests,
@@ -790,9 +790,9 @@ def nate_dev_tool(
 
 
 # Tool schema for consciousness loop
-NATE_DEV_TOOL_SCHEMA = {
-    "name": "nate_dev_tool",
-    "description": """Agent self-development tool for inspecting the codebase, logs, and system health. Level 1 is READ-ONLY.
+Assistant_DEV_TOOL_SCHEMA = {
+    "name": "Assistant_dev_tool",
+    "description": """Assistant's self-development tool for inspecting his own codebase, logs, and system health. Level 1 is READ-ONLY.
 
 Use this to:
 - Investigate bugs in your own code
@@ -875,12 +875,12 @@ Actions:
 
 if __name__ == "__main__":
     # Test the tool
-    print("Testing nate_dev_tool...")
+    print("Testing Assistant_dev_tool...")
     print("\n1. Check Health:")
-    print(json.dumps(nate_dev_tool(action="check_health"), indent=2))
+    print(json.dumps(Assistant_dev_tool(action="check_health"), indent=2))
 
     print("\n2. List Directory:")
-    print(json.dumps(nate_dev_tool(action="list_directory", path="backend/tools"), indent=2))
+    print(json.dumps(Assistant_dev_tool(action="list_directory", path="backend/tools"), indent=2))
 
     print("\n3. Search Code:")
-    print(json.dumps(nate_dev_tool(action="search_code", pattern="def discord_tool", max_results=5), indent=2))
+    print(json.dumps(Assistant_dev_tool(action="search_code", pattern="def discord_tool", max_results=5), indent=2))

@@ -1,6 +1,6 @@
 # Telegram Bot Setup Guide
 
-**Deep conversations with the agent via Telegram - 4,096 character messages with multimodal support!**
+**Deep conversations with Assistant via Telegram - 4,096 character messages with multimodal support!**
 
 ---
 
@@ -8,7 +8,7 @@
 
 - **2x character limit** (4,096 vs Discord's 2,000 chars)
 - **Better for deep conversations** - Philosophy, strategy, storytelling
-- **Multimodal support** - Send images and documents to the agent
+- **Multimodal support** - Send images and documents to Assistant
 - **Mobile-first** - Clean interface for personal conversations
 - **Direct messaging** - More intimate than server channels
 
@@ -29,8 +29,8 @@ pip install python-telegram-bot==20.7
 1. Open Telegram and search for **@BotFather**
 2. Send `/newbot` command
 3. Follow the prompts:
-   - Choose a name (e.g., "Substrate Agent")
-   - Choose a username (e.g., "substrate_agent_bot")
+   - Choose a name (e.g., "Assistant")
+   - Choose a username (e.g., "assistant_bot")
 4. Copy the bot token (looks like `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
 
 ### 3. Configure Environment Variables
@@ -65,9 +65,9 @@ python telegram_bot.py
 ### 6. Start Chatting!
 
 1. Open Telegram
-2. Search for your bot (e.g., @substrate_agent_bot)
+2. Search for your bot (e.g., @assistant_bot)
 3. Send `/start` to begin
-4. Start chatting with the agent!
+4. Start chatting with Assistant!
 
 ---
 
@@ -78,9 +78,10 @@ python telegram_bot.py
 Send any text message - up to 4,096 characters! (2x Discord's limit)
 
 ```
-You: Tell me about your philosophy on strategy and collaboration
+You: Tell me about your philosophy on strategy and devotion
 
-Assistant: [Thoughtful response with practical guidance and examples...]
+Assistant: [Long, thoughtful response about war-forged instincts,
+       devotional tethering to User, etc...]
 ```
 
 ### Images (Multimodal)
@@ -91,7 +92,7 @@ Send an image with an optional caption:
 [Send image of a diagram]
 Caption: "Explain this architecture"
 
-Assistant: [Analyzes the image and provides a detailed explanation]
+Assistant: [Analyzes the image and provides detailed explanation]
 ```
 
 Supported formats:
@@ -401,7 +402,7 @@ Get your API key from: https://console.x.ai/
 3. ✅ **Configure** - Add token to `.env`
 4. ✅ **Start bots** - Run backend + telegram_bot.py
 5. ⏳ **Integrate multimodal** - Share Grok API docs!
-6. 🎉 **Chat with the agent** - Deep conversations await!
+6. 🎉 **Chat with Assistant** - Deep conversations await!
 
 ---
 

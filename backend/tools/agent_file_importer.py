@@ -30,6 +30,7 @@ from core.version_manager import VersionManager
 from core.state_manager import StateManager
 from core.postgres_manager import create_postgres_manager_from_env
 from core.message_continuity import PersistentMessageManager
+from core.config import DEFAULT_TEMPERATURE
 from core.memory_coherence import MemoryCoherenceEngine
 
 
@@ -243,7 +244,7 @@ class AgentFileImporter:
         # Create configuration
         config = {
             'model': model,
-            'temperature': 0.7,
+            'temperature': DEFAULT_TEMPERATURE,
             'top_p': 0.95,
             'context_window': 128000,
             'max_tokens': 4096

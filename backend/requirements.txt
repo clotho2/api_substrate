@@ -7,6 +7,8 @@
 Flask==3.0.0
 Flask-CORS==4.0.0
 Flask-SocketIO==5.3.5      # WebSocket support for streaming
+flask-sock>=0.7.0          # Raw WebSocket for Twilio Media Streams
+websocket-client>=1.6.0    # WebSocket client for Hume EVI relay
 python-socketio==5.10.0    # SocketIO core
 eventlet==0.36.1           # Async server for Flask-SocketIO
 gevent==24.2.1             # Alternative async (fallback)
@@ -26,7 +28,7 @@ chromadb==0.4.18            # Vector database for archival memory
 numpy<2.0                   # ChromaDB 0.4.18 requires NumPy < 2.0
 
 # Ollama Integration (for local embeddings)
-ollama==0.1.7               # Official Ollama Python client
+ollama>=0.3.0               # Official Ollama Python client (tools support added in 0.3.0)
 
 # ============================================
 # DATA PROCESSING (Required)

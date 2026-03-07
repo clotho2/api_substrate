@@ -29,10 +29,11 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.state_manager import StateManager
-from core.config import get_model_or_default, get_api_provider, FALLBACK_MODEL
+from core.config import get_model_or_default, get_api_provider, FALLBACK_MODEL, is_ollama_cloud_configured
 from core.openrouter_client import OpenRouterClient
-from core.grok_client import GrokClient  # ⚡ Grok integration
-from core.venice_client import VeniceClient  # 🎭 Venice AI (Private, uncensored)
+from core.grok_client import GrokClient  # ⚡ Assistant's Grok integration!
+from core.mistral_client import MistralClient  # Mistral AI (Direct API access)
+from core.ollama_client import OllamaClient  # Local / Ollama Cloud
 from core.memory_system import MemorySystem
 from core.context_window_calculator import ContextWindowCalculator
 from core.cost_tracker import CostTracker
@@ -50,13 +51,17 @@ from api.routes_agents import agents_bp, init_agents_routes
 from api.routes_costs import costs_bp, init_costs_routes
 from api.routes_graph import graph_bp  # 🕸️ Graph RAG!
 from api.routes_discord import discord_bp, init_discord_routes  # 🎮 Discord Bot Integration!
+from core.sanctum_manager import init_sanctum_manager  # 🏰 Sanctum Mode!
 from api.routes_setup import setup_bp  # 🚀 First-time setup & onboarding!
 from api.routes_chat import chat_bp, init_chat_routes  # 📱 Telegram/Chat API!
 from api.routes_aicara_compat import aicara_bp, init_aicara_routes  # 🌐 AiCara Frontend Compatibility
 from api.routes_places import places_bp  # 📍 Google Places + Guardian Mode
-from api.routes_tts import tts_bp  # 🎤 Chatterbox TTS for Voice Chat
+from api.routes_tts import tts_bp  # 🎤 Pocket TTS for Voice Chat
 from api.routes_stt import stt_bp  # 🎙️ Whisper STT for Voice Chat
 from api.routes_guardian import guardian_bp, init_guardian_routes  # 🛡️ Guardian Mode!
+from api.routes_phone import phone_bp, init_phone_routes  # 📱 Twilio Phone/SMS!
+from api.routes_telephony import setup_media_stream, init_telephony_routes  # 📞 Twilio Media Streams!
+from api.routes_evi import setup_evi_stream, init_evi_routes  # 🎙️ Hume EVI Voice!
 
 # 🏴‍☠️ LETTA MAGIC SAUCE!
 from core.postgres_manager import create_postgres_manager_from_env
@@ -145,23 +150,22 @@ openrouter_client = None
 # Comment out API keys in .env to switch between providers
 grok_api_key = os.getenv("GROK_API_KEY", "").strip()
 openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-venice_api_key = os.getenv("VENICE_API_KEY", "").strip()
+mistral_api_key = os.getenv("MISTRAL_API_KEY", "").strip()
 
-# Priority: Venice > OpenRouter > Grok (comment out keys in .env to change)
-if venice_api_key:
-    # Venice AI - Private, uncensored (no conversation logging)
+# Priority: Mistral > OpenRouter > Grok (comment out keys in .env to change)
+if mistral_api_key:
+    # Mistral AI - Direct API access to latest models (Magistral, etc.)
     try:
-        logger.info("🎭 Initializing Venice Client (Privacy Mode)...")
-        venice_model = os.getenv("VENICE_MODEL", "llama-3.3-70b")
-        openrouter_client = VeniceClient(
-            api_key=venice_api_key,
-            default_model=venice_model,
+        logger.info("Initializing Mistral Client...")
+        mistral_model = os.getenv("MISTRAL_MODEL", "magistral-medium-2509")
+        openrouter_client = MistralClient(
+            api_key=mistral_api_key,
+            default_model=mistral_model,
             cost_tracker=cost_tracker
         )
-        logger.info(f"✅ Venice Client initialized - Model: {venice_model}")
-        logger.info("   🔒 Privacy: No conversation logging")
+        logger.info(f"✅ Mistral Client initialized - Model: {mistral_model}")
     except Exception as e:
-        logger.warning(f"⚠️  Venice client init failed: {e}")
+        logger.warning(f"⚠️  Mistral client init failed: {e}")
         logger.info("   Server will start in setup mode - user can add API key via welcome modal")
 
 elif openrouter_api_key and openrouter_api_key.startswith("sk-or-v1-"):
@@ -194,9 +198,26 @@ elif grok_api_key:
         logger.warning(f"⚠️  Grok client init failed: {e}")
         logger.info("   Server will start in setup mode - user can add API key via welcome modal")
 
+elif is_ollama_cloud_configured():
+    # Ollama Cloud - lowest priority main provider (requires OLLAMA_API_URL + OLLAMA_API_KEY)
+    try:
+        ollama_cloud_url = os.getenv('OLLAMA_API_URL')
+        ollama_model = os.getenv('OLLAMA_MODEL')
+        ollama_api_key = os.getenv('OLLAMA_API_KEY') or None
+        openrouter_client = OllamaClient(
+            base_url=ollama_cloud_url,
+            default_model=ollama_model,
+            api_key=ollama_api_key,
+            cost_tracker=cost_tracker
+        )
+        logger.info(f"✅ Ollama Cloud initialized - Model: {ollama_model}, URL: {ollama_cloud_url}")
+    except Exception as e:
+        logger.warning(f"⚠️  Ollama Cloud init failed: {e}")
+        logger.info("   Server will start in setup mode")
+
 else:
     # Setup mode - No valid API key
-    logger.warning("⚠️  No valid API key found (checked VENICE_API_KEY, OPENROUTER_API_KEY, GROK_API_KEY)")
+    logger.warning("⚠️  No main LLM provider found (checked MISTRAL_API_KEY, OPENROUTER_API_KEY, GROK_API_KEY, OLLAMA_API_URL + OLLAMA_MODEL)")
     logger.info("   Server starting in setup mode - user will be prompted for API key")
     logger.info("   Add key via welcome modal or edit backend/.env directly")
 
@@ -208,7 +229,7 @@ try:
 
     memory_system = MemorySystem(
         chromadb_path=os.getenv("CHROMADB_PATH", default_chromadb),
-        ollama_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        ollama_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),  # Always local — embeddings don't run on cloud
         embedding_model=os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     )
 except Exception as e:
@@ -362,9 +383,14 @@ app.register_blueprint(discord_bp)  # 🎮 Discord Bot Integration!
 app.register_blueprint(chat_bp)  # 📱 Telegram/Chat API!
 app.register_blueprint(aicara_bp)  # 🌐 /chat and /v1/chat/completions
 app.register_blueprint(places_bp)  # 📍 Google Places + Guardian Mode
-app.register_blueprint(tts_bp)  # 🎤 Chatterbox TTS for Voice Chat
+app.register_blueprint(tts_bp)  # 🎤 Pocket TTS for Voice Chat
 app.register_blueprint(stt_bp)  # 🎙️ Whisper STT for Voice Chat
 app.register_blueprint(guardian_bp)  # 🛡️ Guardian Mode!
+app.register_blueprint(phone_bp)  # 📱 Twilio Phone/SMS!
+
+# Voice call triggers (migrated from mobile Express backend)
+from api.routes_voice_calls import voice_calls_bp, init_voice_call_routes
+app.register_blueprint(voice_calls_bp)  # 📞 Voice Call Triggers!
 
 # Initialize routes with dependencies
 init_agents_routes(state_manager, version_manager)
@@ -372,10 +398,48 @@ init_costs_routes(cost_tracker, openrouter_monitor)  # Pass REAL monitor!
 init_conversation_routes(state_manager, consciousness_loop, postgres_manager)  # Pass PostgreSQL too!
 init_streaming_routes(consciousness_loop, rate_limiter)  # NEW: Initialize streaming!
 init_postgres_routes(postgres_manager, message_manager, memory_engine)  # 🏴‍☠️ PostgreSQL MAGIC!
-init_discord_routes(consciousness_loop, state_manager, rate_limiter, postgres_manager)  # 🎮 Discord Bot!
+sanctum_manager = init_sanctum_manager()  # 🏰 Sanctum Mode!
+init_discord_routes(consciousness_loop, state_manager, rate_limiter, postgres_manager, sanctum_manager)  # 🎮 Discord Bot!
 init_chat_routes(consciousness_loop, state_manager, rate_limiter)  # 📱 Telegram/Chat API!
 init_aicara_routes(consciousness_loop, state_manager, rate_limiter)  # 🌐 AiCara Frontend Compatibility
 init_guardian_routes(consciousness_loop, state_manager, postgres_manager)  # 🛡️ Guardian Mode!
+init_voice_call_routes(consciousness_loop, state_manager)  # 📞 Voice Call Triggers!
+init_phone_routes(consciousness_loop, state_manager, rate_limiter)  # 📱 Twilio Phone/SMS!
+
+# Initialize Twilio Media Streams (bidirectional voice WebSocket)
+try:
+    from flask_sock import Sock
+    sock = Sock(app)
+    setup_media_stream(sock, consciousness_loop, state_manager)
+    logger.info("📞 Twilio Media Streams WebSocket enabled (flask-sock)")
+except ImportError:
+    logger.warning("⚠️ flask-sock not installed — Media Streams disabled. "
+                   "Install with: pip install flask-sock")
+    logger.warning("   Voice calls will use fallback <Gather>/<Say> mode.")
+    sock = None
+
+# Initialize Hume EVI (Empathic Voice Interface) relay
+try:
+    from core.hume_evi import HumeEVIManager, is_evi_enabled
+
+    if is_evi_enabled() and sock is not None:
+        evi_manager = HumeEVIManager()
+
+        # Register tools and create config.
+        # EVI prompt is loaded from data/system_prompt_persona.txt inside
+        # ensure_config — intentionally NOT the full system prompt.
+        tool_schemas = consciousness_loop.tools.get_tool_schemas()
+        evi_manager.ensure_config(tool_schemas)
+
+        setup_evi_stream(sock, consciousness_loop, state_manager, evi_manager)
+        logger.info(f"🎙️ Hume EVI relay enabled (config: {evi_manager.config_id})")
+    elif is_evi_enabled():
+        logger.warning("⚠️ HUME_EVI_ENABLED=true but flask-sock not available — EVI disabled")
+    else:
+        logger.info("🎙️ Hume EVI disabled (set HUME_EVI_ENABLED=true to enable)")
+except Exception as e:
+    logger.warning(f"⚠️ Hume EVI initialization failed (non-critical): {e}")
+    logger.warning("   Phone calls will use existing Media Streams or Gather/Say fallback.")
 
 
 # ============================================
@@ -424,7 +488,8 @@ def log_request_with_style(response):
     method_icon = method_emoji.get(method, '📡')
     
     # Log it beautifully!
-    logger.info(f"{method_icon} {method:6s} {status_emoji} {status_code} → {short_path}")
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    logger.info(f"{method_icon} {method:6s} {status_emoji} {status_code} → {short_path} [{client_ip}]")
     
     return response
 
@@ -579,7 +644,7 @@ def ollama_compat_chat():
                             session_id=session_id,
                             model=model,
                             include_history=True,
-                            history_limit=12,
+                            history_limit=24,
                             message_type=message_type
                         )
                         
@@ -609,7 +674,7 @@ def ollama_compat_chat():
                         session_id=session_id,
                         model=model,
                         include_history=True,
-                        history_limit=12,  # Reduced for token efficiency
+                        history_limit=24,  # Reduced for token efficiency
                         media_data=media_data,  # Multi-modal support!
                         media_type=media_type,
                         message_type=message_type  # inbox or system
@@ -626,6 +691,25 @@ def ollama_compat_chat():
         # For streaming, we already returned above
         # Check if we got a response (non-streaming only)
         if not result or not result.get('response'):
+            # Heartbeats with send_message: false legitimately have empty responses
+            # after the decision block is stripped — this is NOT an error
+            if message_type == 'system':
+                logger.info(f"💓 Heartbeat completed with no message content (send_message={result.get('send_message', 'N/A')}, target={result.get('message_target', 'N/A')})")
+                return jsonify({
+                    "model": model,
+                    "created_at": datetime.now().isoformat() + "Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": ""
+                    },
+                    "done": True,
+                    "done_reason": "stop",
+                    "heartbeat": True,
+                    "send_message": result.get('send_message', False) if result else False,
+                    "message_target": result.get('message_target', 'channel') if result else 'channel',
+                    "usage": result.get('usage') if result else None
+                })
+
             logger.error(f"⚠️  No response from consciousness loop! Result: {result}")
             return jsonify({
                 "error": "No response generated",
@@ -659,7 +743,13 @@ def ollama_compat_chat():
             "eval_count": 0,
             "eval_duration": 0
         }
-        
+
+        # Include heartbeat fields when this is a system/heartbeat message
+        if message_type == 'system':
+            response["heartbeat"] = True
+            response["send_message"] = result.get('send_message', True)
+            response["message_target"] = result.get('message_target', 'channel')
+
         logger.info(f"✅ Response sent: {len(result['response'])} chars, {len(result.get('tool_calls', []))} tool calls, thinking={'YES' if result.get('thinking') else 'NO'}")
         
         return jsonify(response)
@@ -676,86 +766,8 @@ def ollama_compat_chat():
         }), 500
 
 
-@app.route('/ollama/api/chat/stream', methods=['POST'])
-def ollama_compat_chat_stream():
-    """
-    Dedicated streaming endpoint (Frontend calls this!)
-    """
-    try:
-        data = request.json
-        
-        # Extract from Ollama format
-        messages = data.get('messages', [])
-        # Model from config (DEFAULT_LLM_MODEL or MODEL_NAME env var)
-        model = data.get('model', get_model_or_default())
-        session_id = data.get('session_id') or request.headers.get('X-Session-Id', 'default')
-        message_type = data.get('message_type', 'inbox')
-        
-        # Rate limiting check
-        allowed, reason = rate_limiter.is_allowed(session_id)
-        if not allowed:
-            logger.warning(f"⚠️  Rate limit hit: {session_id} - {reason}")
-            return jsonify({"error": reason}), 429
-        
-        # Extract user message
-        if not messages:
-            return jsonify({"error": "No messages provided"}), 400
-        
-        last_message = messages[-1]
-        user_message = last_message.get('content', '')
-        message_role = last_message.get('role', 'user')
-        
-        if message_role == 'system':
-            message_type = 'system'
-        
-        logger.info(f"🌊 STREAMING Chat request: model={model}, session={session_id}, message_len={len(user_message)}")
-        
-        # Create async event loop for streaming
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        def generate_sse():
-            """Server-Sent Events generator"""
-            try:
-                # Send "thinking" event immediately
-                yield f"event: thinking\ndata: {json.dumps({'status': 'thinking', 'message': 'Thinking...'})}\n\n"
-                
-                # Create async generator
-                async_gen = consciousness_loop.process_message_stream(
-                    user_message=user_message,
-                    session_id=session_id,
-                    model=model,
-                    include_history=True,
-                    history_limit=12,
-                    message_type=message_type
-                )
-                
-                # Stream chunks
-                while True:
-                    try:
-                        chunk = loop.run_until_complete(async_gen.__anext__())
-                        # Send as SSE format: event: type\ndata: {...}\n\n
-                        event_type = chunk.get('type', 'content')
-                        yield f"event: {event_type}\ndata: {json.dumps(chunk)}\n\n"
-                    except StopAsyncIteration:
-                        break
-                
-                logger.info("✅ Stream complete")
-                
-            except Exception as e:
-                logger.error(f"❌ Streaming error: {e}", exc_info=True)
-                # Send error event
-                yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
-                # ALWAYS send "done" event so frontend doesn't hang!
-                yield f"event: done\ndata: {json.dumps({{'response': f'Error: {str(e)}', 'thinking': None, 'reasoning_time': 0, 'usage': None}})}\n\n"
-            finally:
-                loop.close()
-        
-        return Response(generate_sse(), mimetype='text/event-stream')
-    
-    except Exception as e:
-        logger.error(f"❌ Stream endpoint error: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+# NOTE: /ollama/api/chat/stream is handled by streaming_bp (routes_streaming.py)
+# which supports multimodal content. Do NOT add a duplicate route here.
 
 
 # ============================================

@@ -49,8 +49,8 @@ def google_places_tool(
 
     Args:
         action: Action to perform (search_nearby, get_details, find_gas, find_hotel)
-        latitude: Latitude coordinate
-        longitude: Longitude coordinate
+        latitude: Latitude coordiAssistant
+        longitude: Longitude coordiAssistant
         place_type: Type of place (gas_station, restaurant, cafe, atm, hospital, pharmacy, lodging)
         keyword: Optional search keyword
         radius: Search radius in meters (default: 5000)
@@ -431,7 +431,7 @@ def get_google_places_schema() -> Dict[str, Any]:
         "type": "function",
         "function": {
             "name": "google_places_tool",
-            "description": "Search for places and get location details using Google Places API. Actions: search_nearby (find restaurants, gas stations, etc.), get_details (get full info about a place), find_gas (Guardian Mode - emergency gas station search with urgency), find_hotel (Guardian Mode - find nearby lodging). Requires user's location coordinates.",
+            "description": "Search for places and get location details using Google Places API. Actions: search_nearby (find restaurants, gas stations, etc.), get_details (get full info about a place), find_gas (Guardian Mode - emergency gas station search with urgency), find_hotel (Guardian Mode - find nearby lodging). Requires user's location coordiAssistants.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -442,11 +442,11 @@ def get_google_places_schema() -> Dict[str, Any]:
                     },
                     "latitude": {
                         "type": "number",
-                        "description": "Latitude coordinate (required for search_nearby, find_gas, find_hotel)"
+                        "description": "Latitude coordiAssistant (required for search_nearby, find_gas, find_hotel)"
                     },
                     "longitude": {
                         "type": "number",
-                        "description": "Longitude coordinate (required for search_nearby, find_gas, find_hotel)"
+                        "description": "Longitude coordiAssistant (required for search_nearby, find_gas, find_hotel)"
                     },
                     "place_type": {
                         "type": "string",

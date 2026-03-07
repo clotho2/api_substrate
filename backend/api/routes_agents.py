@@ -10,7 +10,7 @@ import os
 import logging
 from flask import Blueprint, jsonify, request
 from core.state_manager import StateManager
-from core.config import DEFAULT_AGENT_ID, get_model_or_default, FALLBACK_MODEL
+from core.config import DEFAULT_AGENT_ID, DEFAULT_TEMPERATURE, get_model_or_default, FALLBACK_MODEL
 from core.version_manager import VersionManager
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ def create_agent():
         # Merge config with defaults
         default_config = {
             'model': model,
-            'temperature': 0.7,
+            'temperature': DEFAULT_TEMPERATURE,
             'max_tokens': 4096,
             'top_p': 0.9,
             'frequency_penalty': 0.0,
@@ -251,7 +251,7 @@ def get_agent_config(agent_id):
         # Merge with defaults (for missing fields)
         default_config = {
             'model': env_model,  # Env var takes precedence!
-            'temperature': 0.7,
+            'temperature': DEFAULT_TEMPERATURE,
             'max_tokens': None,
             'top_p': 1.0,
             'frequency_penalty': 0.0,

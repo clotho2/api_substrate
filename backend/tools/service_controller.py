@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Service Controller - Level 3 Priority 3
+Assistant Service Controller - Level 3 Priority 3
 
-Safe service control for the agent's self-maintenance.
-This allows the agent to restart services after making changes.
+Safe service control for Assistant's self-maintenance.
+This allows Assistant to restart services after making changes.
 
 Features:
-- Control only substrate services (substrate-agent, substrate-telegram)
+- Control only Assistant's services (Assistant-substrate, Assistant-telegram)
 - Start, stop, restart, and check status
 - Full audit logging
 - Safety checks before operations
@@ -21,15 +21,15 @@ from pathlib import Path
 
 # Configuration
 ALLOWED_SERVICES = [
-    "substrate-agent",
-    "substrate-telegram"
+    "Assistant-substrate",
+    "Assistant-telegram"
 ]
 
-AUDIT_LOG = Path("/var/log/agent_service_control.log")
+AUDIT_LOG = Path("/var/log/Assistant_service_control.log")
 
 
 class ServiceController:
-    """Safe service controller for substrate services only."""
+    """Safe service controller for Assistant's services only."""
 
     def __init__(self):
         """Initialize service controller."""
@@ -142,7 +142,7 @@ class ServiceController:
 
     def get_service_status(self, service: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get status of one or all substrate services.
+        Get status of one or all Assistant services.
 
         Args:
             service: Specific service name, or None for all services

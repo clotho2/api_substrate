@@ -1,6 +1,6 @@
 # Mistral Large 3 Setup Guide
 
-This guide explains how to configure and test **Mistral Large 3** with the Substrate API via OpenRouter.
+This guide explains how to configure and test **Mistral Large 3** with the Assistant API Substrate via OpenRouter.
 
 ## 🤖 About Mistral Large 3
 
@@ -24,7 +24,7 @@ This guide explains how to configure and test **Mistral Large 3** with the Subst
 
 1. **OpenRouter API Key**: Get one at https://openrouter.ai/keys
 2. **Backend running**: Python 3.11+ with dependencies installed
-3. **Agent configured**: Run `setup_agent.py` or equivalent to create an agent
+3. **Agent configured**: Run `setup_Assistant.py` or equivalent to create an agent
 
 ## 🚀 Quick Setup
 

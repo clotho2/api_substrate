@@ -23,7 +23,7 @@ from dataclasses import dataclass, asdict
 from contextlib import contextmanager
 from enum import Enum
 from core.consciousness_broadcast import broadcast_memory_access
-from core.config import DEFAULT_AGENT_ID, get_model_or_default
+from core.config import DEFAULT_AGENT_ID, DEFAULT_TEMPERATURE, get_model_or_default
 
 
 class BlockType(str, Enum):
@@ -1072,7 +1072,7 @@ class StateManager:
 
         config = {
             'model': model,
-            'temperature': self.get_state('agent.temperature', 0.7),
+            'temperature': self.get_state('agent.temperature', DEFAULT_TEMPERATURE),
             'max_tokens': self.get_state('agent.max_tokens', None),
             'top_p': self.get_state('agent.top_p', 1.0),
             'frequency_penalty': self.get_state('agent.frequency_penalty', 0.0),

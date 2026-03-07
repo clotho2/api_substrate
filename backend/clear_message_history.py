@@ -24,8 +24,8 @@ def find_database():
 
     possible_paths = [
         './data/db/substrate_state.db',
-        './nate_state.db',
-        './data/nate_state.db',
+        './Assistant_state.db',
+        './data/Assistant_state.db',
         '../data/db/substrate_state.db',
         # Common deployment paths
         '/app/data/db/substrate_state.db',

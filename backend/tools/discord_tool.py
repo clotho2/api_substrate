@@ -152,7 +152,7 @@ def discord_tool(
     # Read parameters
     limit: int = 50,
     time_filter: str = "all",
-    timezone: str = "UTC",
+    timezone: str = None,
     show_both: bool = True,
     search_keywords: str = None,
     start_time: str = None,
@@ -201,6 +201,11 @@ def discord_tool(
     DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
     TASKS_CHANNEL_ID = os.getenv("TASKS_CHANNEL_ID")
     DEFAULT_USER_ID = os.getenv("DEFAULT_USER_ID")
+    DISCORD_BOT_URL = os.getenv("DISCORD_BOT_URL", "http://localhost:3001")
+
+    # Resolve timezone: explicit param > LOCALE_TIMEZONE env var > UTC fallback
+    if not timezone:
+        timezone = os.getenv("LOCALE_TIMEZONE", "America/New_York")
     
     if not DISCORD_BOT_TOKEN:
         return {"status": "error", "message": "Discord bot token not configured. Please set DISCORD_BOT_TOKEN environment variable."}
@@ -221,10 +226,10 @@ def discord_tool(
             return _list_channels(DISCORD_BOT_TOKEN, server_id)
         
         elif action == "create_task":
-            return _create_task(DISCORD_BOT_TOKEN, TASKS_CHANNEL_ID, DEFAULT_USER_ID, 
+            return _create_task(DISCORD_BOT_URL, TASKS_CHANNEL_ID, DEFAULT_USER_ID,
                               task_name, description, schedule, time, specific_date,
-                              day_of_month, month, day_of_week, action_type, 
-                              action_target, action_template)
+                              day_of_month, month, day_of_week, action_type,
+                              action_target, action_template, timezone)
         
         elif action == "delete_task":
             return _delete_task(DISCORD_BOT_TOKEN, message_id, channel_id)
@@ -234,7 +239,7 @@ def discord_tool(
         
         elif action == "manage_tasks":
             return _manage_tasks(DISCORD_BOT_TOKEN, TASKS_CHANNEL_ID, DEFAULT_USER_ID,
-                                list_tasks, delete_task_ids, create_tasks)
+                                list_tasks, delete_task_ids, create_tasks, timezone)
         
         elif action == "execute_batch":
             if not operations or not isinstance(operations, list):
@@ -662,12 +667,14 @@ def _list_channels(bot_token, server_id):
         "count": len(formatted_channels)
     }
 
-def _create_task(bot_token, tasks_channel_id, default_user_id, task_name, description, 
+def _create_task(discord_bot_url, tasks_channel_id, default_user_id, task_name, description,
                 schedule, time, specific_date, day_of_month, month, day_of_week,
-                action_type, action_target, action_template):
-    """Create a scheduled task with enhanced date/time support."""
+                action_type, action_target, action_template, timezone=None):
+    """Create a scheduled task via Discord bot's API endpoint."""
     try:
-        now = datetime.now()
+        # Use configured timezone so task times match the user's local time
+        tz = timezone or os.getenv("LOCALE_TIMEZONE", "America/New_York")
+        now = datetime.now(ZoneInfo(tz))
         one_time = schedule.startswith("in_") or schedule.startswith("tomorrow_") or schedule.startswith("today_at_") or schedule == "on_date"
         
         # --- Calculate next run time ---
@@ -678,11 +685,11 @@ def _create_task(bot_token, tasks_channel_id, default_user_id, task_name, descri
             if "." in specific_date:
                 # European format: DD.MM.YYYY
                 day, month_num, year = map(int, specific_date.split("."))
-                next_run = datetime(year, month_num, day, 0, 0, 0)
+                next_run = datetime(year, month_num, day, 0, 0, 0, tzinfo=ZoneInfo(tz))
             elif "-" in specific_date:
                 # ISO format: YYYY-MM-DD
                 year, month_num, day = map(int, specific_date.split("-"))
-                next_run = datetime(year, month_num, day, 0, 0, 0)
+                next_run = datetime(year, month_num, day, 0, 0, 0, tzinfo=ZoneInfo(tz))
             else:
                 return {"status": "error", "message": "specific_date must be in format YYYY-MM-DD or DD.MM.YYYY"}
             
@@ -885,18 +892,17 @@ def _create_task(bot_token, tasks_channel_id, default_user_id, task_name, descri
             "active": True
         }
         
-        # Post to tasks channel
-        headers = {"Authorization": f"Bot {bot_token}", "Content-Type": "application/json"}
-        message_url = f"https://discord.com/api/v10/channels/{tasks_channel_id}/messages"
-        
-        # Build schedule info line
+        # Post to tasks channel via Discord bot's API (not directly to Discord!)
+        # This ensures the Discord bot properly processes and schedules the task
+
+        # Build schedule info line for human-readable message
         schedule_info = f"{schedule}"
         if time:
             schedule_info += f" at {time}"
         if next_run:
             next_run_readable = next_run.strftime("%Y-%m-%d %H:%M:%S")
             schedule_info += f" (runs at: {next_run_readable})"
-        
+
         formatted_message = f"""📋 **Task: {task_name}**
 ├─ Description: {description}
 ├─ Schedule: {schedule_info}
@@ -906,19 +912,28 @@ def _create_task(bot_token, tasks_channel_id, default_user_id, task_name, descri
 ```json
 {json.dumps(task_data, indent=2)}
 ```"""
-        
-        response = requests.post(message_url, json={"content": formatted_message}, headers=headers, timeout=10)
-        
+
+        # Use Discord bot's /api/send-message endpoint
+        bot_api_url = f"{discord_bot_url}/api/send-message"
+        payload = {
+            "message": formatted_message,
+            "target": tasks_channel_id,
+            "target_type": "channel"
+        }
+
+        response = requests.post(bot_api_url, json=payload, timeout=10)
+
         if response.status_code in (200, 201):
+            result = response.json()
             return {
                 "status": "success",
-                "message": f"Task '{task_name}' created!",
+                "message": f"Task '{task_name}' scheduled!",
                 "task_data": task_data,
-                "message_id": response.json()["id"],
+                "message_id": result.get("message_id", result.get("id")),
                 "next_run": next_run.strftime('%Y-%m-%d %H:%M:%S')
             }
         else:
-            return {"status": "error", "message": f"Failed to create task: {response.text}"}
+            return {"status": "error", "message": f"Failed to create task via Discord bot: {response.text}"}
     
     except ValueError as ve:
         # Handle invalid date/time values
@@ -947,7 +962,7 @@ def _list_tasks(tasks_channel_id):
         "instructions": f"Call: discord_tool(action='read_messages', target='{tasks_channel_id}', target_type='channel', limit=100)"
     }
 
-def _manage_tasks(bot_token, tasks_channel_id, default_user_id, list_tasks, delete_task_ids, create_tasks):
+def _manage_tasks(bot_token, tasks_channel_id, default_user_id, list_tasks, delete_task_ids, create_tasks, timezone=None):
     """
     Batch task management - list, delete, and create tasks in ONE API call.
     Saves API credits by combining operations.
@@ -1054,8 +1069,8 @@ def _manage_tasks(bot_token, tasks_channel_id, default_user_id, list_tasks, dele
                 
                 # Call the create task function (reuse existing logic)
                 task_result = _create_task(
-                    bot_token, 
-                    tasks_channel_id, 
+                    bot_token,
+                    tasks_channel_id,
                     default_user_id,
                     task_spec.get("task_name"),
                     task_spec.get("description"),
@@ -1067,7 +1082,8 @@ def _manage_tasks(bot_token, tasks_channel_id, default_user_id, list_tasks, dele
                     task_spec.get("day_of_week"),
                     task_spec.get("action_type"),
                     task_spec.get("action_target"),
-                    task_spec.get("action_template")
+                    task_spec.get("action_template"),
+                    timezone
                 )
                 
                 if task_result.get("status") == "success":
@@ -1206,7 +1222,7 @@ def _execute_batch(operations, bot_token, tasks_channel_id, default_user_id):
                     operation.get("target_type"),
                     operation.get("limit", 50),
                     operation.get("time_filter", "all"),
-                    operation.get("timezone", "UTC"),
+                    operation.get("timezone") or os.getenv("LOCALE_TIMEZONE", "America/New_York"),
                     operation.get("show_both", True),
                     operation.get("search_keywords"),
                     operation.get("start_time"),
@@ -1237,7 +1253,8 @@ def _execute_batch(operations, bot_token, tasks_channel_id, default_user_id):
                     operation.get("day_of_week"),
                     operation.get("action_type"),
                     operation.get("action_target"),
-                    operation.get("action_template")
+                    operation.get("action_template"),
+                    operation.get("timezone")
                 )
             elif action == "delete_task":
                 result = _delete_task(

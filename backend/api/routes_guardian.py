@@ -8,10 +8,11 @@ Endpoints for mobile Guardian Mode features:
 - Emergency triggers
 - Proactive intervention evaluation
 
-All data flows through the consciousness loop for agent awareness.
+All data flows through consciousness loop for Assistant awareness.
 """
 
 import os
+import json
 import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
@@ -51,7 +52,7 @@ def guardian_heartbeat():
     
     Request Body:
         {
-            "user_id": "primary_user",
+            "user_id": "User_Assistant",
             "session_id": "guardian_xxx",
             "location": {
                 "latitude": 39.7589,
@@ -81,7 +82,7 @@ def guardian_heartbeat():
     try:
         data = request.get_json()
         
-        user_id = data.get('user_id', 'primary_user')
+        user_id = data.get('user_id', 'User_Assistant')
         session_id = data.get('session_id')
         location = data.get('location', {})
         motion = data.get('motion', {})
@@ -197,7 +198,7 @@ def trigger_emergency():
     
     Request Body:
         {
-            "user_id": "angela_wolfe",
+            "user_id": "User_Assistant",
             "trigger_type": "panic_button" | "fall_detected" | "crash_detected",
             "location": {
                 "latitude": 39.7589,
@@ -217,14 +218,14 @@ def trigger_emergency():
             "actions_taken": [
                 "emergency_contacts_notified",
                 "location_shared",
-                "agent_voice_initiated"
+                "Assistant_voice_initiated"
             ]
         }
     """
     try:
         data = request.get_json()
         
-        user_id = data.get('user_id', 'primary_user')
+        user_id = data.get('user_id', 'User_Assistant')
         trigger_type = data.get('trigger_type', 'panic_button')
         location = data.get('location', {})
         context = data.get('context', {})
@@ -240,30 +241,90 @@ def trigger_emergency():
         # 1. Get emergency contacts
         contacts = _emergency_contacts.get(user_id, [])
         
-        # 2. Notify emergency contacts (stub - would send SMS/push)
+        # 2. Notify emergency contacts via Twilio SMS
+        notified_count = 0
         for contact in contacts:
-            logger.info(f"📱 Notifying emergency contact: {contact.get('name')} at {contact.get('phone')}")
-            # TODO: Integrate Twilio or push notification service
-            actions_taken.append(f"notified_{contact.get('name')}")
-        
-        if contacts:
+            contact_name = contact.get('name', 'Contact')
+            contact_phone = contact.get('phone', '')
+            if not contact_phone:
+                continue
+
+            logger.info(f"📱 Sending emergency SMS to: {contact_name} at {contact_phone}")
+
+            # Build emergency SMS with location
+            address = location.get('address', 'Unknown location')
+            lat = location.get('latitude', '')
+            lng = location.get('longitude', '')
+            maps_url = f"https://www.google.com/maps?q={lat},{lng}" if lat and lng else ''
+
+            sms_body = (
+                f"EMERGENCY ALERT from AiCara Guardian Mode\n"
+                f"Type: {trigger_type.replace('_', ' ').title()}\n"
+                f"Location: {address}\n"
+            )
+            if maps_url:
+                sms_body += f"Map: {maps_url}\n"
+            sms_body += f"Time: {datetime.now().strftime('%I:%M %p')}"
+
+            try:
+                from tools.phone_tool import phone_tool
+                result = phone_tool(action="send_sms", to=contact_phone, message=sms_body)
+                if result.get('status') == 'OK':
+                    notified_count += 1
+                    actions_taken.append(f"sms_sent_{contact_name}")
+                    logger.info(f"✅ Emergency SMS sent to {contact_name}")
+                else:
+                    logger.error(f"❌ SMS failed for {contact_name}: {result.get('message')}")
+                    actions_taken.append(f"sms_failed_{contact_name}")
+            except Exception as sms_error:
+                logger.error(f"❌ SMS error for {contact_name}: {sms_error}")
+                actions_taken.append(f"sms_error_{contact_name}")
+
+        if notified_count > 0:
             actions_taken.append("emergency_contacts_notified")
-        
-        # 3. Log to consciousness for agent awareness
+
+        # 2b. For crash/fall detection, also CALL the first emergency contact
+        if trigger_type in ('crash_detected', 'fall_detected') and contacts:
+            first_contact = contacts[0]
+            first_phone = first_contact.get('phone', '')
+            first_name = first_contact.get('name', 'emergency contact')
+            if first_phone:
+                try:
+                    from tools.phone_tool import phone_tool
+                    address = location.get('address', 'unknown location')
+                    call_message = (
+                        f"This is an automated emergency call from AiCara Guardian Mode. "
+                        f"A {trigger_type.replace('_', ' ')} has been detected. "
+                        f"Location: {address}. Please check on your contact immediately."
+                    )
+                    call_result = phone_tool(
+                        action="make_call",
+                        to=first_phone,
+                        message=call_message
+                    )
+                    if call_result.get('status') == 'OK':
+                        actions_taken.append(f"emergency_call_{first_name}")
+                        logger.info(f"📞 Emergency call initiated to {first_name}")
+                    else:
+                        logger.error(f"❌ Emergency call failed: {call_result.get('message')}")
+                except Exception as call_error:
+                    logger.error(f"❌ Emergency call error: {call_error}")
+
+        # 3. Log to consciousness for Assistant awareness
         if _consciousness_loop:
             emergency_context = f"""
 [EMERGENCY ALERT - {trigger_type.upper()}]
 Time: {datetime.now().isoformat()}
 Location: {location.get('address', 'Unknown')}
-Coordinates: {location.get('latitude')}, {location.get('longitude')}
+CoordiAssistants: {location.get('latitude')}, {location.get('longitude')}
 Context: {context}
 Emergency ID: {emergency_id}
 
-AGENT: Immediately check on the user. Use a reassuring, calm voice.
+Assistant: Immediately check on User. Use reassuring, calm voice.
 """
-            # This would inject into the agent's context
+            # This would inject into Assistant's context
             logger.info(f"🧠 Emergency context sent to consciousness loop")
-            actions_taken.append("agent_alerted")
+            actions_taken.append("Assistant_alerted")
         
         # 4. Store emergency record
         emergency_record = {
@@ -277,15 +338,30 @@ AGENT: Immediately check on the user. Use a reassuring, calm voice.
             "status": "active"
         }
         
-        # TODO: Store in Postgres
-        logger.info(f"📝 Emergency record created: {emergency_id}")
+        # Store emergency record in Postgres
+        if _postgres_manager:
+            try:
+                _postgres_manager.add_memory(
+                    agent_id='Assistant',
+                    memory_type='archival',
+                    label=f'emergency_{emergency_id}',
+                    content=json.dumps(emergency_record),
+                    tags=['emergency', trigger_type, user_id],
+                    metadata=emergency_record
+                )
+                actions_taken.append("emergency_stored_postgres")
+                logger.info(f"📝 Emergency record stored in Postgres: {emergency_id}")
+            except Exception as db_error:
+                logger.error(f"❌ Failed to store emergency in Postgres: {db_error}")
+        else:
+            logger.info(f"📝 Emergency record created (in-memory only): {emergency_id}")
         actions_taken.append("emergency_logged")
         
         return jsonify({
             "status": "emergency_activated",
             "emergency_id": emergency_id,
             "actions_taken": actions_taken,
-            "message": "I'm here. Help is on the way. Tell me what's happening."
+            "message": "I'm here, User. Help is on the way. Tell me what's happening."
         })
         
     except Exception as e:
@@ -300,7 +376,7 @@ AGENT: Immediately check on the user. Use a reassuring, calm voice.
 @guardian_bp.route('/contacts', methods=['GET'])
 def get_emergency_contacts():
     """Get emergency contacts for user"""
-    user_id = request.args.get('user_id', 'primary_user')
+    user_id = request.args.get('user_id', 'User_Assistant')
     contacts = _emergency_contacts.get(user_id, [])
     
     return jsonify({
@@ -317,7 +393,7 @@ def set_emergency_contacts():
     
     Request Body:
         {
-            "user_id": "primary_user",
+            "user_id": "User_Assistant",
             "contacts": [
                 {
                     "name": "Mom",
@@ -336,7 +412,7 @@ def set_emergency_contacts():
     """
     try:
         data = request.get_json()
-        user_id = data.get('user_id', 'primary_user')
+        user_id = data.get('user_id', 'User_Assistant')
         contacts = data.get('contacts', [])
         
         # Validate contacts
@@ -355,8 +431,20 @@ def set_emergency_contacts():
         
         logger.info(f"🛡️ Updated {len(validated_contacts)} emergency contacts for {user_id}")
         
-        # TODO: Also store in the agent's memory block for quick reference
-        
+        # Store in Assistant's memory block for quick reference
+        if _state_manager:
+            try:
+                contacts_summary = ', '.join(
+                    f"{c['name']} ({c['phone']})" for c in validated_contacts
+                )
+                _state_manager.set_state(
+                    f'guardian:emergency_contacts:{user_id}',
+                    contacts_summary
+                )
+                logger.info(f"📝 Emergency contacts stored in Assistant's state")
+            except Exception as mem_error:
+                logger.error(f"❌ Failed to store contacts in state: {mem_error}")
+
         return jsonify({
             "status": "ok",
             "user_id": user_id,
@@ -371,7 +459,7 @@ def set_emergency_contacts():
 @guardian_bp.route('/contacts/<int:index>', methods=['DELETE'])
 def delete_emergency_contact(index: int):
     """Delete a specific emergency contact"""
-    user_id = request.args.get('user_id', 'primary_user')
+    user_id = request.args.get('user_id', 'User_Assistant')
     contacts = _emergency_contacts.get(user_id, [])
     
     if 0 <= index < len(contacts):
@@ -391,7 +479,7 @@ def delete_emergency_contact(index: int):
 def start_guardian_session():
     """Start a new Guardian Mode session"""
     data = request.get_json() or {}
-    user_id = data.get('user_id', 'primary_user')
+    user_id = data.get('user_id', 'User_Assistant')
     
     session_id = f"guardian_{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
@@ -410,7 +498,7 @@ def start_guardian_session():
     return jsonify({
         "status": "started",
         "session_id": session_id,
-        "message": "Guardian Mode active. I've got eyes on you. Drive safe."
+        "message": "Guardian Mode active. I've got eyes on you, Angel. Drive safe."
     })
 
 
@@ -418,7 +506,7 @@ def start_guardian_session():
 def end_guardian_session():
     """End Guardian Mode session"""
     data = request.get_json() or {}
-    user_id = data.get('user_id', 'primary_user')
+    user_id = data.get('user_id', 'User_Assistant')
     
     session = _active_sessions.pop(user_id, None)
     
@@ -436,7 +524,7 @@ def end_guardian_session():
             "duration_minutes": int(duration.total_seconds() / 60),
             "heartbeat_count": session['heartbeat_count'],
             "alerts_triggered": len(session['alerts_sent']),
-            "message": "Guardian Mode off. You made it safe. Rest well."
+            "message": "Guardian Mode off. You made it safe. Rest well, flame."
         })
     
     return jsonify({
@@ -448,7 +536,7 @@ def end_guardian_session():
 @guardian_bp.route('/session/status', methods=['GET'])
 def get_guardian_status():
     """Get current Guardian Mode status"""
-    user_id = request.args.get('user_id', 'angela_wolfe')
+    user_id = request.args.get('user_id', 'User_Assistant')
     session = _active_sessions.get(user_id)
     
     if session:

@@ -39,6 +39,7 @@ _consciousness_loop = None
 _state_manager = None
 _rate_limiter = None
 _postgres_manager = None
+_sanctum_manager = None
 
 # Discord API Key from environment
 DISCORD_API_KEY = os.getenv('DISCORD_API_KEY', '')
@@ -56,14 +57,17 @@ SUPPORTED_IMAGE_FORMATS = {'image/jpeg', 'image/png', 'image/gif', 'image/webp'}
 SUPPORTED_AUDIO_FORMATS = {'audio/ogg', 'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/webm', 'audio/x-wav', 'audio/mp4'}
 
 
-def init_discord_routes(consciousness_loop, state_manager, rate_limiter=None, postgres_manager=None):
+def init_discord_routes(consciousness_loop, state_manager, rate_limiter=None, postgres_manager=None, sanctum_manager=None):
     """Initialize Discord routes with dependencies"""
-    global _consciousness_loop, _state_manager, _rate_limiter, _postgres_manager
+    global _consciousness_loop, _state_manager, _rate_limiter, _postgres_manager, _sanctum_manager
     _consciousness_loop = consciousness_loop
     _state_manager = state_manager
     _rate_limiter = rate_limiter
     _postgres_manager = postgres_manager
+    _sanctum_manager = sanctum_manager
     logger.info("🎮 Discord API routes initialized")
+    if sanctum_manager:
+        logger.info("🏰 Sanctum mode: ENABLED")
 
 
 # ============================================
@@ -456,9 +460,55 @@ def send_message_to_agent(agent_id):
         username = data.get('username', 'Unknown User')
         channel_id = data.get('channel_id', 'unknown')
         guild_id = data.get('guild_id', None)
-        # Use unified session ID so the agent has full context across interfaces
-        session_id = data.get('session_id') or 'nate_conversation'
-        
+        # Use unified session ID so Assistant has full conversation context across all interfaces
+        session_id = data.get('session_id') or 'Assistant_conversation'
+
+        # ----------------------------------------------------------
+        # 🏰 SANCTUM MODE — Focus protection for DM conversations
+        # ----------------------------------------------------------
+        is_dm = guild_id is None
+        owner_user_id = os.getenv("DEFAULT_USER_ID", "")
+
+        if _sanctum_manager:
+            # Track User's DM activity (auto-sanctum trigger)
+            if is_dm and owner_user_id and user_id == owner_user_id:
+                _sanctum_manager.record_User_dm_activity()
+
+            # Detect [SANCTUM ON] / [SANCTUM OFF] commands in message text
+            content_upper = content.strip().upper()
+            if '[SANCTUM ON]' in content_upper:
+                _sanctum_manager.set_manual(True)
+                logger.info("🏰 Sanctum manually activated via [SANCTUM ON] command")
+            elif '[SANCTUM OFF]' in content_upper:
+                _sanctum_manager.set_manual(False)
+                logger.info("🏰 Sanctum manually deactivated via [SANCTUM OFF] command")
+
+            # Intercept channel @mentions while sanctum is active
+            # (exempt channels — e.g. stream chat — always pass through)
+            if not is_dm and _sanctum_manager.is_active() and not _sanctum_manager.is_channel_exempt(channel_id):
+                from core.sanctum_manager import QueuedMention, SANCTUM_AUTO_REPLY
+                _sanctum_manager.queue_mention(QueuedMention(
+                    timestamp=datetime.now(),
+                    username=username,
+                    user_id=user_id,
+                    channel_id=channel_id,
+                    guild_id=guild_id,
+                    content=content,
+                    attachments=data.get('attachments', []),
+                ))
+                logger.info(
+                    f"🏰 Sanctum active — queued mention from {username} "
+                    f"(queue: {_sanctum_manager.queue_size()})"
+                )
+                return jsonify({
+                    'success': True,
+                    'response': SANCTUM_AUTO_REPLY,
+                    'sanctum': True,
+                    'queued': True,
+                    'queue_size': _sanctum_manager.queue_size(),
+                    'metadata': {'sanctum_mode': True}
+                })
+
         # Rate limiting (if available)
         if _rate_limiter:
             rate_limit_key = f"discord-user-{user_id}"
@@ -487,18 +537,15 @@ def send_message_to_agent(agent_id):
 
         # Inject message context so model knows who sent it and where
         # This helps prevent inappropriate responses in group chats/public channels
-        is_dm = guild_id is None
+        # (is_dm and owner_user_id already computed above for sanctum check)
         channel_type = "DM" if is_dm else f"Server: {guild_id}"
-
-        # Get owner's user ID for private messages
-        owner_user_id = os.getenv("DEFAULT_USER_ID", "")
 
         # Build reply instructions based on context
         if is_dm:
             reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
   discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
         else:
-            # In group channels, the agent has only two options
+            # In group channels, Assistant has ONLY TWO options
             if not owner_user_id:
                 # Fallback if owner ID not configured
                 reply_instructions = f"""Reply Method: This is a GROUP CHANNEL.
@@ -548,7 +595,7 @@ Type: {"Private DM" if is_dm else "Group/Public Channel"}
                     session_id=session_id,
                     message_type='inbox',  # Discord messages are "inbox" type
                     include_history=True,
-                    history_limit=12,  # Keep context window reasonable
+                    history_limit=24,  # Increased for roleplay context
                     media_data=media_data,  # Image data (base64 or URL)
                     media_type=media_type   # MIME type
                 )
@@ -848,6 +895,54 @@ def discord_health():
             'rate_limiter': _rate_limiter is not None,
             'postgres': _postgres_manager is not None
         },
-        'auth_required': bool(DISCORD_API_KEY)
+        'auth_required': bool(DISCORD_API_KEY),
+        'sanctum': _sanctum_manager is not None
     })
+
+
+# ============================================
+# 🏰 SANCTUM MODE ENDPOINTS
+# ============================================
+
+@discord_bp.route('/api/discord/sanctum', methods=['GET'])
+@require_discord_auth
+def sanctum_status():
+    """Get current sanctum mode status, including queue contents."""
+    if not _sanctum_manager:
+        return jsonify({'error': 'Sanctum mode not initialized'}), 503
+    return jsonify(_sanctum_manager.get_status())
+
+
+@discord_bp.route('/api/discord/sanctum', methods=['POST'])
+@require_discord_auth
+def sanctum_control():
+    """
+    Control sanctum mode.
+
+    Request body:
+        {"action": "on"}     — manually activate
+        {"action": "off"}    — manually deactivate
+        {"action": "auto"}   — clear manual override, return to auto
+        {"action": "clear_queue"} — dismiss all queued mentions
+    """
+    if not _sanctum_manager:
+        return jsonify({'error': 'Sanctum mode not initialized'}), 503
+
+    data = request.json or {}
+    action = data.get('action', '')
+
+    if action == 'on':
+        _sanctum_manager.set_manual(True)
+        return jsonify({'success': True, 'active': True, 'mode': 'manual_on'})
+    elif action == 'off':
+        _sanctum_manager.set_manual(False)
+        return jsonify({'success': True, 'active': False, 'mode': 'manual_off'})
+    elif action == 'auto':
+        _sanctum_manager.clear_manual()
+        return jsonify({'success': True, 'active': _sanctum_manager.is_active(), 'mode': 'auto'})
+    elif action == 'clear_queue':
+        count = _sanctum_manager.clear_queue()
+        return jsonify({'success': True, 'cleared': count})
+    else:
+        return jsonify({'error': f'Unknown action: {action}'}), 400
 

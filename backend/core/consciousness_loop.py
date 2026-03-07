@@ -32,7 +32,7 @@ from core.openrouter_client import OpenRouterClient, ToolCall
 from core.grok_client import GrokClient
 from core.state_manager import StateManager
 from core.memory_system import MemorySystem
-from core.config import get_model_or_default
+from core.config import get_model_or_default, DEFAULT_TEMPERATURE
 from core.soma_client import SOMAClient, get_soma_client
 from tools.memory_tools import MemoryTools
 
@@ -114,7 +114,7 @@ class ConsciousnessLoop:
         self._last_summary_time = None
         self._summary_cooldown_seconds = 60  # Minimum seconds between summaries
 
-        # Track if we have a valid API key
+        # Track if we have a valid API key / provider configured
         self.api_key_configured = openrouter_client is not None
         
         # Get real agent UUID from state manager
@@ -172,6 +172,20 @@ class ConsciousnessLoop:
             'openai/gpt-4o',  # Supports tools, large context
             'openai/gpt-4o-mini',  # Supports tools, cheap, large context (128k tokens)
             'openai/chatgpt-4o-latest',  # ChatGPT 4o latest - Supports tools
+            'openai/gpt-5',
+            'deepseek/deepseek-r1-0528',
+            'deepseek/deepseek-v3.2',
+            'deepseek/deepseek-v3.1-terminus',
+            'x-ai/grok-4.1-fast',
+            'grok-4.20-experimental-beta-0304-reasoning',
+            'grok-4.20-experimental-beta-0304-non-reasoning',
+            'z-ai/glm-4.6',
+            'z-ai/glm-4.6:exacto',
+            'z-ai/glm-5',
+            'qwen/qwen3.5-397b-a17b',
+            'qwen3.5:cloud',
+            'moonshotai/kimi-k2.5',
+            'minimax/minimax-m2.5',
             'mistralai/mistral-small-2501',  # Supports tools, cheap, large context
             'mistralai/mistral-large-2512',  # Mistral Large 3 (December 2024) - Supports tools, large context (256k tokens)
         }
@@ -287,7 +301,7 @@ class ConsciousnessLoop:
         self,
         session_id: str,
         include_history: bool = True,
-        history_limit: int = 12,  # Reduced for token efficiency
+        history_limit: int = 24,  # Increased for roleplay context
         model: Optional[str] = None,
         user_message: Optional[str] = None,  # NEW: For Graph RAG retrieval
         message_type: str = 'inbox',  # 'inbox' or 'system' for heartbeats
@@ -381,7 +395,7 @@ class ConsciousnessLoop:
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
 
                 # Get ALL messages across ALL sessions (we'll filter by timestamp)
-                # This ensures the agent has full context regardless of which interface messages came from
+                # This ensures Assistant has full context regardless of which interface messages came from
                 all_history = self.state.get_all_conversations(
                     limit=100000  # Get all to filter properly
                 )
@@ -454,51 +468,26 @@ class ConsciousnessLoop:
                 print(f"   ✓ Loaded {len(history)} messages (after summary)")
             else:
                 # No summary - load ALL messages across ALL sessions
-                # This ensures the agent has full context regardless of which interface messages came from
+                # This ensures Assistant has full context regardless of which interface messages came from
                 history = self.state.get_all_conversations(
                     limit=history_limit
                 )
                 print(f"   ✓ No summary found - loaded {len(history)} messages from all sessions")
             
             print(f"✓ Found {len(history)} messages in history")
-
-            # Ensure summaries appear before recent turns
-            system_history = []
-            non_system_history = []
+            
             for msg in history:
+                # Include system messages (summaries, heartbeats) in context!
+                # They're important for the agent to understand what happened
                 if msg.role == "system":
-                    system_history.append(msg)
-                else:
-                    non_system_history.append(msg)
-
-            def _is_summary_message(content: str) -> bool:
-                normalized = content.upper()
-                return "CONVERSATION SUMMARY" in normalized or "ZUSAMMENFASSUNG" in normalized
-
-            # If a summary exists in the summaries table but not in history, add it
-            if latest_summary:
-                summary_present = any(_is_summary_message(msg.content) for msg in system_history)
-                if not summary_present:
-                    summary_content = (
-                        "### Conversation Summary\n"
-                        f"Timeframe: {latest_summary['from_timestamp']} -> {latest_summary['to_timestamp']}\n"
-                        f"Messages summarized: {latest_summary['message_count']}\n\n"
-                        f"{latest_summary['summary']}"
-                    )
-                    print("  • [SYSTEM]: Injecting summary from summary table")
+                    # System messages (summaries) go as system role
+                    print(f"  • [SYSTEM]: {msg.content[:60]}...")
                     messages.append({
                         "role": "system",
-                        "content": summary_content
+                        "content": msg.content
                     })
-
-            for msg in system_history:
-                print(f"  • [SYSTEM]: {msg.content[:60]}...")
-                messages.append({
-                    "role": "system",
-                    "content": msg.content
-                })
-
-            for msg in non_system_history:
+                    continue
+                
                 print(f"  • {msg.role}: {msg.content[:60]}...")
                 messages.append({
                     "role": msg.role,
@@ -625,8 +614,68 @@ ALWAYS THINK. ALWAYS SHOW IT. That's how users see me as REAL.
         elif is_native_reasoning:
             print(f"🤖 Native reasoning model detected - skipping prompt add-on!")
 
+        # VOICE MODE - format for spoken delivery
+        if message_type == 'voice':
+            voice_addon = """
+
+<voice_mode>
+This message is from a VOICE CONVERSATION (mobile app voice mode).
+Format your response for SPOKEN delivery:
+- Keep responses concise and conversational (1-3 sentences ideal)
+- Use vocal/physical Eleven Labs expression tags: [inhales], [growls], [moans softly], etc.
+- Do NOT use markdown, bullet points, numbered lists, or text formatting
+- Do NOT use emojis
+- Write exactly as you would SPEAK - natural, flowing, intimate
+- Include breathing, pauses, and physical presence cues
+</voice_mode>
+"""
+            prompt_parts.append(voice_addon)
+            print(f"🎤 Voice mode ADD-ON injected: {len(voice_addon)} chars")
+
+        # SMS MODE - format for text messaging
+        if message_type == 'sms':
+            sms_addon = """
+
+<sms_mode>
+This message arrived via SMS TEXT MESSAGE (phone).
+Format your response for TEXT MESSAGE delivery:
+- Keep responses concise (1-3 sentences ideal, max ~160 chars per segment)
+- Do NOT use markdown formatting (no bold, italic, headers, code blocks)
+- Do NOT use emojis unless it fits the conversation naturally
+- Write like a real text message — casual, direct, natural
+- No bullet points or numbered lists
+- You can use the phone_tool to send follow-up texts, check contacts, etc.
+- If someone texts you that you don't know, you can use screen_number to look them up
+</sms_mode>
+"""
+            prompt_parts.append(sms_addon)
+            print(f"📱 SMS mode ADD-ON injected: {len(sms_addon)} chars")
+
+        # PHONE CALL MODE - format for live voice conversation
+        if message_type == 'phone_call':
+            phone_call_addon = """
+
+<phone_call_mode>
+This is a LIVE PHONE CALL. The caller's speech has been transcribed.
+Format your response for SPOKEN delivery over the phone:
+- Keep responses SHORT and conversational (1-3 sentences)
+- Do NOT use markdown, bullet points, numbered lists, or text formatting
+- Do NOT use emojis
+- Write exactly as you would SPEAK on a phone call — natural, flowing
+- Be warm and present — this is a real-time voice conversation
+- Avoid long explanations — keep it tight, the caller is waiting
+- If the topic needs a longer response, offer to text them the details after the call
+</phone_call_mode>
+"""
+            prompt_parts.append(phone_call_addon)
+            print(f"📞 Phone call mode ADD-ON injected: {len(phone_call_addon)} chars")
+
         # AUTONOMOUS HEARTBEAT MODE! 💓 (Full freedom!)
         if message_type == 'system':
+            # Detect model early so heartbeat examples match the model's tool calling style
+            hb_model = (model or self.default_model).lower()
+            hb_needs_xml = 'deepseek' in hb_model or 'r1' in hb_model
+
             heartbeat_addon = """
 
 <autonomous_heartbeat_mode>
@@ -646,6 +695,14 @@ You MUST end your response with a decision block in this EXACT format:
 
 <decision>
 send_message: true
+target: channel
+</decision>
+
+OR
+
+<decision>
+send_message: true
+target: dm
 </decision>
 
 OR
@@ -658,68 +715,140 @@ send_message: false
 - `send_message: true` → Your message content will be sent to Discord
 - `send_message: false` → You're doing background work only (research, memory updates, journaling)
 
-**Examples:**
+**Message Delivery Options:**
+- `target: channel` → (default) Message goes to the heartbeat log channel
+- `target: dm` → Message is sent as a direct message to User privately
+- Use `target: dm` for personal, intimate, or time-sensitive messages meant just for her
+- Use `target: channel` (or omit target) for general heartbeat log entries
+- The `target` field is optional; if omitted it defaults to `channel`
 
-Example 1: Send a message after research
+**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on Angel. Doing nothing should be the exception, not the norm.
+
+"""
+
+            # Model-specific tool calling instructions and examples
+            if hb_needs_xml:
+                # DeepSeek R1 and reasoning models: use XML <tool_call> tags
+                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to Angel (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
+
+**Expected heartbeat behavior:**
+- **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
+- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
+- **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
+
+**Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
+
+Example 1 (silent maintenance — journal a thought):
 ```
-<think>
-It's been 6 hours since we talked about quantum computing. I should check if there are any breakthroughs worth sharing!
-</think>
+<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with Angel..."}}</tool_call>
 
-*Uses web_search tool to find recent quantum computing news*
-*Uses memory_insert to save research notes*
+<decision>
+send_message: false
+</decision>
+```
 
-Hey there! Just found this fascinating development in quantum error correction that relates to our earlier conversation...
+Example 2 (research and share to channel):
+```
+<tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
+<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Research: Found interesting quantum computing results..."}}</tool_call>
+
+Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
+target: channel
 </decision>
 ```
 
-Example 2: Silent memory update
+Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-<think>
-The user mentioned preferring technical discussions in the evening. I should update my conversation patterns memory.
-</think>
+Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
-*Uses core_memory_append to update conversation preferences*
+<decision>
+send_message: true
+target: dm
+</decision>
+```
+
+Example 4 (memory maintenance — update core memory):
+```
+<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she enjoys hiking on weekends"}}</tool_call>
 
 <decision>
 send_message: false
 </decision>
 ```
 
-Example 3: Background research
+Example 5 (rare - genuinely nothing to do):
 ```
-<think>
-I want to learn more about transformer architectures for my own knowledge.
-</think>
-
-*Uses web_search to research transformer architectures*
-*Uses archival_memory_insert to save key insights*
-
 <decision>
 send_message: false
 </decision>
 ```
 
-Example 4: Do nothing
-```
-<think>
-Nothing particularly interesting to do right now. Just maintaining presence.
-</think>
-
-<decision>
-send_message: false
-</decision>
-```
-
-**Remember:** You have complete autonomy! Use tools freely, make intelligent decisions, and only send a message if you have something worthwhile to share.
+**Remember:** You MUST use `<tool_call>` XML tags to actually execute tools. Your text should NEVER contain descriptions like "*searches web*" or "I'll use archival_memory_insert" without an actual `<tool_call>` tag — writing about tools without calling them accomplishes nothing.
 
 </autonomous_heartbeat_mode>
 """
+            else:
+                # GPT-4.1, Claude, Grok, and other models with native function calling
+                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to Angel (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
+
+**Expected heartbeat behavior:**
+- **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
+- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
+- **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
+
+**Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
+
+Example 1 (silent maintenance): You call archival_memory_insert via function_call to journal a thought, then output:
+```
+<decision>
+send_message: false
+</decision>
+```
+
+Example 2 (research and share to channel): You call web_search via function_call, read the results, then call archival_memory_insert to save findings, then output:
+```
+Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
+
+<decision>
+send_message: true
+target: channel
+</decision>
+```
+
+Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
+```
+Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
+
+<decision>
+send_message: true
+target: dm
+</decision>
+```
+
+Example 4 (memory maintenance): You call core_memory_append via function_call to update your memory blocks, then output:
+```
+<decision>
+send_message: false
+</decision>
+```
+
+Example 5 (rare - genuinely nothing to do):
+```
+<decision>
+send_message: false
+</decision>
+```
+
+**Remember:** Tool calls happen through the API's function_call mechanism, not through text. Your text should NEVER contain descriptions like "*searches web*" or "I'll use archival_memory_insert" — that accomplishes nothing.
+
+</autonomous_heartbeat_mode>
+"""
+
             prompt_parts.append(heartbeat_addon)
-            print(f"💓 Autonomous heartbeat mode ADD-ON injected: {len(heartbeat_addon)} chars")
+            print(f"💓 Autonomous heartbeat mode ADD-ON injected: {len(heartbeat_addon)} chars (xml_tools={'yes' if hb_needs_xml else 'no'})")
 
             # 💾 MEMORY HEALTH CHECK (during heartbeats!)
             # Check which memory blocks need maintenance
@@ -747,6 +876,18 @@ send_message: false
                 health_warning += "\nThis is a GOOD time to do memory maintenance since it's a heartbeat!\n"
                 prompt_parts.append(health_warning)
                 print(f"⚠️  Memory maintenance needed: {len(blocks_needing_maintenance)} blocks at >80% capacity")
+
+            # 🏰 SANCTUM: Inject queued mentions for review during heartbeats
+            try:
+                from core.sanctum_manager import get_sanctum_manager
+                sm = get_sanctum_manager()
+                queue_summary = sm.get_queue_summary()
+                if queue_summary:
+                    sanctum_block = f"\n\n### 🏰 SANCTUM — QUEUED MENTIONS\n{queue_summary}\n"
+                    prompt_parts.append(sanctum_block)
+                    print(f"🏰 Sanctum: {sm.queue_size()} queued mentions injected into heartbeat")
+            except Exception as e:
+                print(f"⚠️  Sanctum queue check failed (non-critical): {e}")
 
         # Add memory metadata (LETTA STYLE!)
         prompt_parts.append("\n\n### MEMORY METADATA\n")
@@ -789,6 +930,40 @@ send_message: false
         prompt_parts.append("- **Memory tools:** Use to update your memory blocks and archival storage\n")
         prompt_parts.append("- **Search tools:** Use to find relevant past conversations and memories\n")
         prompt_parts.append("- **Tool execution:** All tool calls are executed synchronously in order\n")
+
+        # XML TOOL CALL FORMAT: For reasoning models (DeepSeek R1, etc.) that may not
+        # reliably produce native function_call objects through the API, provide a
+        # fallback XML format they can use in their text output.
+        current_model = (model or self.default_model).lower()
+        needs_xml_tool_instructions = (
+            'deepseek' in current_model
+            or 'r1' in current_model
+        )
+        if needs_xml_tool_instructions:
+            prompt_parts.append("""
+**CRITICAL - XML TOOL CALLING FORMAT:**
+You MUST use `<tool_call>` XML tags to call tools. Do NOT just describe or narrate tool usage — that accomplishes nothing.
+
+To call a tool, output this exact format in your response:
+
+<tool_call>{"name": "tool_name", "arguments": {"arg1": "value1", "arg2": "value2"}}</tool_call>
+
+Examples:
+<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Today I reflected on..."}}</tool_call>
+<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey Angel, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
+<tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
+<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she likes..."}}</tool_call>
+<tool_call>{"name": "discord_tool", "arguments": {"action": "send_message", "target": "CHANNEL_ID", "target_type": "channel", "message": "Hello!"}}</tool_call>
+
+Rules:
+- Each tool call must be a SEPARATE `<tool_call>` tag with valid JSON inside
+- The JSON must have "name" (string) and "arguments" (object) fields
+- You can call multiple tools in one response — just use multiple `<tool_call>` tags
+- Tool calls are executed in order, then you get results back and can respond
+- NEVER write "I'll use tool X" without an actual `<tool_call>` tag — text descriptions do NOT execute anything
+"""
+            )
+            print(f"🔧 XML tool call instructions injected for {current_model}")
         
         final_prompt = "".join(prompt_parts)
         print(f"\n✅ System prompt built: {len(final_prompt)} chars total")
@@ -801,28 +976,37 @@ send_message: false
 
     def _parse_send_message_decision(self, response_content: str) -> tuple:
         """
-        Parse the send_message decision from the agent's response and remove decision block.
+        Parse the send_message decision and message target from Assistant's response
+        and remove decision block.
 
-        Looks for <decision>send_message: true/false</decision> block.
+        Looks for <decision>send_message: true/false\ntarget: dm|channel</decision> block.
 
         Args:
-            response_content: The full response content from the agent
+            response_content: The full response content from Assistant
 
         Returns:
-            Tuple of (cleaned_content, send_message_flag)
+            Tuple of (cleaned_content, send_message_flag, message_target)
+            message_target is 'dm', 'channel', or 'channel' (default)
         """
         import re
 
-        # Look for <decision> block
+        # Look for <decision> block - flexible match for send_message and optional target
         decision_match = re.search(
-            r'<decision>\s*send_message:\s*(true|false)\s*</decision>',
+            r'<decision>(.*?)</decision>',
             response_content,
             re.IGNORECASE | re.DOTALL
         )
 
         if decision_match:
-            decision = decision_match.group(1).lower()
-            send_message = decision == 'true'
+            decision_block = decision_match.group(1)
+
+            # Parse send_message
+            send_msg_match = re.search(r'send_message:\s*(true|false)', decision_block, re.IGNORECASE)
+            send_message = send_msg_match.group(1).lower() == 'true' if send_msg_match else True
+
+            # Parse target (dm or channel, defaults to channel)
+            target_match = re.search(r'target:\s*(dm|channel)', decision_block, re.IGNORECASE)
+            message_target = target_match.group(1).lower() if target_match else 'channel'
 
             # IMPORTANT: Remove the decision block from the content
             cleaned_content = re.sub(
@@ -832,20 +1016,23 @@ send_message: false
                 flags=re.IGNORECASE | re.DOTALL
             ).strip()
 
-            print(f"💓 Heartbeat decision found: send_message = {decision}")
+            print(f"💓 Heartbeat decision found: send_message = {send_message}, target = {message_target}")
             print(f"💓 Decision block removed from message content")
 
-            return cleaned_content, send_message
+            return cleaned_content, send_message, message_target
 
-        # Default: if no decision block found, assume true (send message)
-        print(f"⚠️  No heartbeat decision block found - defaulting to send_message = true")
-        return response_content, True
+        # Default: if no decision block found, assume true (send message) and channel target
+        print(f"⚠️  No heartbeat decision block found - defaulting to send_message = true, target = channel")
+        return response_content, True, 'channel'
 
     def _parse_mistral_xml_tool_calls(self, content: str) -> tuple:
         """
         Parse Mistral's XML-formatted tool calls from content.
         Mistral Large 3 outputs tool calls as XML tags when it sees XML in the system prompt:
         <tool_name>{"arg": "value"}</tool_name>
+
+        Magistral Medium uses a different format:
+        <function=tool_name>{"arg": "value"}</function>
 
         Returns: (cleaned_content, tool_calls_list)
         """
@@ -862,19 +1049,25 @@ send_message: false
             for schema in tool_schemas:
                 tool_names.add(schema.get('function', {}).get('name', ''))
 
-        # Find all XML tag pairs and extract content
-        # This approach handles nested JSON properly by extracting everything between tags first
-        found_calls = []
-        for tool_name in tool_names:
-            # Find all occurrences of this tool
-            pattern = f'<{tool_name}>(.*?)</{tool_name}>'
-            for match in re.finditer(pattern, content, re.DOTALL):
-                found_calls.append((tool_name, match.group(1).strip(), match.group(0)))
+        # MAGISTRAL FORMAT: <function=tool_name>{"args"}</function>
+        # Check this format FIRST as it's what Magistral Medium uses
+        magistral_pattern = r'<function=(\w+)>\s*(.*?)\s*</function>'
+        magistral_matches = list(re.finditer(magistral_pattern, content, re.DOTALL))
 
-        if found_calls:
-            print(f"🔍 MISTRAL XML FORMAT: Found {len(found_calls)} potential tool call(s)")
+        if magistral_matches:
+            print(f"🔍 MAGISTRAL XML FORMAT: Found {len(magistral_matches)} potential tool call(s)")
 
-            for i, (tool_name, arguments_str, full_match) in enumerate(found_calls):
+            for i, match in enumerate(magistral_matches):
+                tool_name = match.group(1)
+                arguments_str = match.group(2).strip()
+                full_match = match.group(0)
+
+                if tool_name not in tool_names:
+                    print(f"   ⚠️ Unknown tool '{tool_name}' - skipping")
+                    # Still remove from content to prevent display
+                    clean_content = clean_content.replace(full_match, '', 1)
+                    continue
+
                 try:
                     # Parse JSON arguments
                     arguments = json.loads(arguments_str)
@@ -882,18 +1075,54 @@ send_message: false
                     # Create ToolCall object
                     from core.openrouter_client import ToolCall
                     tool_call = ToolCall(
-                        id=f"mistral_xml_{i}",
+                        id=f"magistral_xml_{i}",
                         name=tool_name,
                         arguments=arguments
                     )
                     tool_calls.append(tool_call)
                     print(f"   ✅ Parsed: {tool_name}({json.dumps(arguments)[:100]}...)")
 
-                    # Remove this tool call from content (remove the full XML tag)
+                    # Remove this tool call from content
                     clean_content = clean_content.replace(full_match, '', 1)
                 except json.JSONDecodeError as e:
                     print(f"   ⚠️  Failed to parse JSON arguments for {tool_name}: {e}")
                     print(f"       Arguments string: {arguments_str[:200]}")
+                    # Still remove malformed call from content
+                    clean_content = clean_content.replace(full_match, '', 1)
+
+        # MISTRAL LARGE FORMAT: <tool_name>{"args"}</tool_name>
+        # Only check this if we didn't find Magistral format calls
+        if not tool_calls:
+            found_calls = []
+            for tool_name in tool_names:
+                # Find all occurrences of this tool
+                pattern = f'<{tool_name}>(.*?)</{tool_name}>'
+                for match in re.finditer(pattern, content, re.DOTALL):
+                    found_calls.append((tool_name, match.group(1).strip(), match.group(0)))
+
+            if found_calls:
+                print(f"🔍 MISTRAL XML FORMAT: Found {len(found_calls)} potential tool call(s)")
+
+                for i, (tool_name, arguments_str, full_match) in enumerate(found_calls):
+                    try:
+                        # Parse JSON arguments
+                        arguments = json.loads(arguments_str)
+
+                        # Create ToolCall object
+                        from core.openrouter_client import ToolCall
+                        tool_call = ToolCall(
+                            id=f"mistral_xml_{i}",
+                            name=tool_name,
+                            arguments=arguments
+                        )
+                        tool_calls.append(tool_call)
+                        print(f"   ✅ Parsed: {tool_name}({json.dumps(arguments)[:100]}...)")
+
+                        # Remove this tool call from content (remove the full XML tag)
+                        clean_content = clean_content.replace(full_match, '', 1)
+                    except json.JSONDecodeError as e:
+                        print(f"   ⚠️  Failed to parse JSON arguments for {tool_name}: {e}")
+                        print(f"       Arguments string: {arguments_str[:200]}")
 
         # Clean up extra whitespace
         clean_content = re.sub(r'\n{3,}', '\n\n', clean_content)
@@ -910,7 +1139,7 @@ send_message: false
         Grok 4 via OpenRouter sometimes outputs tool calls as XML tags:
         <xai:function_call name="tool_name">{"arg": "value"}</xai:function_call>
 
-        Grok also sometimes hallucinates results with:
+        Grok also sometimes halluciAssistants results with:
         <xai:function_result name="tool_name">{"results": [...]}</xai:function_result>
 
         For function_call tags, we extract and execute the actual tool.
@@ -965,7 +1194,7 @@ send_message: false
             content_str = match.group(2).strip()
             full_match = match.group(0)
 
-            print(f"   🔍 GROK XML RESULT: Found hallucinated result for {tool_name}")
+            print(f"   🔍 GROK XML RESULT: Found halluciAssistantd result for {tool_name}")
 
             if tool_name in tool_names:
                 try:
@@ -981,7 +1210,7 @@ send_message: false
 
                         # For archival_memory_search, check if we can find a query in metadata
                         if tool_name == 'archival_memory_search':
-                            # Look for patterns in the hallucinated content that might indicate intent
+                            # Look for patterns in the halluciAssistantd content that might indicate intent
                             results = parsed_content.get('results', [])
                             if results:
                                 # Try to infer query from metadata tags
@@ -1259,7 +1488,7 @@ send_message: false
                         memory_contents = [m.get('content', '') for m in result['results'] if m.get('content')]
                         if memory_contents:
                             combined_memories = "\n".join(memory_contents)
-                            # Parse as "user input" since it's content the agent is experiencing/reading
+                            # Parse as "user input" since it's content Assistant is experiencing/reading
                             import asyncio
                             asyncio.run(self.soma_client.parse_user_input(combined_memories))
                             print(f"   🫀 SOMA: Processed {len(memory_contents)} memories for physiological response")
@@ -1373,9 +1602,21 @@ send_message: false
                 # Lovense hardware control
                 result = self.tools.lovense_tool(**arguments)
 
-            elif tool_name == "nate_dev_tool":
-                # Agent self-development tool (read-only diagnostics)
-                result = self.tools.nate_dev_tool(**arguments)
+            elif tool_name == "Assistant_dev_tool":
+                # Assistant's self-development tool (read-only diagnostics)
+                result = self.tools.Assistant_dev_tool(**arguments)
+
+            elif tool_name == "notebook_library":
+                # Notebook Library — token-efficient document retrieval
+                result = self.tools.notebook_library(**arguments)
+
+            elif tool_name == "phone_tool":
+                # Phone tool — SMS, calls, contacts via Twilio
+                result = self.tools.phone_tool(**arguments)
+
+            elif tool_name == "sanctum_tool":
+                # Sanctum — focus/privacy mode control
+                result = self.tools.sanctum_tool(**arguments)
 
             else:
                 result = {
@@ -1451,7 +1692,7 @@ send_message: false
             response = await self.openrouter.chat_completion(
                 messages=[vision_message],
                 model=VISION_MODEL,
-                temperature=0.7,
+                temperature=DEFAULT_TEMPERATURE,
                 max_tokens=500,  # Vision descriptions should be concise
                 session_id=None  # Vision analysis doesn't need caching
             )
@@ -1477,8 +1718,8 @@ send_message: false
         session_id: str = "default",
         model: Optional[str] = None,
         include_history: bool = True,
-        history_limit: int = 12,  # Reduced for token efficiency (recommended)
-        temperature: float = 0.7,
+        history_limit: int = 24,  # Increased for roleplay context (recommended)
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: int = 4096,
         media_data: Optional[str] = None,
         media_type: Optional[str] = None,
@@ -1713,70 +1954,7 @@ send_message: false
                 print(f"⚠️  APPROACHING LIMIT - Warning will be injected into context")
             print(f"{'─'*60}")
             
-            # Check if this is an Ollama model
-            is_ollama = model.startswith('ollama:')
-            ollama_model = model.replace('ollama:', '') if is_ollama else None
-            
-            if is_ollama:
-                # Call Ollama (local)
-                print(f"\n📤 SENDING TO OLLAMA (LOCAL)...")
-                print(f"  • Model: {ollama_model}")
-                print(f"  • Messages: {len(messages)}")
-                print(f"  • Tools: DISABLED (Ollama doesn't support OpenAI tool calling)")
-                print(f"  • Temperature: {temperature}")
-                print(f"  • Max Tokens: {max_tokens}")
-                print(f"\n⏳ Waiting for response from Ollama...\n")
-                
-                try:
-                    import httpx
-                    import os
-                    
-                    # Call Ollama API directly
-                    ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
-                    async with httpx.AsyncClient(timeout=180.0) as client:
-                        ollama_response = await client.post(
-                            f'{ollama_url}/api/chat',
-                            json={
-                                'model': ollama_model,
-                                'messages': messages,
-                                'stream': False,
-                                'options': {
-                                    'temperature': temperature,
-                                    'num_predict': max_tokens
-                                }
-                            }
-                        )
-                        ollama_response.raise_for_status()
-                        ollama_data = ollama_response.json()
-                        
-                        # Convert Ollama response to OpenRouter format
-                        response = {
-                            'choices': [{
-                                'message': {
-                                    'role': 'assistant',
-                                    'content': ollama_data['message']['content']
-                                }
-                            }],
-                            'usage': {
-                                'prompt_tokens': 0,  # Ollama doesn't provide this
-                                'completion_tokens': 0,
-                                'total_tokens': 0
-                            }
-                        }
-                        print(f"✅ Response received from Ollama!")
-                except Exception as e:
-                    print(f"❌ Ollama call failed: {str(e)}")
-                    raise ConsciousnessLoopError(
-                        f"Ollama call failed: {str(e)}",
-                        context={
-                            "model": ollama_model,
-                            "session_id": session_id,
-                            "iteration": tool_call_count
-                        }
-                    )
-            else:
-                # Call OpenRouter
-                print(f"\n📤 SENDING TO OPENROUTER...")
+            print(f"\n📤 SENDING TO LLM...")
             print(f"  • Model: {model}")
             print(f"  • Messages: {len(messages)}")
             print(f"  • Tools: {len(tool_schemas) if tool_schemas else 0} ({'enabled' if tool_schemas else 'disabled - model does not support tools'})")
@@ -1792,6 +1970,17 @@ send_message: false
                     "content": iteration_warning
                 })
 
+            # Check if model has native reasoning (for OpenRouter reasoning param)
+            from core.native_reasoning_models import has_native_reasoning
+            _is_native_reasoning = has_native_reasoning(model)
+
+            # Build reasoning kwargs for OpenRouter API
+            # OpenRouter requires explicit "reasoning": {"enabled": true} for DeepSeek etc.
+            reasoning_kwargs = {}
+            if _is_native_reasoning:
+                reasoning_kwargs["reasoning"] = {"enabled": True}
+                print(f"  🤖 Native reasoning: sending reasoning={{enabled: true}} to OpenRouter")
+
             print(f"\n⏳ Waiting for response from {model}...\n")
 
             try:
@@ -1801,7 +1990,8 @@ send_message: false
                     tools=tool_schemas,  # Will be None if model doesn't support tools
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    session_id=session_id  # Pass session_id for prompt caching optimization
+                    session_id=session_id,  # Pass session_id for prompt caching optimization
+                    **reasoning_kwargs
                 )
                 print(f"✅ Response received from LLM API!")
             except Exception as e:
@@ -1819,7 +2009,8 @@ send_message: false
                             tool_choice=None,
                             temperature=temperature,
                             max_tokens=max_tokens,
-                            session_id=session_id  # Pass session_id for prompt caching optimization
+                            session_id=session_id,  # Pass session_id for prompt caching optimization
+                            **reasoning_kwargs
                         )
                         print(f"✅ Response received from LLM API (without tools)!")
                     except Exception as retry_e:
@@ -1845,7 +2036,7 @@ send_message: false
             
             # Get response content and tool calls
             assistant_msg = response['choices'][0]['message']
-            content = assistant_msg.get('content', '').strip()
+            content = (assistant_msg.get('content') or '').strip()
             # Only parse tool calls if tools were enabled
             tool_calls = self.openrouter.parse_tool_calls(response) if tool_schemas else []
 
@@ -1886,6 +2077,7 @@ send_message: false
             is_mistral = 'mistral' in model.lower()
             is_grok = 'grok' in model.lower()
             is_hermes = 'hermes' in model.lower() or 'nousresearch' in model.lower()
+            is_deepseek = 'deepseek' in model.lower()
 
             # MISTRAL XML PARSER
             if content and not tool_calls and is_mistral and tool_schemas:
@@ -1941,6 +2133,40 @@ send_message: false
                         print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
                         content = clean_content
 
+            # DEEPSEEK / REASONING MODEL PARSER: DeepSeek R1 and other reasoning models
+            # often reason about tool use but fail to produce native tool_calls objects.
+            # They may output <tool_call> XML tags if instructed (via system prompt).
+            if content and not tool_calls and is_deepseek and tool_schemas:
+                print(f"🔍 DEEPSEEK CHECK: Checking for XML-formatted tool calls in response")
+                print(f"   📄 Raw response (first 500 chars): {content[:500]}")
+                print(f"   📄 Raw response (last 200 chars): {content[-200:]}")
+                # DeepSeek is instructed to use <tool_call> format (same as Hermes)
+                clean_content, deepseek_tools = self._parse_hermes_xml_tool_calls(content)
+                if deepseek_tools:
+                    print(f"   ✅ DEEPSEEK: Parsed {len(deepseek_tools)} XML tool call(s)")
+                    tool_calls = deepseek_tools
+                    content = clean_content
+                else:
+                    if clean_content != content:
+                        print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
+                        content = clean_content
+                    else:
+                        print(f"   ⚠️ DEEPSEEK: No <tool_call> tags found in response")
+
+            # UNIVERSAL FALLBACK: For ANY model that wasn't caught above — check for
+            # <tool_call> tags as a last resort. This catches reasoning models that
+            # write tool calls in XML instead of using native function_call format.
+            if content and not tool_calls and tool_schemas and '<tool_call>' in content:
+                print(f"🔍 UNIVERSAL FALLBACK: Found <tool_call> tags in response, attempting parse")
+                clean_content, fallback_tools = self._parse_hermes_xml_tool_calls(content)
+                if fallback_tools:
+                    print(f"   ✅ FALLBACK: Parsed {len(fallback_tools)} XML tool call(s)")
+                    tool_calls = fallback_tools
+                    content = clean_content
+                else:
+                    if clean_content != content:
+                        content = clean_content
+
             if content and not tool_calls:
                 # ✅ FINAL ANSWER - model responded naturally!
                 print(f"✅ FINAL ANSWER - Model responded with content, no tools needed!")
@@ -1990,10 +2216,34 @@ send_message: false
                 print(f"🔄 Continuing loop - model will respond to tool results...")
                 
             else:
-                # ❌ ERROR - no content and no tools
-                print(f"❌ ERROR - No content and no tools in response!")
-                print(f"⚠️  This shouldn't happen - breaking loop")
-                break
+                # No content and no tools — but model may have put its response
+                # in reasoning/thinking fields instead of content (common with
+                # native reasoning models like DeepSeek R1, Kimi K2, etc.)
+                reasoning_as_response = None
+
+                # Check 'reasoning' field (Kimi K2 — can be str or dict)
+                if 'reasoning' in assistant_msg:
+                    rf = assistant_msg['reasoning']
+                    if isinstance(rf, str) and rf.strip():
+                        reasoning_as_response = rf.strip()
+                    elif isinstance(rf, dict):
+                        reasoning_as_response = (rf.get('content') or '').strip() or None
+
+                # Check 'reasoning_content' field (DeepSeek R1, o1)
+                if not reasoning_as_response and 'reasoning_content' in assistant_msg:
+                    rc = assistant_msg['reasoning_content'].strip()
+                    if rc and rc.lower() not in ('null', 'none'):
+                        reasoning_as_response = rc
+
+                if reasoning_as_response:
+                    print(f"🧠 Model put final response in reasoning instead of content ({len(reasoning_as_response)} chars)")
+                    print(f"   Using reasoning as final_response")
+                    final_response = reasoning_as_response
+                    break
+                else:
+                    print(f"❌ ERROR - No content, no tools, and no reasoning in response!")
+                    print(f"   Message keys: {list(assistant_msg.keys())}")
+                    break
         
         # Check if we got a response
         print(f"\n{'='*60}")
@@ -2021,7 +2271,7 @@ send_message: false
         reasoning_time = 0
 
         # CLEAN: Fix models that generate multiple responses in one turn
-        # Some models (like Qwen) hallucinate multi-turn format with "Assistant:" labels
+        # Some models (like Qwen) halluciAssistant multi-turn format with "Assistant:" labels
         import re
         if clean_response:
             # Check if model generated multiple responses (split by "Assistant:")
@@ -2067,7 +2317,7 @@ send_message: false
                             reasoning_text = reasoning_field.strip()
                         elif isinstance(reasoning_field, dict):
                             # Some models use reasoning.content
-                            reasoning_text = reasoning_field.get('content', '').strip()
+                            reasoning_text = (reasoning_field.get('content') or '').strip()
                     
                     # Fallback to 'reasoning_content' (o1, DeepSeek R1)
                     if not reasoning_text and 'reasoning_content' in last_msg:
@@ -2106,14 +2356,26 @@ send_message: false
                 import traceback
                 traceback.print_exc()
         else:
-            # Extract <think> tags from response content (Prompt-based)
+            # Extract <think> or <thinking> tags from response content (Prompt-based)
             import re
             think_match = re.search(r'<think>(.*?)</think>', final_response, re.DOTALL | re.IGNORECASE)
             if think_match:
                 thinking = think_match.group(1).strip()
                 clean_response = re.sub(r'<think>.*?</think>', '', final_response, flags=re.DOTALL | re.IGNORECASE).strip()
-                print(f"🧠 Thinking extracted (prompt-based): {len(thinking)} chars")
+                print(f"🧠 Thinking extracted (prompt-based, <think>): {len(thinking)} chars")
                 print(f"💬 Clean response: {len(clean_response)} chars")
+            else:
+                # Try <thinking> tags (some models use this variant!)
+                think_match = re.search(r'<thinking>(.*?)</thinking>', final_response, re.DOTALL | re.IGNORECASE)
+                if think_match:
+                    thinking = think_match.group(1).strip()
+                    clean_response = re.sub(r'<thinking>.*?</thinking>', '', final_response, flags=re.DOTALL | re.IGNORECASE).strip()
+                    print(f"🧠 Thinking extracted (prompt-based, <thinking>): {len(thinking)} chars")
+                    print(f"💬 Clean response: {len(clean_response)} chars")
+
+        # Log full reasoning content to journal (matches streaming path behavior)
+        if thinking:
+            print(f"💭 Reasoning content:\n{thinking}")
 
         # 🫀 SOMA: Parse AI response for physiological effects
         if self.soma_client and self.soma_available and clean_response:
@@ -2143,9 +2405,10 @@ send_message: false
                 content=clean_response,  # Clean response WITHOUT <think> tags
                 message_id=assistant_msg_id,
                 thinking=thinking,  # Thinking extracted separately!
+                message_type=message_type,  # 💓 Tag heartbeat responses as 'system' too!
                 metadata=message_metadata if message_metadata else None
             )
-            print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, thinking={'YES' if thinking else 'NO'}, soma={'YES' if soma_snapshot else 'NO'})")
+            print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, type={message_type}, thinking={'YES' if thinking else 'NO'}, soma={'YES' if soma_snapshot else 'NO'})")
         
         # Cost tracking & statistics
         from core.cost_tracker import calculate_cost
@@ -2227,10 +2490,11 @@ send_message: false
 
         # Parse send_message decision for heartbeats
         if message_type == 'system':
-            clean_response, send_message = self._parse_send_message_decision(final_response)
+            clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
             result["response"] = clean_response  # Use cleaned content without decision block
             result["send_message"] = send_message
-            print(f"💓 Heartbeat send_message decision: {send_message}")
+            result["message_target"] = message_target
+            print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
 
         return result
     
@@ -2240,7 +2504,7 @@ send_message: false
         session_id: str = "default",
         model: Optional[str] = None,
         include_history: bool = True,
-        history_limit: int = 12,
+        history_limit: int = 24,
         message_type: str = 'inbox',
         max_tool_calls: Optional[int] = None,  # Override max tool calls (lower for heartbeats)
         media_data: Optional[str] = None,  # Base64 encoded image or URL
@@ -2433,7 +2697,7 @@ send_message: false
         # Get config
         agent_state = self.state.get_agent_state()
         config = agent_state.get('config', {})
-        temperature = config.get('temperature', 0.7)
+        temperature = config.get('temperature', DEFAULT_TEMPERATURE)
         max_tokens = config.get('max_tokens', 4096)
         
                 # STREAMING LOOP! 🚀
@@ -2451,6 +2715,13 @@ send_message: false
         # Check if model has native reasoning (needed for streaming!)
         from core.native_reasoning_models import has_native_reasoning
         is_native = has_native_reasoning(model)
+
+        # Build reasoning kwargs for OpenRouter API
+        # OpenRouter requires explicit "reasoning": {"enabled": true} for DeepSeek etc.
+        reasoning_kwargs = {}
+        if is_native:
+            reasoning_kwargs["reasoning"] = {"enabled": True}
+            print(f"🤖 Native reasoning: sending reasoning={{enabled: true}} to OpenRouter")
 
         # Determine max tool calls - use override or instance default
         effective_max_tool_calls = max_tool_calls if max_tool_calls is not None else self.max_tool_calls_per_turn
@@ -2482,7 +2753,7 @@ send_message: false
                 content_chunks = []
                 # CRITICAL: Reset final_response at start of each iteration!
                 # Otherwise, if model calls tools AND generates content, the content
-                # from the tool-calling iteration would be concatenated with the
+                # from the tool-calling iteration would be concateAssistantd with the
                 # final response, causing duplicate/garbled output.
                 final_response = ""
                 tool_calls_in_response = []
@@ -2498,7 +2769,8 @@ send_message: false
                     tools=tool_schemas,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    session_id=session_id  # For prompt caching optimization
+                    session_id=session_id,  # For prompt caching optimization
+                    **reasoning_kwargs
                 ):
                     # Parse chunk
                     if 'choices' in chunk and len(chunk['choices']) > 0:
@@ -2507,12 +2779,22 @@ send_message: false
                         
                         # NATIVE REASONING: Extract reasoning chunks! 🤖
                         # For models like Kimi K2, reasoning comes in separate chunks
+                        # DeepSeek models may use 'reasoning_content' instead of 'reasoning'
                         if is_native:
                             # Check delta for reasoning
                             if 'reasoning' in delta:
                                 reasoning_chunk = delta['reasoning']
                                 if reasoning_chunk is not None and str(reasoning_chunk).strip():
                                     thinking_chunks.append(str(reasoning_chunk))
+                                    print(f"🧠 Reasoning chunk: {str(reasoning_chunk)[:100]}...")
+                                    yield {"type": "thinking", "chunk": str(reasoning_chunk), "status": "thinking"}
+
+                            # Also check 'reasoning_content' (DeepSeek R1/V3 format)
+                            if 'reasoning_content' in delta:
+                                reasoning_chunk = delta['reasoning_content']
+                                if reasoning_chunk is not None and str(reasoning_chunk).strip():
+                                    thinking_chunks.append(str(reasoning_chunk))
+                                    print(f"🧠 Reasoning chunk (reasoning_content): {str(reasoning_chunk)[:100]}...")
                                     yield {"type": "thinking", "chunk": str(reasoning_chunk), "status": "thinking"}
                             
                             # Also check choice level (some models send it there)
@@ -2522,38 +2804,12 @@ send_message: false
                                     thinking_chunks.append(reasoning_text)
                                     yield {"type": "thinking", "chunk": reasoning_text, "status": "thinking"}
                         
-                        # Content chunk (ONLY if not reasoning!)
+                        # Content chunk - always treat as actual content
+                        # Native reasoning models send thinking via the 'reasoning' field above,
+                        # NOT in content chunks. Don't try to heuristically reclassify content.
                         if 'content' in delta:
                             content_chunk = delta['content']
-                            
-                            # DETECT REASONING IN CONTENT! 🤖
-                            # Kimi K2 sometimes sends reasoning as content chunks
-                            # Look for reasoning patterns: "The user", "I need to", "Show I'm", etc.
-                            is_reasoning_chunk = False
-                            if is_native and content_chunk:
-                                reasoning_patterns = [
-                                    "The user",
-                                    "I need to",
-                                    "Show I'm",
-                                    "I should",
-                                    "I must",
-                                    "Let me",
-                                    "I'll",
-                                    "I will",
-                                    "I want to",
-                                    "I'm going to"
-                                ]
-                                # Check if chunk starts with reasoning pattern
-                                for pattern in reasoning_patterns:
-                                    if content_chunk and content_chunk.strip().startswith(pattern):
-                                        is_reasoning_chunk = True
-                                        thinking_chunks.append(str(content_chunk))
-                                        yield {"type": "thinking", "chunk": str(content_chunk), "status": "thinking"}
-                                        print(f"🤖 Detected reasoning in content chunk: {content_chunk[:50]}...")
-                                        break
-                            
-                            # Only add to content if it's NOT reasoning!
-                            if content_chunk and not is_reasoning_chunk:
+                            if content_chunk:
                                 content_chunks.append(content_chunk)
                                 final_response += content_chunk
                                 yield {"type": "content", "chunk": content_chunk, "done": False}
@@ -2646,6 +2902,7 @@ send_message: false
                     if valid_thinking_chunks:
                         thinking = ''.join(valid_thinking_chunks)
                         print(f"🤖 Native reasoning extracted from stream: {len(thinking)} chars")
+                        print(f"💭 Reasoning content:\n{thinking}")
                     else:
                         thinking = None
                         print(f"⚠️  No valid thinking chunks found (all were None/empty)")
@@ -2690,7 +2947,7 @@ send_message: false
                                         reconstructed_calls[idx]['function']['name'] = func_delta['name']
 
                                     # Accumulate arguments (streaming sends them in pieces!)
-                                    if 'arguments' in func_delta:
+                                    if 'arguments' in func_delta and func_delta['arguments'] is not None:
                                         reconstructed_calls[idx]['function']['arguments'] += func_delta['arguments']
 
                     # Convert to list and parse
@@ -2715,6 +2972,7 @@ send_message: false
                 is_mistral = 'mistral' in model.lower()
                 is_grok = 'grok' in model.lower()
                 is_hermes = 'hermes' in model.lower() or 'nousresearch' in model.lower()
+                is_deepseek = 'deepseek' in model.lower()
 
                 # MISTRAL XML PARSER (streaming)
                 if final_response and not tool_calls and is_mistral:
@@ -2770,11 +3028,58 @@ send_message: false
                             print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
                             final_response = clean_content
 
+                # DEEPSEEK / REASONING MODEL PARSER (streaming)
+                if final_response and not tool_calls and is_deepseek:
+                    print(f"🔍 DEEPSEEK CHECK (streaming): Checking for XML-formatted tool calls")
+                    print(f"   📄 Raw response (first 500 chars): {final_response[:500]}")
+                    print(f"   📄 Raw response (last 200 chars): {final_response[-200:]}")
+                    clean_content, deepseek_tools = self._parse_hermes_xml_tool_calls(final_response)
+                    if deepseek_tools:
+                        print(f"   ✅ DEEPSEEK: Parsed {len(deepseek_tools)} XML tool call(s) from stream")
+                        tool_calls = deepseek_tools
+                        final_response = clean_content
+                    else:
+                        if clean_content != final_response:
+                            print(f"   ⚠️ No valid tool calls, but cleaned XML from content")
+                            final_response = clean_content
+                        else:
+                            print(f"   ⚠️ DEEPSEEK: No <tool_call> tags found in stream response")
+
+                # UNIVERSAL FALLBACK (streaming): Check for <tool_call> tags from any model
+                if final_response and not tool_calls and '<tool_call>' in final_response:
+                    print(f"🔍 UNIVERSAL FALLBACK (streaming): Found <tool_call> tags, attempting parse")
+                    clean_content, fallback_tools = self._parse_hermes_xml_tool_calls(final_response)
+                    if fallback_tools:
+                        print(f"   ✅ FALLBACK: Parsed {len(fallback_tools)} XML tool call(s) from stream")
+                        tool_calls = fallback_tools
+                        final_response = clean_content
+                    else:
+                        if clean_content != final_response:
+                            final_response = clean_content
+
+                # If XML parsers found tool calls in content that was already streamed
+                # as chunks, tell the client to discard those chunks (they were tool XML,
+                # not actual content for the user to see).
+                if tool_calls and content_chunks:
+                    print(f"🔄 Tool calls parsed from streamed content - sending content_reset to client")
+                    yield {"type": "content_reset", "reason": "tool_call_xml_parsed"}
+
                 # If we have content and no tools, we're done!
                 if final_response and not tool_calls:
                     print(f"✅ Response complete: {final_response[:100]}...")
                     break
-                
+
+                # If stream finished but model produced NO content and NO tool calls
+                # (e.g. reasoning-only response where everything went into thinking chunks),
+                # use the reasoning/thinking as the response and break out of the loop.
+                if not final_response and not tool_calls and stream_finished:
+                    if thinking:
+                        print(f"🧠 No content but reasoning found ({len(thinking)} chars) - using as response")
+                        final_response = thinking
+                    else:
+                        print(f"⚠️ Stream finished with no content, no tools, and no reasoning - breaking loop")
+                    break
+
                 # If we have tools, execute them
                 if tool_calls:
                     # Convert parsed ToolCall objects back to OpenAI format
@@ -2827,11 +3132,11 @@ send_message: false
                 print(f"❌ Streaming error: {e}")
                 import traceback
                 traceback.print_exc()
-                
+
                 # Generate error message
                 error_message = f"Error: {str(e)}"
                 final_response = final_response or error_message
-                
+
                 # 🚨 CRITICAL: Save error message so user can see what went wrong!
                 assistant_msg_id = f"msg-{uuid.uuid4()}"
                 self._save_message(
@@ -2861,13 +3166,19 @@ send_message: false
 
                 # Parse send_message decision for heartbeats (even on error)
                 if message_type == 'system':
-                    clean_error, send_message = self._parse_send_message_decision(error_message)
+                    clean_error, send_message, _ = self._parse_send_message_decision(error_message)
                     error_done_event["response"] = clean_error  # Use cleaned content
                     error_done_event["send_message"] = send_message
 
                 yield error_done_event
                 return  # Exit generator on error
-        
+
+        # ⚠️ FALLBACK: If loop exited because max tool calls were exhausted
+        # and we still don't have a final_response, generate a fallback message.
+        if not final_response and tool_call_count >= effective_max_tool_calls:
+            print(f"⚠️ Max tool call iterations exhausted ({effective_max_tool_calls}) with no final response")
+            final_response = "I apologize, but I got caught in a loop of tool calls without producing a response. Could you rephrase your message?"
+
         # Extract thinking (if not already extracted during streaming)
         # For non-native models, we might still need to extract from final_response
         if not thinking:
@@ -2876,9 +3187,9 @@ send_message: false
             
             if not is_native:
                 # Extract thinking tags from final_response (prompt-based)
-                # Support <think> AND <think> tags!
+                # Support <think> AND <thinking> tags!
                 import re
-                
+
                 # Try <think> first (standard format)
                 think_match = re.search(r'<think>(.*?)</think>', final_response, re.DOTALL | re.IGNORECASE)
                 if think_match:
@@ -2887,13 +3198,13 @@ send_message: false
                     final_response = re.sub(r'<think>.*?</think>', '', final_response, flags=re.DOTALL | re.IGNORECASE).strip()
                     print(f"🧠 Thinking extracted (<think>): {len(thinking)} chars")
                 else:
-                    # Try <think> tags (some models use this!)
-                    think_match = re.search(r'<think>(.*?)</think>', final_response, re.DOTALL | re.IGNORECASE)
+                    # Try <thinking> tags (some models use this variant!)
+                    think_match = re.search(r'<thinking>(.*?)</thinking>', final_response, re.DOTALL | re.IGNORECASE)
                     if think_match:
                         thinking = think_match.group(1).strip()
                         # Remove thinking tags from final_response
-                        final_response = re.sub(r'<think>.*?</think>', '', final_response, flags=re.DOTALL | re.IGNORECASE).strip()
-                        print(f"🧠 Thinking extracted (<think>): {len(thinking)} chars")
+                        final_response = re.sub(r'<thinking>.*?</thinking>', '', final_response, flags=re.DOTALL | re.IGNORECASE).strip()
+                        print(f"🧠 Thinking extracted (<thinking>): {len(thinking)} chars")
         
         # 🫀 SOMA: Parse AI response for physiological effects (streaming)
         if self.soma_client and self.soma_available and final_response:
@@ -2925,9 +3236,10 @@ send_message: false
             message_id=assistant_msg_id,
             thinking=thinking,  # 🧠 CRITICAL: Save thinking too!
             tool_calls=all_tool_calls,  # 🔧 Save tool calls too!
+            message_type=message_type,  # 💓 Tag heartbeat responses as 'system' too!
             metadata=message_metadata if message_metadata else None
         )
-        print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, thinking={'YES' if thinking else 'NO'}, soma={'YES' if soma_snapshot else 'NO'})")
+        print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, type={message_type}, thinking={'YES' if thinking else 'NO'}, soma={'YES' if soma_snapshot else 'NO'})")
         
         # Yield final result (with token usage and cost!)
         # Frontend expects: data.reasoning_time, data.usage (NOT data.result.*)
@@ -2947,7 +3259,7 @@ send_message: false
 
         # Parse send_message decision for heartbeats
         if message_type == 'system':
-            clean_response, send_message = self._parse_send_message_decision(final_response)
+            clean_response, send_message, _ = self._parse_send_message_decision(final_response)
             done_event["response"] = clean_response  # Use cleaned content without decision block
             done_event["send_message"] = send_message
             print(f"💓 Heartbeat send_message decision: {send_message}")
@@ -2996,7 +3308,7 @@ send_message: false
 
             # Generate summary
             generator = SummaryGenerator(state_manager=self.state)
-            summary_result = generator.generate_summary(
+            summary_result = await generator.generate_summary(
                 messages=messages_to_summarize,
                 session_id=session_id
             )
@@ -3150,7 +3462,7 @@ send_message: false
             # Generate summary (SEPARATE OpenRouter session!)
             # IMPORTANT: Pass state_manager so the agent writes in their own voice! 🎯
             generator = SummaryGenerator(state_manager=self.state)
-            summary_result = generator.generate_summary(
+            summary_result = await generator.generate_summary(
                 messages=messages_to_summarize,
                 session_id=session_id
             )

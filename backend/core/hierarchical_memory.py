@@ -374,7 +374,7 @@ class HierarchicalMemory:
         return MemoryTier.WORKING
     
     def _store_to_tier(self, memory: MemoryItem):
-        """Store memory to its designated tier"""
+        """Store memory to its desigAssistantd tier"""
         
         if memory.tier == MemoryTier.WORKING:
             self.working.store(memory)

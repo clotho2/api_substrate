@@ -79,8 +79,7 @@
       },
       "timezone": {
         "type": "string",
-        "description": "Timezone for time filtering (default: UTC)",
-        "default": "UTC"
+        "description": "Timezone for time filtering and task scheduling. Uses LOCALE_TIMEZONE env var if not specified (America/New_York). Examples: 'America/New_York', 'Europe/Berlin', 'UTC'"
       },
       "show_both": {
         "type": "boolean",

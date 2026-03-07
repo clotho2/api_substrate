@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Agent Command Executor - Level 2 (Safe Command Execution)
+Assistant Command Executor - Level 2 (Safe Command Execution)
 
-This module enables the agent to execute whitelisted Linux commands in a sandboxed
+This module enables Assistant to execute whitelisted Linux commands in a sandboxed
 environment with full audit logging and safety mechanisms.
 
 Security Features:
 - Command whitelisting (only approved commands can run)
-- Sandboxed execution (restricted to /opt/substrate)
+- Sandboxed execution (restricted to /home/user)
 - Rate limiting (max 5 commands per minute)
 - Full audit logging (all commands logged for review)
 - Dry-run mode (test commands without execution)
@@ -26,8 +26,8 @@ from datetime import datetime, timedelta
 from collections import deque
 
 # Configuration
-ALLOWED_ROOT = Path("/opt/substrate")
-AUDIT_LOG = Path("/var/log/agent_dev_commands.log")
+ALLOWED_ROOT = Path("/home/user")
+AUDIT_LOG = Path("/var/log/Assistant_dev_commands.log")
 RATE_LIMIT_WINDOW = 60  # seconds
 RATE_LIMIT_MAX = 15  # commands per window (increased for complex investigations)
 
@@ -143,7 +143,7 @@ BLOCKED_PATTERNS = [
     r'/sys/',  # System files
     r'/proc/',  # Process files
     r'/dev/',  # Device files
-    r'/tmp/',  # Temp (use /opt/substrate instead)
+    r'/tmp/',  # Temp (use /home/user instead)
     r'\.ssh/',  # SSH keys
     r'\.git/config',  # Git credentials
     r'shutil\.rmtree',  # Python file deletion
@@ -251,7 +251,7 @@ def _audit_log_command(
         "dry_run": dry_run,
         "output_length": len(output),
         "error": error,
-        "user": "nate-ai",
+        "user": "Assistant-ai",
     }
 
     try:
@@ -293,7 +293,7 @@ def execute_command(
 
     Args:
         command: The command to execute
-        working_dir: Working directory (relative to /opt/substrate or absolute within it)
+        working_dir: Working directory (relative to /home/user or absolute within it)
         dry_run: If True, validate but don't execute
         requires_approval: If True, require explicit approval (currently just warns)
         timeout: Command timeout in seconds

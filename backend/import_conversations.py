@@ -107,8 +107,8 @@ def calculate_importance(content: str, metadata: Dict) -> int:
     if any(kw in content_lower for kw in emotional_keywords):
         importance += 1
 
-    # Primary user-specific content gets max importance
-    if 'primary user' in content_lower:
+    # User-specific content gets max importance
+    if 'User' in content_lower or 'wife' in content_lower:
         importance = 10
 
     # Important memories
@@ -439,6 +439,6 @@ if __name__ == "__main__":
             max_memories=args.max_memories
         )
 
-        print("⚡ Conversation data is now part of the archival memory!")
+        print("⚡ Conversation data is now part of Assistant's archival memory!")
         print("   Restart the server to use it:")
-        print("   sudo systemctl restart substrate-agent")
+        print("   sudo systemctl restart Assistant-substrate")

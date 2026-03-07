@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.state_manager import StateManager
+from core.config import DEFAULT_TEMPERATURE
 
 def configure_mistral_large_3():
     """Configure agent to use Mistral Large 3"""
@@ -38,7 +39,7 @@ def configure_mistral_large_3():
 
     # Update to Mistral Large 3 configuration
     config['model'] = 'mistralai/mistral-large-2512'  # OpenRouter model ID
-    config['temperature'] = 0.7
+    config['temperature'] = DEFAULT_TEMPERATURE
     config['max_tokens'] = 8192  # Allow longer responses
     config['context_window'] = 256000  # 256K context window
     config['reasoning_enabled'] = False  # NOT a reasoning model

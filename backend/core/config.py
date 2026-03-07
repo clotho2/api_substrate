@@ -9,25 +9,75 @@ import os
 
 
 # ============================================
+# OLLAMA HELPERS (must be defined before get_default_model)
+# ============================================
+
+def is_ollama_cloud_configured() -> bool:
+    """
+    Return True if Ollama Cloud is configured as a main LLM provider.
+
+    Requires OLLAMA_API_URL + OLLAMA_MODEL (+ OLLAMA_API_KEY for auth).
+    This competes with Mistral/Grok/OpenRouter in the provider chain.
+    """
+    has_cloud_url = bool(os.getenv('OLLAMA_API_URL'))
+    has_model = bool(os.getenv('OLLAMA_MODEL', '').strip())
+    return has_cloud_url and has_model
+
+
+def is_local_ollama_enabled() -> bool:
+    """
+    Return True if local Ollama is enabled for auxiliary tasks.
+
+    USE_OLLAMA=true enables local Ollama for:
+    - Vision processing (OLLAMA_VISION_MODEL, e.g. llava)
+    - Embedding fallback (OLLAMA_EMBEDDING_MODEL, if Hugging Face unavailable)
+
+    This does NOT enter the main LLM provider chain.
+    """
+    return os.getenv('USE_OLLAMA', '').lower() in ('true', '1', 'yes')
+
+
+# Backwards compatibility alias
+def is_ollama_configured() -> bool:
+    """Return True if Ollama Cloud is configured as a provider."""
+    return is_ollama_cloud_configured()
+
+
+# ============================================
 # MODEL CONFIGURATION
 # ============================================
 
 # Primary model - pulled from environment
-# Priority: VENICE_MODEL -> MODEL_NAME (for Grok) -> DEFAULT_LLM_MODEL (for OpenRouter)
+# Priority: MISTRAL_MODEL -> MODEL_NAME (for Grok) -> DEFAULT_LLM_MODEL (for OpenRouter)
 def get_default_model() -> str:
     """
     Get the default model from environment variables.
 
     Priority:
-    1. VENICE_MODEL (for Venice AI - privacy-focused)
+    1. MISTRAL_MODEL (for Mistral AI - direct API access)
     2. MODEL_NAME (typically for Grok/xAI)
     3. DEFAULT_LLM_MODEL (typically for OpenRouter)
-    4. FALLBACK_MODEL (if set)
-    5. Error - no model configured
+    4. OLLAMA_MODEL with OLLAMA_API_URL (Ollama Cloud as main provider)
+    5. FALLBACK_MODEL (if set)
+    6. Error - no model configured
+
+    NOTE: USE_OLLAMA=true does NOT enter this chain. It enables local Ollama
+    for vision (OLLAMA_VISION_MODEL) and embedding fallback only.
     """
-    model = os.getenv('VENICE_MODEL') or os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL')
+    model = os.getenv('MISTRAL_MODEL') or os.getenv('MODEL_NAME') or os.getenv('DEFAULT_LLM_MODEL')
     if model:
         return model
+
+    # Check for Ollama Cloud provider (OLLAMA_API_URL required)
+    ollama_model = os.getenv('OLLAMA_MODEL', '').strip() or None
+    if is_ollama_cloud_configured():
+        return f'ollama:{ollama_model}'
+
+    # Warn if Ollama Cloud is partially configured
+    if bool(os.getenv('OLLAMA_API_URL')) and not ollama_model:
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.warning("⚠️  OLLAMA_API_URL is set but OLLAMA_MODEL is not set — Ollama Cloud will not be used")
 
     # Check for explicit fallback
     fallback = os.getenv('FALLBACK_MODEL')
@@ -35,10 +85,10 @@ def get_default_model() -> str:
         return fallback
 
     # No model configured - this is an error state
-    # Return a placeholder that will cause a clear error
     raise ValueError(
-        "No model configured. Set VENICE_MODEL, DEFAULT_LLM_MODEL, or MODEL_NAME in your .env file. "
-        "Example: VENICE_MODEL=qwen3-235b-a22b-instruct-2507"
+        "No model configured. Set MISTRAL_MODEL, DEFAULT_LLM_MODEL, MODEL_NAME, or "
+        "OLLAMA_API_URL + OLLAMA_MODEL (Ollama Cloud) in your .env file. "
+        "Example: MISTRAL_MODEL=magistral-medium-2509"
     )
 
 
@@ -64,6 +114,14 @@ FALLBACK_MODEL = get_fallback_model()
 
 
 # ============================================
+# MODEL PARAMETERS
+# ============================================
+
+# Default temperature - pulled from environment
+DEFAULT_TEMPERATURE = float(os.getenv("DEFAULT_TEMPERATURE", "0.7"))
+
+
+# ============================================
 # AGENT CONFIGURATION
 # ============================================
 
@@ -75,9 +133,9 @@ DEFAULT_AGENT_ID = os.getenv('DEFAULT_AGENT_ID', '41dc0e38-bdb6-4563-a3b6-49aa09
 # API CONFIGURATION
 # ============================================
 
-# Venice AI (privacy-focused, no conversation logging)
-VENICE_API_KEY = os.getenv('VENICE_API_KEY')
-VENICE_BASE_URL = os.getenv('VENICE_API_URL', 'https://api.venice.ai/api/v1')
+# Mistral AI (direct API access to latest models)
+MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY')
+MISTRAL_BASE_URL = os.getenv('MISTRAL_API_URL', 'https://api.mistral.ai/v1')
 
 # OpenRouter
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
@@ -93,17 +151,22 @@ def get_api_provider() -> str:
     Determine which API provider to use based on available keys.
 
     Returns:
-        'venice' if VENICE_API_KEY is set (highest priority - privacy)
+        'mistral' if MISTRAL_API_KEY is set (highest priority)
         'grok' if GROK_API_KEY is set
         'openrouter' if OPENROUTER_API_KEY is set
+        'ollama_cloud' if Ollama Cloud is configured (lowest priority)
         'none' if none are set
+
+    NOTE: USE_OLLAMA (local) does not appear here — it's for vision/embeddings only.
     """
-    if VENICE_API_KEY:
-        return 'venice'
+    if MISTRAL_API_KEY:
+        return 'mistral'
     elif GROK_API_KEY:
         return 'grok'
     elif OPENROUTER_API_KEY:
         return 'openrouter'
+    elif is_ollama_cloud_configured():
+        return 'ollama_cloud'
     return 'none'
 
 
@@ -144,9 +207,10 @@ def validate_config() -> dict:
     issues = []
     warnings = []
 
-    # Check for API keys
-    if not VENICE_API_KEY and not OPENROUTER_API_KEY and not GROK_API_KEY:
-        issues.append("No API key configured. Set VENICE_API_KEY, OPENROUTER_API_KEY, or GROK_API_KEY.")
+    # Check for API keys / provider
+    ollama_cloud_ok = is_ollama_cloud_configured()
+    if not MISTRAL_API_KEY and not OPENROUTER_API_KEY and not GROK_API_KEY and not ollama_cloud_ok:
+        issues.append("No provider configured. Set MISTRAL_API_KEY, OPENROUTER_API_KEY, GROK_API_KEY, or OLLAMA_API_URL + OLLAMA_MODEL.")
 
     # Check for model
     if not DEFAULT_MODEL:
@@ -156,9 +220,9 @@ def validate_config() -> dict:
             issues.append(str(e))
 
     # Warnings about multiple keys
-    key_count = sum([bool(VENICE_API_KEY), bool(GROK_API_KEY), bool(OPENROUTER_API_KEY)])
+    key_count = sum([bool(MISTRAL_API_KEY), bool(GROK_API_KEY), bool(OPENROUTER_API_KEY), ollama_cloud_ok])
     if key_count > 1:
-        warnings.append(f"Multiple API keys configured. Priority: Venice > Grok > OpenRouter. Using: {get_api_provider()}")
+        warnings.append(f"Multiple providers configured. Priority: Mistral > Grok > OpenRouter > Ollama Cloud. Using: {get_api_provider()}")
 
     return {
         'valid': len(issues) == 0,

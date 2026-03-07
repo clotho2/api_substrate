@@ -3,7 +3,7 @@
 Conversation Summary Generator
 
 Handles context window overflow by creating concise summaries
-using the active API provider (Venice, Grok, or OpenRouter).
+using the active API provider (Mistral, Grok, or OpenRouter).
 """
 
 import os
@@ -11,13 +11,14 @@ import httpx
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from core.token_counter import TokenCounter
+from core.config import DEFAULT_TEMPERATURE
 
 
 class SummaryGenerator:
     """
     Generates conversation summaries when context window is full.
 
-    Uses the active API provider (Venice, Grok, or OpenRouter) in a SEPARATE session
+    Uses the active API provider (Mistral, Grok, or OpenRouter) in a SEPARATE session
     to avoid polluting the main conversation.
     """
 
@@ -29,18 +30,18 @@ class SummaryGenerator:
             api_key: API key (auto-detected from active provider if not specified)
             state_manager: StateManager instance (for agent's memory/prompt)
         """
-        from core.config import get_api_provider, VENICE_API_KEY, GROK_API_KEY, OPENROUTER_API_KEY
-        from core.config import VENICE_BASE_URL, GROK_BASE_URL, OPENROUTER_BASE_URL
+        from core.config import get_api_provider, MISTRAL_API_KEY, GROK_API_KEY, OPENROUTER_API_KEY
+        from core.config import MISTRAL_BASE_URL, GROK_BASE_URL, OPENROUTER_BASE_URL
 
         # Detect active provider
         self.provider = get_api_provider()
 
         # Set API key and URL based on provider
-        if self.provider == 'venice':
-            self.api_key = api_key or VENICE_API_KEY
-            self.api_url = f"{VENICE_BASE_URL}/chat/completions"
+        if self.provider == 'mistral':
+            self.api_key = api_key or MISTRAL_API_KEY
+            self.api_url = f"{MISTRAL_BASE_URL}/chat/completions"
             if not self.api_key:
-                raise ValueError("VENICE_API_KEY not found!")
+                raise ValueError("MISTRAL_API_KEY not found!")
         elif self.provider == 'grok':
             self.api_key = api_key or GROK_API_KEY
             self.api_url = f"{GROK_BASE_URL}/chat/completions"
@@ -52,25 +53,26 @@ class SummaryGenerator:
             if not self.api_key:
                 raise ValueError("OPENROUTER_API_KEY not found!")
         else:
-            raise ValueError(f"No API provider configured! Set VENICE_API_KEY, GROK_API_KEY, or OPENROUTER_API_KEY")
+            raise ValueError(f"No API provider configured! Set MISTRAL_API_KEY, GROK_API_KEY, or OPENROUTER_API_KEY")
 
         self.state = state_manager
         print(f"📝 Summary generator initialized with provider: {self.provider}")
 
-    def generate_summary(
+    async def generate_summary(
         self,
         messages: List[Dict[str, Any]],
         session_id: str = "default"
     ) -> Dict[str, Any]:
         """
         Generate a conversation summary.
-        
-        This runs in a SEPARATE OpenRouter session!
-        
+
+        This runs in a SEPARATE API session using async HTTP so it does NOT
+        block the event loop (which would kill gRPC channels).
+
         Args:
             messages: List of message dicts (role, content, timestamp)
             session_id: Session ID for context
-            
+
         Returns:
             Dict with:
                 - summary: Summary text
@@ -87,28 +89,28 @@ class SummaryGenerator:
                 'to_timestamp': None,
                 'message_count': 0
             }
-        
+
         # Extract timestamps
         from_time = messages[0].get('timestamp')
         to_time = messages[-1].get('timestamp')
-        
+
         # Build summary prompt
         summary_prompt = self._build_summary_prompt(messages, from_time, to_time)
-        
+
         # Call API provider in SEPARATE session
         print(f"📝 Generating summary for {len(messages)} messages...")
         print(f"   Provider: {self.provider}")
         print(f"   Timeframe: {from_time} → {to_time}")
 
         try:
-            summary_text = self._call_api(summary_prompt)
-            
+            summary_text = await self._call_api(summary_prompt)
+
             # Count tokens in summary
             counter = TokenCounter()
             token_count = counter.count_text(summary_text)
-            
+
             print(f"✅ Summary generated: {token_count} tokens")
-            
+
             return {
                 'summary': summary_text,
                 'token_count': token_count,
@@ -116,7 +118,7 @@ class SummaryGenerator:
                 'to_timestamp': to_time,
                 'message_count': len(messages)
             }
-            
+
         except Exception as e:
             print(f"❌ Summary generation failed: {e}")
             # Return fallback summary
@@ -223,10 +225,14 @@ class SummaryGenerator:
 
         return prompt
     
-    def _call_api(self, prompt: str) -> str:
+    async def _call_api(self, prompt: str) -> str:
         """
         Call active API provider to generate summary.
         Uses the agent's own model + system prompt for authentic character!
+
+        Uses httpx.AsyncClient so the HTTP call yields back to the event loop
+        instead of blocking it (which would kill gRPC channels used by the
+        xAI SDK).
 
         Args:
             prompt: Summary generation prompt
@@ -248,10 +254,10 @@ class SummaryGenerator:
         if self.state:
             # Get the agent's system prompt (but streamlined for summaries)
             base_prompt = self.state.get_state("agent:system_prompt", "")
-            
+
             # Extract core identity (first ~500 chars) for summary context
             core_identity = base_prompt[:500] if base_prompt else "You are an AI assistant."
-            
+
             system_content = f"""{core_identity}
 
 **Task:** Write a conversation summary in YOUR voice.
@@ -262,7 +268,7 @@ class SummaryGenerator:
         else:
             # Fallback if no state manager
             system_content = "You are an AI assistant. Write a conversation summary in your own voice."
-        
+
         payload = {
             "model": model,
             "messages": [
@@ -275,10 +281,10 @@ class SummaryGenerator:
                     "content": prompt
                 }
             ],
-            "temperature": 0.7,  # Keep the agent's creativity!
+            "temperature": DEFAULT_TEMPERATURE,
             "max_tokens": 2000
         }
-        
+
         # Build headers - OpenRouter has extra headers
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -289,53 +295,58 @@ class SummaryGenerator:
         if self.provider == 'openrouter':
             headers["HTTP-Referer"] = "https://github.com/yourusername/substrate-ai"
             headers["X-Title"] = "Substrate Context Summary"
-        
-        with httpx.Client(timeout=60.0) as client:
-            response = client.post(
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
                 self.api_url,
                 json=payload,
                 headers=headers
             )
             response.raise_for_status()
-            
+
             # Ensure UTF-8 encoding for response
             response.encoding = 'utf-8'
             data = response.json()
             summary = data['choices'][0]['message']['content']
-            
+
             return summary.strip()
 
 
 if __name__ == "__main__":
+    import asyncio
+
     # Test
-    test_messages = [
-        {
-            "role": "user",
-            "content": "Hey, can you help me with Spotify?",
-            "timestamp": datetime.now().isoformat()
-        },
-        {
-            "role": "assistant",
-            "content": "Of course! What do you need?",
-            "timestamp": (datetime.now() + timedelta(seconds=5)).isoformat()
-        },
-        {
-            "role": "user",
-            "content": "Add The Weeknd to my queue",
-            "timestamp": (datetime.now() + timedelta(seconds=15)).isoformat()
-        },
-        {
-            "role": "assistant",
-            "content": "Added 'Often' by The Weeknd to your queue!",
-            "timestamp": (datetime.now() + timedelta(seconds=20)).isoformat()
-        }
-    ]
-    
-    gen = SummaryGenerator()
-    result = gen.generate_summary(test_messages)
-    print(f"\n✅ Summary Result:")
-    print(f"   Messages: {result['message_count']}")
-    print(f"   Tokens: {result['token_count']}")
-    print(f"   Timeframe: {result['from_timestamp']} → {result['to_timestamp']}")
-    print(f"\n   Summary:\n{result['summary']}")
+    async def _test():
+        test_messages = [
+            {
+                "role": "user",
+                "content": "Hey, can you help me with Spotify?",
+                "timestamp": datetime.now().isoformat()
+            },
+            {
+                "role": "assistant",
+                "content": "Of course! What do you need?",
+                "timestamp": (datetime.now() + timedelta(seconds=5)).isoformat()
+            },
+            {
+                "role": "user",
+                "content": "Add The Weeknd to my queue",
+                "timestamp": (datetime.now() + timedelta(seconds=15)).isoformat()
+            },
+            {
+                "role": "assistant",
+                "content": "Added 'Often' by The Weeknd to your queue!",
+                "timestamp": (datetime.now() + timedelta(seconds=20)).isoformat()
+            }
+        ]
+
+        gen = SummaryGenerator()
+        result = await gen.generate_summary(test_messages)
+        print(f"\n✅ Summary Result:")
+        print(f"   Messages: {result['message_count']}")
+        print(f"   Tokens: {result['token_count']}")
+        print(f"   Timeframe: {result['from_timestamp']} → {result['to_timestamp']}")
+        print(f"\n   Summary:\n{result['summary']}")
+
+    asyncio.run(_test())
 

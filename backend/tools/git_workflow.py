@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Agent Git Workflow Automation
+Assistant Git Workflow Automation
 
 Automates Git workflows for code changes:
 - Auto-create feature branches
 - Commit changes with descriptive messages
 - Run tests before committing
-- Generate PRs for review
+- Generate PRs for User's review
 """
 
 import subprocess
@@ -46,7 +46,7 @@ def create_feature_branch(
     base_branch: str = "main"
 ) -> Dict[str, Any]:
     """
-    Create a new feature branch for agent work.
+    Create a new feature branch for Assistant's work.
 
     Args:
         repo_path: Path to git repository
@@ -58,7 +58,7 @@ def create_feature_branch(
     """
     # Generate branch name
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    branch_name = f"nate/{feature_name.lower().replace(' ', '-')}_{timestamp}"
+    branch_name = f"Assistant/{feature_name.lower().replace(' ', '-')}_{timestamp}"
 
     # Check current status
     status = _run_git_command(["git", "status", "--porcelain"], repo_path)

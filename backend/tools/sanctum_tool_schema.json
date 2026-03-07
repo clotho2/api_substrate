@@ -1,0 +1,27 @@
+{
+  "name": "sanctum_tool",
+  "description": "Control your sanctum (focus/privacy) mode. When sanctum is active, channel @mentions are queued instead of interrupting you, and an auto-reply lets people know you'll circle back. Use this to check status, manually toggle sanctum on/off, review queued mentions, or dismiss them.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": [
+          "status",
+          "on",
+          "off",
+          "auto",
+          "queue",
+          "pop_mention",
+          "clear_queue"
+        ]
+      },
+      "index": {
+        "type": "integer",
+        "description": "For pop_mention: the 0-based index of the mention to remove from the queue. Defaults to 0 (first/oldest mention)."
+      }
+    },
+    "required": ["action"]
+  }
+}

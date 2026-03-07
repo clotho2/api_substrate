@@ -24,7 +24,8 @@ from tools.discord_tool import discord_tool as _discord_tool
 from tools.spotify_control import spotify_control as _spotify_control
 from tools.send_voice_message import send_voice_message as _send_voice_message
 from tools.lovense_tool import lovense_tool as _lovense_tool
-from tools.nate_dev_tool import nate_dev_tool as _nate_dev_tool
+from tools.Assistant_dev_tool import Assistant_dev_tool as _Assistant_dev_tool
+from tools.notebook_library_tool import notebook_library_tool as _notebook_library_tool
 from tools.web_search import web_search as _web_search
 from tools.fetch_webpage import fetch_webpage as _fetch_webpage
 
@@ -36,6 +37,8 @@ from tools.jina_reader import get_jina_reader, fetch_webpage as _jina_fetch
 from tools.pdf_reader import get_pdf_reader, read_arxiv_paper as _read_arxiv
 from tools.places_search import get_places_search, search_places as _search_places
 from tools.google_places_tool import google_places_tool as _google_places_tool, get_google_places_schema
+from tools.phone_tool import phone_tool as _phone_tool
+from tools.sanctum_tool import sanctum_tool as _sanctum_tool
 
 # Import cost tracker for cost tools
 from core.cost_tracker import CostTracker
@@ -140,7 +143,7 @@ class IntegrationTools:
 
     def send_voice_message(self, **kwargs) -> Dict[str, Any]:
         """
-        Send a voice message via Discord using Eleven Labs TTS.
+        Send a voice message to User via Discord using Eleven Labs TTS.
 
         Args:
             message: Text to convert to speech and send
@@ -188,12 +191,12 @@ class IntegrationTools:
             }
 
     # ============================================
-    # NATE SELF-DEVELOPMENT TOOL
+    # Assistant SELF-DEVELOPMENT TOOL
     # ============================================
 
-    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
+    def Assistant_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        Agent self-development tool for inspecting the codebase.
+        Assistant's self-development tool for inspecting his own codebase.
 
         Level 1: READ-ONLY diagnostics.
 
@@ -208,12 +211,45 @@ class IntegrationTools:
             Dict with status and result
         """
         try:
-            result = _nate_dev_tool(**kwargs)
+            result = _Assistant_dev_tool(**kwargs)
             return result
         except Exception as e:
             return {
                 "status": "error",
-                "message": f"Dev tool error: {str(e)}"
+                "message": f"Assistant dev tool error: {str(e)}"
+            }
+
+    # ============================================
+    # NOTEBOOK LIBRARY
+    # ============================================
+
+    def notebook_library(self, **kwargs) -> Dict[str, Any]:
+        """
+        Notebook Library — token-efficient document retrieval.
+
+        Query organized document collections semantically.
+        Returns only relevant passages instead of entire documents.
+
+        Actions:
+        - list_notebooks: See all notebooks
+        - query_notebook: Semantic search (requires notebook, query)
+        - browse_notebook: List docs in a notebook
+        - read_document: Read document chunks
+        - create_notebook: Create new notebook
+        - notebook_stats: Get statistics
+        - sync_notebook: Re-sync after adding files
+        - remove_document: Remove from index
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            result = _notebook_library_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Notebook library error: {str(e)}"
             }
 
     # ============================================
@@ -473,6 +509,36 @@ class IntegrationTools:
             return {"status": "error", "message": f"Places search error: {str(e)}"}
 
     # ============================================
+    # PHONE TOOL (Twilio SMS + Calls)
+    # ============================================
+
+    def phone_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Phone tool for SMS, voice calls, and contact management.
+
+        Actions:
+        - send_sms: Send a text message
+        - make_call: Initiate a phone call
+        - check_messages: View SMS history
+        - check_calls: View call history
+        - manage_contacts: Add, remove, block, or list contacts
+        - screen_number: Check if a number is known, spam, or blocked
+
+        Requires: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            result = _phone_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Phone tool error: {str(e)}"
+            }
+
+    # ============================================
     # GOOGLE PLACES (Requires API Key)
     # ============================================
 
@@ -501,9 +567,37 @@ class IntegrationTools:
             }
     
     # ============================================
+    # SANCTUM TOOL (Focus/Privacy Mode)
+    # ============================================
+
+    def sanctum_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Control sanctum (focus/privacy) mode.
+
+        Actions:
+        - status: Check current sanctum state
+        - on: Manually activate sanctum mode
+        - off: Manually deactivate sanctum mode
+        - auto: Return to automatic DM-based detection
+        - queue: View queued mentions
+        - pop_mention: Remove a specific mention from queue
+        - clear_queue: Dismiss all queued mentions
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            return _sanctum_tool(**kwargs)
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Sanctum tool error: {str(e)}"
+            }
+
+    # ============================================
     # TOOL SCHEMAS
     # ============================================
-    
+
     def get_tool_schemas(self) -> list:
         """
         Get all integration tool schemas in OpenAI format.
@@ -519,7 +613,10 @@ class IntegrationTools:
             'spotify_control',
             'send_voice_message',
             'lovense_tool',
-            'nate_dev_tool'
+            'Assistant_dev_tool',
+            'notebook_library_tool',
+            'phone_tool',
+            'sanctum_tool',
         ]
         
         for tool_name in tool_names:
@@ -677,7 +774,7 @@ class IntegrationTools:
                 "type": "function",
                 "function": {
                     "name": "search_places",
-                    "description": "Search for places, restaurants, shops, POIs using OpenStreetMap (FREE!). Great for finding nearby businesses, attractions, addresses. Returns location details, coordinates, opening hours (if available). ⚠️ Use sparingly - max 10 results recommended.",
+                    "description": "Search for places, restaurants, shops, POIs using OpenStreetMap (FREE!). Great for finding nearby businesses, attractions, addresses. Returns location details, coordiAssistants, opening hours (if available). ⚠️ Use sparingly - max 10 results recommended.",
                     "parameters": {
                         "type": "object",
                         "properties": {

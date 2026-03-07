@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from core.state_manager import StateManager
+from core.config import DEFAULT_TEMPERATURE
 
 def fix_model_to_grok():
     """Set model back to Grok"""
@@ -29,7 +30,7 @@ def fix_model_to_grok():
 
     # Update to Grok configuration
     config['model'] = 'grok-4-1-fast-reasoning'
-    config['temperature'] = 0.7
+    config['temperature'] = DEFAULT_TEMPERATURE
     config['max_tokens'] = 8192  # Increased from 4096 for fuller responses
     config['context_window'] = 131072  # Grok's 131K context
     config['reasoning_enabled'] = True
@@ -49,7 +50,7 @@ def fix_model_to_grok():
     print(f"  Context Window: {updated_config.get('context_window', 'N/A')}")
     print(f"  Reasoning: {updated_config.get('reasoning_enabled', 'N/A')}")
 
-    print("\n✅ Agent is now configured to use Grok with full responses!")
+    print(f"\n✅ Assistant is now configured to use Grok with full responses!")
 
 if __name__ == "__main__":
     fix_model_to_grok()

@@ -1,0 +1,22 @@
+# Notebook Library MCP Server - Dependencies
+# Install with: pip install -r requirements.txt
+
+# MCP Protocol
+mcp>=0.1.0
+
+# Vector Database (same as main backend)
+chromadb==0.4.18
+numpy<2.0
+
+# Embeddings - Hugging Face (preferred, local, free)
+transformers>=4.30.0
+torch>=2.0.0
+
+# Embeddings - Ollama fallback (also local and free)
+ollama>=0.3.0
+
+# PDF Text Extraction
+PyMuPDF>=1.23.0
+
+# File Watching (auto-ingestion)
+watchdog>=3.0.0

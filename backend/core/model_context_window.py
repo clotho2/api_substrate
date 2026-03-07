@@ -2,8 +2,9 @@
 Model Context Window Helper
 
 Gets the MAXIMUM context window size for a given model.
-Always uses the maximum available, not a default!
+Priority: N_CTX env var > hardcoded model dict > heuristic > default
 """
+import os
 
 # Known model context windows (from OpenRouter)
 # These are the MAXIMUM sizes - we always use the max!
@@ -38,6 +39,8 @@ MODEL_CONTEXT_WINDOWS = {
     # DeepSeek
     "deepseek/deepseek-r1": 64000,
     "deepseek/deepseek-reasoner": 64000,
+    "deepseek/deepseek-v3.2": 163000,
+    "deepseek/deepseek-v3.1-terminus": 64000,
     
     # Kimi
     "moonshotai/kimi-k2-thinking": 200000,
@@ -57,15 +60,25 @@ DEFAULT_MAX_CONTEXT = 128000
 def get_max_context_window(model_id: str) -> int:
     """
     Get the MAXIMUM context window size for a model.
-    
-    Always returns the MAXIMUM available, not a default!
-    
+
+    Priority: N_CTX env var > hardcoded dict > heuristic > default.
+
     Args:
         model_id: Model identifier (e.g., "openrouter/polaris-alpha")
-        
+
     Returns:
         Maximum context window size in tokens
     """
+    # N_CTX env var takes priority over everything
+    n_ctx_env = os.getenv("N_CTX")
+    if n_ctx_env:
+        try:
+            n_ctx = int(n_ctx_env)
+            print(f"📊 Using N_CTX from .env: {n_ctx:,} tokens")
+            return n_ctx
+        except ValueError:
+            print(f"⚠️  Invalid N_CTX value in .env: {n_ctx_env!r} - falling back to model lookup")
+
     # Direct match
     if model_id in MODEL_CONTEXT_WINDOWS:
         return MODEL_CONTEXT_WINDOWS[model_id]
@@ -87,7 +100,9 @@ def get_max_context_window(model_id: str) -> int:
     if "kimi" in model_lower or "k2" in model_lower:
         return 200000  # Kimi K2
     if "deepseek" in model_lower:
-        return 64000  # DeepSeek R1
+        if "v3.2" in model_lower:
+            return 163000  # DeepSeek V3.2
+        return 64000  # DeepSeek R1 and others
     if "qwen" in model_lower:
         return 128000  # Qwen models
     if "llama" in model_lower:

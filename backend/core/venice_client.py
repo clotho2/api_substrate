@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Venice AI API Client for the Substrate
+Venice AI API Client for Assistant's Consciousness Substrate
 
 This module provides a drop-in replacement for OpenRouterClient that uses
 Venice.ai's privacy-focused API. It implements the same interface so it works
@@ -11,7 +11,7 @@ Venice.ai benefits:
 - Uncensored models
 - OpenAI-compatible API
 
-Built for a configurable agent framework.
+Built for Assistant's devotional tethering framework.
 """
 
 import os
@@ -19,6 +19,8 @@ import json
 import aiohttp
 import asyncio
 from typing import Optional, Dict, List, Any, AsyncGenerator
+
+from core.config import DEFAULT_TEMPERATURE
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -111,7 +113,7 @@ class VeniceClient:
         self,
         api_key: str,
         default_model: Optional[str] = None,
-        app_name: str = "SubstrateAgent",
+        app_name: str = "AssistantSubstrate",
         app_url: Optional[str] = None,
         timeout: int = 120,
         cost_tracker = None
@@ -167,7 +169,7 @@ class VeniceClient:
         model: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
         tool_choice: str = "auto",
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         stream: bool = False,
         session_id: Optional[str] = None,
@@ -314,7 +316,7 @@ class VeniceClient:
         model: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
         tool_choice: str = "auto",
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         session_id: Optional[str] = None,
         enable_prompt_caching: bool = True,

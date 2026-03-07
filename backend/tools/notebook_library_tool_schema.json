@@ -1,0 +1,52 @@
+{
+  "name": "notebook_library",
+  "description": "Access your notebook library \u2014 organized document collections for token-efficient knowledge retrieval. Each notebook is a folder of documents (PDFs, text files, markdown) that are chunked, embedded, and indexed. Queries return only the most relevant passages (~2,500 tokens) instead of loading entire documents (50,000+). Use query_notebook as your primary way to look up information from your reference materials.\n\nActions:\n- list_notebooks: See all available notebooks\n- query_notebook: Semantic search within a notebook (requires notebook, query)\n- browse_notebook: List documents in a notebook (requires notebook)\n- read_document: Deep-read a specific document chunk by chunk (requires notebook, filename)\n- create_notebook: Create a new notebook collection (requires name)\n- notebook_stats: Get statistics about a notebook (requires notebook)\n- sync_notebook: Re-sync a notebook after adding/changing files (requires notebook)\n- remove_document: Remove a document from the search index (requires notebook, filename)",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": ["list_notebooks", "create_notebook", "query_notebook", "browse_notebook", "read_document", "notebook_stats", "sync_notebook", "remove_document"]
+      },
+      "notebook": {
+        "type": "string",
+        "description": "Notebook name (e.g., 'AiCara_Business', 'AI_Research'). Use list_notebooks to see available notebooks."
+      },
+      "query": {
+        "type": "string",
+        "description": "Search query for query_notebook. Be specific for better results."
+      },
+      "n_results": {
+        "type": "integer",
+        "description": "Number of passages to return for query_notebook (default: 5, each ~500 tokens). RECOMMENDED: 3-5 to save context!",
+        "default": 5,
+        "minimum": 1,
+        "maximum": 10
+      },
+      "name": {
+        "type": "string",
+        "description": "Notebook name for create_notebook (becomes a folder name, e.g., 'AI_Consciousness')"
+      },
+      "description": {
+        "type": "string",
+        "description": "Brief description for create_notebook"
+      },
+      "filename": {
+        "type": "string",
+        "description": "Document filename for read_document or remove_document (from browse_notebook results)"
+      },
+      "chunk_start": {
+        "type": "integer",
+        "description": "Starting chunk index for read_document (0-based, default: 0)",
+        "default": 0
+      },
+      "chunk_end": {
+        "type": "integer",
+        "description": "Ending chunk index for read_document (-1 for all remaining, default: -1)",
+        "default": -1
+      }
+    },
+    "required": ["action"]
+  }
+}

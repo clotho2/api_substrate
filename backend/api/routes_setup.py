@@ -141,9 +141,9 @@ def get_setup_status():
         - api_key_valid: True if the key format looks correct
         - message: Human-readable status message
     """
-    env_vars = read_env_file()
-    
-    api_key = env_vars.get('OPENROUTER_API_KEY', '')
+    # Check live environment first (set by service file or load_dotenv),
+    # fall back to reading the .env file directly
+    api_key = os.environ.get('OPENROUTER_API_KEY') or read_env_file().get('OPENROUTER_API_KEY', '')
     
     # Check if it's a placeholder
     is_placeholder = (

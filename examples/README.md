@@ -18,7 +18,7 @@ A multi-faceted AI colleague who naturally shifts between different modes based 
 **Key Features:**
 - No mode announcements - embodies shifts naturally
 - Context-aware responses
-- Opinionated but flexible
+- OpinioAssistantd but flexible
 - Builds shared language with teams
 
 **Use Case:** General-purpose colleague for teams, projects, and collaborative work.

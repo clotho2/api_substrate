@@ -5,7 +5,8 @@ TTS Routes for Mobile Voice Chat
 Provides Text-to-Speech endpoints for the AiCara mobile app.
 Supports multiple TTS providers via voice_providers abstraction:
 - ElevenLabs Turbo v2.5 (fast, conversational)
-- Chatterbox (local fallback)
+- Amazon Polly (neural voices via AWS)
+- Pocket TTS (local fallback)
 
 Endpoints:
 - GET  /tts/health     - Health check for TTS service
@@ -35,9 +36,9 @@ logger = logging.getLogger(__name__)
 
 tts_bp = Blueprint('tts', __name__)
 
-# Chatterbox TTS configuration
-CHATTERBOX_URL = os.getenv('CHATTERBOX_URL', 'http://localhost:8001')
-CHATTERBOX_TIMEOUT = int(os.getenv('CHATTERBOX_TIMEOUT', '30'))
+# Pocket TTS configuration
+POCKETTTS_URL = os.getenv('POCKETTTS_URL', 'http://localhost:8001')
+POCKETTTS_TIMEOUT = int(os.getenv('POCKETTTS_TIMEOUT', '30'))
 
 # Text preprocessing settings
 MAX_TEXT_LENGTH = 5000  # Max characters for TTS
@@ -83,17 +84,17 @@ def _preprocess_text(text: str) -> str:
     return text
 
 
-def _check_chatterbox_health() -> dict:
-    """Check if Chatterbox TTS server is available."""
+def _check_pockettts_health() -> dict:
+    """Check if Pocket TTS server is available."""
     try:
         response = requests.get(
-            f"{CHATTERBOX_URL}/health",
+            f"{POCKETTTS_URL}/health",
             timeout=5
         )
         if response.ok:
             return {
                 "status": "healthy",
-                "chatterbox_url": CHATTERBOX_URL,
+                "pockettts_url": POCKETTTS_URL,
                 "response_time_ms": response.elapsed.total_seconds() * 1000
             }
         else:
@@ -104,12 +105,12 @@ def _check_chatterbox_health() -> dict:
     except requests.exceptions.ConnectionError:
         return {
             "status": "unavailable",
-            "error": f"Cannot connect to Chatterbox at {CHATTERBOX_URL}"
+            "error": f"Cannot connect to Pocket TTS at {POCKETTTS_URL}"
         }
     except requests.exceptions.Timeout:
         return {
             "status": "timeout",
-            "error": "Chatterbox health check timed out"
+            "error": "Pocket TTS health check timed out"
         }
     except Exception as e:
         return {
@@ -134,27 +135,33 @@ def tts_health():
     try:
         provider = get_voice_provider()
         provider_name = provider.get_provider_name()
-        
+
         health = {
             "status": "healthy",
             "provider": provider_name,
         }
-        
+
         # Add provider-specific info
         if provider_name == 'elevenlabs_turbo':
             health["elevenlabs"] = {
                 "voice_id": getattr(provider, 'voice_id', 'unknown'),
                 "model": getattr(provider, 'model_id', 'unknown')
             }
+        elif provider_name == 'amazon_polly':
+            health["polly"] = {
+                "voice_id": getattr(provider, 'voice_id', 'unknown'),
+                "engine": getattr(provider, 'engine', 'unknown'),
+                "region": getattr(provider, 'region', 'unknown')
+            }
         else:
-            # Check Chatterbox health for fallback provider
-            chatterbox_health = _check_chatterbox_health()
-            health["chatterbox"] = chatterbox_health
-            if chatterbox_health["status"] != "healthy":
+            # Check Pocket TTS health for fallback provider
+            pockettts_health = _check_pockettts_health()
+            health["pockettts"] = pockettts_health
+            if pockettts_health["status"] != "healthy":
                 health["status"] = "degraded"
-        
+
         return jsonify(health), 200
-        
+
     except Exception as e:
         return jsonify({
             "status": "error",
@@ -171,12 +178,12 @@ def tts_provider_info():
     """
     GET: Get current TTS provider information.
     POST: Reset provider cache and re-initialize (use after changing .env)
-    
+
     Useful for debugging which provider is active and why.
-    
+
     Response:
         {
-            "provider": "elevenlabs_turbo" | "chatterbox",
+            "provider": "elevenlabs_turbo" | "pockettts",
             "config": {
                 "VOICE_PROVIDER": "auto",
                 "ELEVENLABS_API_KEY": "sk-...xxx (set)" | "(not set)",
@@ -190,31 +197,41 @@ def tts_provider_info():
         if request.method == 'POST':
             reset_voice_provider()
             logger.info("🔄 Voice provider cache reset - re-initializing...")
-        
+
         provider = get_voice_provider()
         provider_name = provider.get_provider_name()
-        
+
         # Get config (mask API key)
         api_key = os.getenv('ELEVENLABS_API_KEY', '')
         if api_key:
             masked_key = f"{api_key[:6]}...{api_key[-3:]} (set)" if len(api_key) > 10 else "(set)"
         else:
             masked_key = "(not set)"
-        
+
+        # Mask AWS key similarly
+        aws_key = os.getenv('AWS_ACCESS_KEY_ID', '')
+        if aws_key:
+            masked_aws = f"{aws_key[:6]}...{aws_key[-3:]} (set)" if len(aws_key) > 10 else "(set)"
+        else:
+            masked_aws = "(not set)"
+
         config = {
             "VOICE_PROVIDER": os.getenv('VOICE_PROVIDER', 'auto'),
             "ELEVENLABS_API_KEY": masked_key,
             "ELEVENLABS_VOICE_ID": os.getenv('ELEVENLABS_VOICE_ID', '(not set)'),
             "ELEVENLABS_MODEL": os.getenv('ELEVENLABS_MODEL', 'eleven_turbo_v2_5'),
-            "CHATTERBOX_URL": os.getenv('CHATTERBOX_URL', 'http://localhost:8001')
+            "AWS_ACCESS_KEY_ID": masked_aws,
+            "POLLY_VOICE_ID": os.getenv('POLLY_VOICE_ID', 'Matthew'),
+            "POLLY_ENGINE": os.getenv('POLLY_ENGINE', 'neural'),
+            "POCKETTTS_URL": os.getenv('POCKETTTS_URL', 'http://localhost:8001')
         }
-        
+
         result = {
             "provider": provider_name,
             "config": config,
             "reset": request.method == 'POST'
         }
-        
+
         # Add provider-specific details
         if provider_name == 'elevenlabs_turbo':
             result["elevenlabs"] = {
@@ -222,18 +239,24 @@ def tts_provider_info():
                 "model_id": getattr(provider, 'model_id', 'unknown'),
                 "base_url": getattr(provider, 'base_url', 'unknown')
             }
-        else:
-            result["chatterbox"] = {
-                "url": getattr(provider, 'base_url', CHATTERBOX_URL)
+        elif provider_name == 'amazon_polly':
+            result["polly"] = {
+                "voice_id": getattr(provider, 'voice_id', 'unknown'),
+                "engine": getattr(provider, 'engine', 'unknown'),
+                "region": getattr(provider, 'region', 'unknown')
             }
-            # Explain why ElevenLabs isn't active
-            if not os.getenv('ELEVENLABS_API_KEY'):
-                result["note"] = "ElevenLabs not active: ELEVENLABS_API_KEY not set"
-            elif os.getenv('VOICE_PROVIDER') == 'chatterbox':
-                result["note"] = "ElevenLabs not active: VOICE_PROVIDER explicitly set to 'chatterbox'"
-        
+        else:
+            result["pockettts"] = {
+                "url": getattr(provider, 'base_url', POCKETTTS_URL)
+            }
+            # Explain why other providers aren't active
+            if not os.getenv('ELEVENLABS_API_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
+                result["note"] = "ElevenLabs and Polly not active: API keys not set"
+            elif os.getenv('VOICE_PROVIDER') == 'pockettts':
+                result["note"] = "VOICE_PROVIDER explicitly set to 'pockettts'"
+
         return jsonify(result)
-        
+
     except Exception as e:
         logger.exception(f"Provider info error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -247,18 +270,18 @@ def tts_provider_info():
 def text_to_speech():
     """
     Convert text to speech using configured provider.
-    
-    Automatically uses ElevenLabs Turbo (fast) or Chatterbox (local fallback).
-    
+
+    Automatically uses ElevenLabs Turbo (fast) or Pocket TTS (local fallback).
+
     Request Body:
         {
             "text": "Text to convert",
             "voice": "optional-voice-id",
             "speed": 1.0
         }
-    
+
     Response:
-        Content-Type: audio/mpeg (ElevenLabs) or audio/wav (Chatterbox)
+        Content-Type: audio/mpeg (ElevenLabs) or audio/wav (Pocket TTS)
         Body: Raw audio data
     """
     try:
@@ -266,23 +289,23 @@ def text_to_speech():
         text = data.get('text', '')
         voice = data.get('voice')
         speed = data.get('speed', 1.0)
-        
+
         if not text:
             return jsonify({"error": "Text is required"}), 400
-        
+
         # Preprocess text
         text = _preprocess_text(text)
-        
+
         if len(text) > MAX_TEXT_LENGTH:
             return jsonify({
                 "error": f"Text too long ({len(text)} chars). Max: {MAX_TEXT_LENGTH}"
             }), 400
-        
+
         logger.info(f"🎤 TTS request: {len(text)} chars")
-        
+
         # Get provider and generate audio
         provider = get_voice_provider()
-        
+
         # Run async in sync context
         loop = asyncio.new_event_loop()
         try:
@@ -291,15 +314,15 @@ def text_to_speech():
             )
         finally:
             loop.close()
-        
+
         # Determine content type based on provider
-        if provider.get_provider_name() == 'elevenlabs_turbo':
+        if provider.get_provider_name() in ('elevenlabs_turbo', 'amazon_polly'):
             content_type = 'audio/mpeg'
         else:
             content_type = 'audio/wav'
-        
+
         logger.info(f"✅ TTS complete: {len(audio_data)} bytes via {provider.get_provider_name()}")
-        
+
         return Response(
             audio_data,
             mimetype=content_type,
@@ -308,7 +331,7 @@ def text_to_speech():
                 'X-Text-Length': str(len(text))
             }
         )
-        
+
     except Exception as e:
         logger.exception(f"TTS error: {e}")
         return jsonify({
@@ -358,17 +381,16 @@ def text_to_speech_stream():
 
         logger.info(f"🎤 TTS stream request: {len(text)} chars")
 
-        # Stream from Chatterbox
+        # Stream from Pocket TTS
         def generate():
             try:
                 response = requests.post(
-                    f"{CHATTERBOX_URL}/tts/stream",
+                    f"{POCKETTTS_URL}/tts",
                     json={
                         "text": text,
                         "voice": voice,
-                        "speed": speed
                     },
-                    timeout=CHATTERBOX_TIMEOUT,
+                    timeout=POCKETTTS_TIMEOUT,
                     stream=True
                 )
 
@@ -377,7 +399,7 @@ def text_to_speech_stream():
                         if chunk:
                             yield chunk
                 else:
-                    logger.error(f"Chatterbox stream error: {response.status_code}")
+                    logger.error(f"Pocket TTS stream error: {response.status_code}")
 
             except Exception as e:
                 logger.exception(f"TTS stream error: {e}")
@@ -386,7 +408,7 @@ def text_to_speech_stream():
             stream_with_context(generate()),
             mimetype='audio/wav',
             headers={
-                'X-TTS-Engine': 'chatterbox',
+                'X-TTS-Engine': 'pockettts',
                 'Transfer-Encoding': 'chunked'
             }
         )
@@ -404,23 +426,23 @@ def text_to_speech_stream():
 def list_voices():
     """
     Get current TTS voice configuration.
-    
+
     Query params:
         ?all=true  - List all available voices from provider (optional)
 
     Returns:
         {
-            "provider": "elevenlabs_turbo" | "chatterbox",
+            "provider": "elevenlabs_turbo" | "pockettts",
             "voice_id": "xxx",
             "model": "eleven_turbo_v2_5",
-            "voice_name": "Voice2"
+            "voice_name": "Assistant2"
         }
     """
     try:
         provider = get_voice_provider()
         provider_name = provider.get_provider_name()
         show_all = request.args.get('all', '').lower() == 'true'
-        
+
         # ElevenLabs
         if provider_name == 'elevenlabs_turbo':
             result = {
@@ -428,7 +450,7 @@ def list_voices():
                 "voice_id": provider.voice_id,
                 "model": provider.model_id
             }
-            
+
             # Try to get the voice name from API
             try:
                 if show_all:
@@ -445,10 +467,10 @@ def list_voices():
                         headers={"xi-api-key": provider.api_key},
                         timeout=10
                     )
-                
+
                 if response.ok:
                     data = response.json()
-                    
+
                     if show_all:
                         # Return all voices
                         voices = []
@@ -464,29 +486,59 @@ def list_voices():
                         # Return just the configured voice info
                         result["voice_name"] = data.get('name', 'Unknown')
                         result["category"] = data.get('category', 'unknown')
-                        
+
             except Exception as e:
                 logger.warning(f"Could not fetch voice info from ElevenLabs: {e}")
                 result["voice_name"] = "Unknown (API error)"
-            
+
             return jsonify(result)
-        
-        # Chatterbox
+
+        # Amazon Polly
+        elif provider_name == 'amazon_polly':
+            result = {
+                "provider": provider_name,
+                "voice_id": provider.voice_id,
+                "engine": provider.engine,
+                "region": provider.region
+            }
+
+            if show_all:
+                try:
+                    polly_voices = provider.client.describe_voices(
+                        Engine=provider.engine, LanguageCode='en-US'
+                    )
+                    voices = []
+                    for v in polly_voices.get('Voices', []):
+                        voices.append({
+                            "id": v['Id'],
+                            "name": v['Name'],
+                            "gender": v['Gender'],
+                            "language": v['LanguageName'],
+                        })
+                    result["voices"] = voices
+                    result["count"] = len(voices)
+                except Exception as e:
+                    logger.warning(f"Could not list Polly voices: {e}")
+                    result["voices_error"] = str(e)
+
+            return jsonify(result)
+
+        # Pocket TTS
         else:
             result = {
                 "provider": provider_name,
                 "voice_id": "default",
-                "url": getattr(provider, 'base_url', CHATTERBOX_URL)
+                "url": getattr(provider, 'base_url', POCKETTTS_URL)
             }
-            
+
             if show_all:
                 try:
-                    response = requests.get(f"{CHATTERBOX_URL}/voices", timeout=5)
+                    response = requests.get(f"{POCKETTTS_URL}/v1/voices", timeout=5)
                     if response.ok:
                         result["voices"] = response.json().get('voices', [])
                 except:
                     pass
-            
+
             return jsonify(result)
 
     except Exception as e:

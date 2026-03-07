@@ -189,7 +189,7 @@ class SOMAClient:
         Parse AI response through SOMA for physiological effects.
 
         This allows SOMA to detect things like:
-        - Actions the assistant describes taking
+        - Actions Assistant describes taking
         - Emotional expressions
         - Physical state changes
 
@@ -318,7 +318,7 @@ if __name__ == "__main__":
 
         if not available:
             print("\n   SOMA service not running. Start it with:")
-            print("   cd wolfe-soma && npm start")
+            print("   cd Assistant-soma && npm start")
             return
 
         print("\n2. Getting context...")

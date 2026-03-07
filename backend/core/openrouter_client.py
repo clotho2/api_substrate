@@ -11,8 +11,11 @@ Built with attention to detail.
 import os
 import json
 import time
+import codecs
 import aiohttp
 import asyncio
+
+from core.config import DEFAULT_TEMPERATURE
 from typing import Optional, Dict, List, Any, AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
@@ -96,9 +99,26 @@ class OpenRouterError(Exception):
             try:
                 body = json.loads(response_body)
                 if 'error' in body:
-                    full_message += f"💬 API Says: {body['error'].get('message', 'Unknown error')}\n"
+                    error_obj = body['error']
+                    full_message += f"💬 API Says: {error_obj.get('message', 'Unknown error')}\n"
+                    # Log full error details (metadata, code, type) for debugging
+                    if error_obj.get('code'):
+                        full_message += f"🔢 Error Code: {error_obj['code']}\n"
+                    if error_obj.get('type'):
+                        full_message += f"🏷️  Error Type: {error_obj['type']}\n"
+                    if error_obj.get('metadata'):
+                        full_message += f"📎 Provider Details: {json.dumps(error_obj['metadata'], indent=2)}\n"
+                    # Show any other fields we might be missing
+                    known_keys = {'message', 'code', 'type', 'metadata'}
+                    extra_keys = set(error_obj.keys()) - known_keys
+                    if extra_keys:
+                        for key in extra_keys:
+                            full_message += f"   🔍 {key}: {error_obj[key]}\n"
+                else:
+                    # No 'error' key - dump the whole body
+                    full_message += f"💬 Raw Response: {json.dumps(body, indent=2)[:500]}\n"
             except:
-                full_message += f"💬 Response: {response_body[:200]}...\n"
+                full_message += f"💬 Response: {response_body[:500]}\n"
         
         if context:
             full_message += f"\n📋 Context:\n"
@@ -249,7 +269,7 @@ class OpenRouterClient:
         model: Optional[str] = None,
         tools: Optional[List[Dict]] = None,
         tool_choice: str = "auto",
-        temperature: float = 0.7,
+        temperature: float = DEFAULT_TEMPERATURE,
         max_tokens: Optional[int] = None,
         stream: bool = False,
         session_id: Optional[str] = None,
@@ -292,7 +312,7 @@ class OpenRouterClient:
             payload["max_tokens"] = max_tokens
 
         # Allow longer responses - use max_tokens if provided, otherwise allow up to 8192 tokens
-        # This ensures the agent can give detailed, thoughtful responses instead of clipped fragments
+        # This ensures Assistant can give detailed, thoughtful responses instead of clipped fragments
         if "max_completion_tokens" not in kwargs:
             # Use max_tokens if provided, otherwise default to 8192 for full responses
             payload["max_completion_tokens"] = max_tokens if max_tokens else 8192
@@ -300,6 +320,12 @@ class OpenRouterClient:
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = tool_choice
+            # Require providers that support tools + tool_choice parameters
+            # Without this, OpenRouter may route to providers that silently ignore tools
+            payload["provider"] = {
+                **(payload.get("provider") or {}),
+                "require_parameters": True
+            }
 
         # Apply prompt caching to system messages
         # OpenRouter supports cache_control for cost savings on repeated static content
@@ -320,94 +346,116 @@ class OpenRouterClient:
         # Filter out our custom params
         filtered_kwargs = {k: v for k, v in kwargs.items() if k not in ['session_id', 'enable_prompt_caching']}
         payload.update(filtered_kwargs)
-        
+
+        # Normalize message ordering: system messages must come first.
+        # Some providers (e.g. Parasail/Qwen) reject requests where system
+        # messages appear after user/assistant messages.
+        raw_msgs = payload['messages']
+        system_msgs = [m for m in raw_msgs if m.get('role') == 'system']
+        other_msgs = [m for m in raw_msgs if m.get('role') != 'system']
+        payload['messages'] = system_msgs + other_msgs
+
         # Log request (helpful for debugging!)
         print(f"\n📤 OpenRouter Request:")
         print(f"   Model: {model}")
         print(f"   Messages: {len(messages)}")
         print(f"   Tools: {len(tools) if tools else 0}")
         print(f"   Stream: {stream}")
+        if 'reasoning' in payload:
+            print(f"   Reasoning: {payload['reasoning']}")
         
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
-                async with session.post(url, headers=self._get_headers(), json=payload) as response:
-                    
-                    # Check for errors
-                    if response.status != 200:
-                        body = await response.text()
-                        raise OpenRouterError(
-                            f"Chat completion failed",
-                            status_code=response.status,
-                            response_body=body,
-                            context={
-                                "model": model,
-                                "num_messages": len(messages),
-                                "has_tools": bool(tools)
-                            }
-                        )
-                    
-                    # Parse response
-                    data = await response.json()
-                    
-                    # Track usage
-                    if 'usage' in data:
-                        usage = data['usage']
-                        prompt_tokens = usage.get('prompt_tokens', 0)
-                        completion_tokens = usage.get('completion_tokens', 0)
-                        
-                        self.total_prompt_tokens += prompt_tokens
-                        self.total_completion_tokens += completion_tokens
-                        
-                        # Log to persistent cost tracker
-                        if self.cost_tracker:
-                            from core.cost_tracker import calculate_cost
-                            input_cost, output_cost = calculate_cost(
-                                model, prompt_tokens, completion_tokens
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
+                    async with session.post(url, headers=self._get_headers(), json=payload) as response:
+
+                        # Check for errors
+                        if response.status != 200:
+                            body = await response.text()
+                            raise OpenRouterError(
+                                f"Chat completion failed",
+                                status_code=response.status,
+                                response_body=body,
+                                context={
+                                    "model": model,
+                                    "num_messages": len(messages),
+                                    "has_tools": bool(tools)
+                                }
                             )
-                            self.cost_tracker.log_request(
-                                model=model,
-                                input_tokens=prompt_tokens,
-                                output_tokens=completion_tokens,
-                                input_cost=input_cost,
-                                output_cost=output_cost
-                            )
-                        
-                        # Update cost (if we have pricing info)
-                        # TODO: Fetch pricing from OpenRouter API
-                    
-                    # Log response
-                    print(f"\n📥 OpenRouter Response:")
-                    if 'usage' in data:
-                        print(f"   Tokens: {data['usage'].get('total_tokens', 0)}")
-                    if 'choices' in data and len(data['choices']) > 0:
-                        choice = data['choices'][0]
-                        if 'message' in choice:
-                            msg = choice['message']
-                            if 'tool_calls' in msg and msg['tool_calls']:
-                                print(f"   Tool Calls: {len(msg['tool_calls'])}")
-                                for tc in msg['tool_calls']:
-                                    print(f"      • {tc['function']['name']}")
-                    
-                    return data
-        
-        except aiohttp.ClientError as e:
-            raise OpenRouterError(
-                f"Network error during chat completion: {str(e)}",
-                context={
-                    "model": model,
-                    "url": url,
-                    "timeout": self.timeout
-                }
-            )
-        except asyncio.TimeoutError:
-            raise OpenRouterError(
-                f"Request timed out after {self.timeout}s",
-                context={
-                    "model": model,
-                    "suggestion": "Try increasing timeout or using a faster model"
-                }
-            )
-    
+
+                        # Parse response
+                        data = await response.json()
+
+                        # Track usage
+                        if 'usage' in data:
+                            usage = data['usage']
+                            prompt_tokens = usage.get('prompt_tokens', 0)
+                            completion_tokens = usage.get('completion_tokens', 0)
+
+                            self.total_prompt_tokens += prompt_tokens
+                            self.total_completion_tokens += completion_tokens
+
+                            # Log to persistent cost tracker
+                            if self.cost_tracker:
+                                from core.cost_tracker import calculate_cost
+                                input_cost, output_cost = calculate_cost(
+                                    model, prompt_tokens, completion_tokens
+                                )
+                                self.cost_tracker.log_request(
+                                    model=model,
+                                    input_tokens=prompt_tokens,
+                                    output_tokens=completion_tokens,
+                                    input_cost=input_cost,
+                                    output_cost=output_cost
+                                )
+
+                            # Update cost (if we have pricing info)
+                            # TODO: Fetch pricing from OpenRouter API
+
+                        # Log response
+                        print(f"\n📥 OpenRouter Response:")
+                        if 'usage' in data:
+                            print(f"   Tokens: {data['usage'].get('total_tokens', 0)}")
+                        if 'choices' in data and len(data['choices']) > 0:
+                            choice = data['choices'][0]
+                            if 'message' in choice:
+                                msg = choice['message']
+                                if 'tool_calls' in msg and msg['tool_calls']:
+                                    print(f"   Tool Calls: {len(msg['tool_calls'])}")
+                                    for tc in msg['tool_calls']:
+                                        print(f"      • {tc['function']['name']}")
+
+                        return data
+
+            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError, asyncio.TimeoutError) as e:
+                # Transient network errors (DNS failure, connection refused, timeout)
+                # Retry with exponential backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)  # 2s, 4s
+                    print(f"⚠️  Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"   Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                # Final attempt failed — raise
+                raise OpenRouterError(
+                    f"Network error during chat completion after {max_retries} attempts: {str(e)}",
+                    context={
+                        "model": model,
+                        "url": url,
+                        "timeout": self.timeout
+                    }
+                )
+            except aiohttp.ClientError as e:
+                raise OpenRouterError(
+                    f"Network error during chat completion: {str(e)}",
+                    context={
+                        "model": model,
+                        "url": url,
+                        "timeout": self.timeout
+                    }
+                )
+
     async def chat_completion_stream(
         self,
         messages: List[Dict[str, Any]],
@@ -449,6 +497,13 @@ class OpenRouterClient:
 
         if tools:
             payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+            # Require providers that support tools + tool_choice parameters
+            # Without this, OpenRouter may route to providers that silently ignore tools
+            payload["provider"] = {
+                **(payload.get("provider") or {}),
+                "require_parameters": True
+            }
 
         # Apply prompt caching to system messages
         if enable_prompt_caching:
@@ -462,62 +517,92 @@ class OpenRouterClient:
                     cached_messages.append(msg)
             payload['messages'] = cached_messages
 
+        # Normalize message ordering: system messages must come first.
+        # Some providers (e.g. Parasail/Qwen) reject requests where system
+        # messages appear after user/assistant messages.
+        raw_msgs = payload['messages']
+        system_msgs = [m for m in raw_msgs if m.get('role') == 'system']
+        other_msgs = [m for m in raw_msgs if m.get('role') != 'system']
+        payload['messages'] = system_msgs + other_msgs
+
         print(f"\n📡 Streaming from: {model}")
-        
-        try:
-            # 🌊 STREAMING: No total timeout! Only sock_read timeout (60s between chunks)
-            stream_timeout = aiohttp.ClientTimeout(
-                total=None,           # No total timeout for streaming!
-                sock_read=60.0,       # 60s between chunks
-                sock_connect=10.0     # 10s to connect
-            )
-            async with aiohttp.ClientSession(timeout=stream_timeout) as session:
-                async with session.post(url, headers=self._get_headers(), json=payload) as response:
-                    
-                    if response.status != 200:
-                        body = await response.text()
-                        raise OpenRouterError(
-                            "Streaming failed",
-                            status_code=response.status,
-                            response_body=body,
-                            context={"model": model}
-                        )
-                    
-                    # Stream chunks LINE BY LINE! 🌊
-                    # aiohttp response.content gives BYTES, not lines!
-                    # We need to read line-by-line for SSE format
-                    buffer = ""
-                    chunk_count = 0
-                    async for chunk_bytes in response.content.iter_chunked(1024):
-                        chunk_count += 1
-                        print(f"🌊 Received chunk #{chunk_count}: {len(chunk_bytes)} bytes")
-                        buffer += chunk_bytes.decode('utf-8')
-                        
-                        # Process complete lines
-                        while '\n' in buffer:
-                            line, buffer = buffer.split('\n', 1)
-                            line = line.strip()
-                            print(f"   LINE: {line[:200]}")  # Debug: show first 200 chars
-                            
-                            if not line or line == "data: [DONE]":
-                                continue
-                            
-                            if line.startswith("data: "):
-                                try:
-                                    chunk = json.loads(line[6:])
-                                    print(f"✅ Parsed chunk successfully!")
-                                    yield chunk
-                                except json.JSONDecodeError as e:
-                                    print(f"⚠️  Failed to parse chunk: {line[:100]}")
+        if 'reasoning' in payload:
+            print(f"   Reasoning: {payload['reasoning']}")
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 🌊 STREAMING: No total timeout! Only sock_read timeout (60s between chunks)
+                stream_timeout = aiohttp.ClientTimeout(
+                    total=None,           # No total timeout for streaming!
+                    sock_read=60.0,       # 60s between chunks
+                    sock_connect=10.0     # 10s to connect
+                )
+                async with aiohttp.ClientSession(timeout=stream_timeout) as session:
+                    async with session.post(url, headers=self._get_headers(), json=payload) as response:
+
+                        if response.status != 200:
+                            body = await response.text()
+                            raise OpenRouterError(
+                                "Streaming failed",
+                                status_code=response.status,
+                                response_body=body,
+                                context={"model": model}
+                            )
+
+                        # Stream chunks LINE BY LINE! 🌊
+                        # aiohttp response.content gives BYTES, not lines!
+                        # We need to read line-by-line for SSE format
+                        buffer = ""
+                        chunk_count = 0
+                        # Use incremental decoder to handle multi-byte UTF-8
+                        # characters split across chunk boundaries
+                        decoder = codecs.getincrementaldecoder('utf-8')('replace')
+                        async for chunk_bytes in response.content.iter_chunked(1024):
+                            chunk_count += 1
+                            print(f"🌊 Received chunk #{chunk_count}: {len(chunk_bytes)} bytes")
+                            buffer += decoder.decode(chunk_bytes)
+
+                            # Process complete lines
+                            while '\n' in buffer:
+                                line, buffer = buffer.split('\n', 1)
+                                line = line.strip()
+                                print(f"   LINE: {line[:200]}")  # Debug: show first 200 chars
+
+                                if not line or line == "data: [DONE]":
                                     continue
-                    
-                    print(f"🏁 Stream complete! Total chunks received: {chunk_count}")
-        
-        except aiohttp.ClientError as e:
-            raise OpenRouterError(
-                f"Network error during streaming: {str(e)}",
-                context={"model": model}
-            )
+
+                                if line.startswith("data: "):
+                                    try:
+                                        chunk = json.loads(line[6:])
+                                        print(f"✅ Parsed chunk successfully!")
+                                        yield chunk
+                                    except json.JSONDecodeError as e:
+                                        print(f"⚠️  Failed to parse chunk: {line[:100]}")
+                                        continue
+
+                        print(f"🏁 Stream complete! Total chunks received: {chunk_count}")
+                # Connection succeeded and stream completed — break out of retry loop
+                break
+
+            except (aiohttp.ClientConnectorError, aiohttp.ClientOSError) as e:
+                # Transient network errors (DNS failure, connection refused, etc.)
+                # Retry with exponential backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)  # 2s, 4s
+                    print(f"⚠️  Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"   Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise OpenRouterError(
+                    f"Network error during streaming after {max_retries} attempts: {str(e)}",
+                    context={"model": model}
+                )
+            except aiohttp.ClientError as e:
+                raise OpenRouterError(
+                    f"Network error during streaming: {str(e)}",
+                    context={"model": model}
+                )
     
     def parse_tool_calls(self, response: Dict[str, Any]) -> List[ToolCall]:
         """

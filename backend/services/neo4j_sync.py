@@ -221,7 +221,7 @@ class Neo4jSyncService:
             
             print(f"🔄 Syncing up to {min(limit, total_memories)} archival memories...")
             
-            # Get all memories (TODO: paginate for large datasets)
+            # Get all memories (TODO: pagiAssistant for large datasets)
             collection = self.memory_system.collection
             results = collection.get(limit=limit, include=['metadatas', 'documents'])
             
