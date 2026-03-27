@@ -29,7 +29,7 @@ Requires:
 
 Twilio TwiML setup:
   <Connect>
-      <Stream url="wss://relay.aicara.ai/phone/media-stream">
+      <Stream url="wss://your_url_here/phone/media-stream">
           <Parameter name="callerNumber" value="+1234567890" />
           <Parameter name="callerName" value="User" />
       </Stream>

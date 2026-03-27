@@ -13,6 +13,7 @@ NATIVE_THINKING_MODELS = [
     "openai/o1-preview",
     "openai/o1-mini",
     "openai/gpt-5",
+    "openai/gpt-4o-2024-11-20",
     
     # DeepSeek R1 series
     "deepseek/deepseek-r1",
@@ -27,6 +28,7 @@ NATIVE_THINKING_MODELS = [
     "z-ai/glm-4.6",
     "moonshotai/kimi-k2.5",
     "minimax/minimax-m2.5",
+    "xiaomi/mimo-v2-flash",
     "x-ai/grok-4.1-fast",
     "grok-4.20-experimental-beta-0304-reasoning",
         

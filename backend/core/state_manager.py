@@ -928,10 +928,10 @@ class StateManager:
     def get_all_summaries(self, session_id: str) -> List[Dict[str, Any]]:
         """
         Get all summaries for a session (chronological order).
-        
+
         Args:
             session_id: Session ID
-            
+
         Returns:
             List of summary dicts
         """
@@ -944,7 +944,47 @@ class StateManager:
                 WHERE session_id = ?
                 ORDER BY created_at ASC
             """, (session_id,))
-            
+
+            return [{
+                'id': row[0],
+                'session_id': row[1],
+                'summary': row[2],
+                'created_at': row[3],
+                'from_timestamp': row[4],
+                'to_timestamp': row[5],
+                'message_count': row[6],
+                'token_count': row[7]
+            } for row in cursor.fetchall()]
+
+    def get_recent_summaries(self, session_id: str, count: int = 3) -> List[Dict[str, Any]]:
+        """
+        Get the N most recent summaries for a session, returned in chronological order
+        (oldest first) so they can be read in sequence.
+
+        Args:
+            session_id: Session ID
+            count: Number of recent summaries to return (default: 3)
+
+        Returns:
+            List of summary dicts, oldest first
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Subquery: get the N most recent, then re-order chronologically
+            cursor.execute("""
+                SELECT id, session_id, summary, created_at, from_timestamp, to_timestamp,
+                       message_count, token_count
+                FROM (
+                    SELECT id, session_id, summary, created_at, from_timestamp, to_timestamp,
+                           message_count, token_count
+                    FROM conversation_summaries
+                    WHERE session_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                )
+                ORDER BY created_at ASC
+            """, (session_id, count))
+
             return [{
                 'id': row[0],
                 'session_id': row[1],

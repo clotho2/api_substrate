@@ -11,7 +11,7 @@ Endpoints:
 - POST /chat                    - Web AssistantEngine.ts compatibility
 - POST /v1/chat/completions     - Mobile AssistantEngine.js (OpenAI format)
 
-The AiCara frontends call these endpoints via relay.aicara.ai.
+The AiCara frontends call these endpoints via your_url_here.
 This file translates those requests to the substrate's consciousness loop.
 """
 

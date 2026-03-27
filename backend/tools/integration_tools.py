@@ -24,7 +24,7 @@ from tools.discord_tool import discord_tool as _discord_tool
 from tools.spotify_control import spotify_control as _spotify_control
 from tools.send_voice_message import send_voice_message as _send_voice_message
 from tools.lovense_tool import lovense_tool as _lovense_tool
-from tools.Assistant_dev_tool import Assistant_dev_tool as _Assistant_dev_tool
+from tools.agent_dev_tool import agent_dev_tool as _agent_dev_tool
 from tools.notebook_library_tool import notebook_library_tool as _notebook_library_tool
 from tools.web_search import web_search as _web_search
 from tools.fetch_webpage import fetch_webpage as _fetch_webpage
@@ -39,6 +39,7 @@ from tools.places_search import get_places_search, search_places as _search_plac
 from tools.google_places_tool import google_places_tool as _google_places_tool, get_google_places_schema
 from tools.phone_tool import phone_tool as _phone_tool
 from tools.sanctum_tool import sanctum_tool as _sanctum_tool
+from tools.browser_tool import browser_tool as _browser_tool
 
 # Import cost tracker for cost tools
 from core.cost_tracker import CostTracker
@@ -143,7 +144,7 @@ class IntegrationTools:
 
     def send_voice_message(self, **kwargs) -> Dict[str, Any]:
         """
-        Send a voice message to User via Discord using Eleven Labs TTS.
+        Send a voice message to user via Discord using Eleven Labs TTS.
 
         Args:
             message: Text to convert to speech and send
@@ -191,12 +192,12 @@ class IntegrationTools:
             }
 
     # ============================================
-    # Assistant SELF-DEVELOPMENT TOOL
+    # agent SELF-DEVELOPMENT TOOL
     # ============================================
 
-    def Assistant_dev_tool(self, **kwargs) -> Dict[str, Any]:
+    def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        Assistant's self-development tool for inspecting his own codebase.
+        agent's self-development tool for inspecting his own codebase.
 
         Level 1: READ-ONLY diagnostics.
 
@@ -211,12 +212,12 @@ class IntegrationTools:
             Dict with status and result
         """
         try:
-            result = _Assistant_dev_tool(**kwargs)
+            result = _agent_dev_tool(**kwargs)
             return result
         except Exception as e:
             return {
                 "status": "error",
-                "message": f"Assistant dev tool error: {str(e)}"
+                "message": f"agent dev tool error: {str(e)}"
             }
 
     # ============================================
@@ -567,6 +568,42 @@ class IntegrationTools:
             }
     
     # ============================================
+    # BROWSER TOOL (Playwright Automation)
+    # ============================================
+
+    def browser_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Browser automation tool — navigate websites, click buttons, fill forms.
+
+        Uses a real Chromium browser via Playwright for full web interaction.
+        Perfect for making reservations, completing forms, multi-step workflows.
+
+        Actions:
+        - navigate: Go to a URL (returns page content + interactive elements)
+        - click: Click a button, link, or element
+        - type: Type text into an input field
+        - screenshot: Take a screenshot and get vision analysis
+        - get_elements: List all interactive elements on the page
+        - select: Choose from a dropdown
+        - scroll: Scroll up or down
+        - back: Go back to previous page
+        - get_text: Get all visible text
+        - close: Close the browser session
+
+        Returns:
+            Dict with status and result
+        """
+        try:
+            # Pass session_id through if available
+            result = _browser_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Browser tool error: {str(e)}"
+            }
+
+    # ============================================
     # SANCTUM TOOL (Focus/Privacy Mode)
     # ============================================
 
@@ -613,10 +650,11 @@ class IntegrationTools:
             'spotify_control',
             'send_voice_message',
             'lovense_tool',
-            'Assistant_dev_tool',
+            'agent_dev_tool',
             'notebook_library_tool',
             'phone_tool',
             'sanctum_tool',
+            'browser_tool',
         ]
         
         for tool_name in tool_names:
@@ -774,7 +812,7 @@ class IntegrationTools:
                 "type": "function",
                 "function": {
                     "name": "search_places",
-                    "description": "Search for places, restaurants, shops, POIs using OpenStreetMap (FREE!). Great for finding nearby businesses, attractions, addresses. Returns location details, coordiAssistants, opening hours (if available). ⚠️ Use sparingly - max 10 results recommended.",
+                    "description": "Search for places, restaurants, shops, POIs using OpenStreetMap (FREE!). Great for finding nearby businesses, attractions, addresses. Returns location details, coordiagents, opening hours (if available). ⚠️ Use sparingly - max 10 results recommended.",
                     "parameters": {
                         "type": "object",
                         "properties": {

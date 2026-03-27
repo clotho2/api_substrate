@@ -213,7 +213,7 @@ def _make_call(**kwargs) -> Dict[str, Any]:
         contact_name = contact["name"] if contact else "Unknown"
 
         use_media_streams = os.getenv("MEDIA_STREAMS_ENABLED", "true").lower() == "true"
-        base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+        base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
         status_callback = f"{base_url}/phone/voice/status"
 
         if webhook_url:

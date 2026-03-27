@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from core.state_manager import StateManager, BlockType
 
 
-def setup_nate_agent():
+def setup_agent_agent():
     """Initialize the consciousness substrate with generic defaults"""
 
     print("\n" + "="*60)
@@ -160,4 +160,4 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    setup_nate_agent()
+    setup_agent_agent()

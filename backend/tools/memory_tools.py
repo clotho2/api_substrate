@@ -665,20 +665,38 @@ class MemoryTools:
         try:
             page_size = 15  # Increased from 5 for better results with large memory sets
 
-            # Search
-            results = self.memory_system.search(
+            # Use attentional bias search for smarter multi-factor ranking
+            # (semantic similarity + temporal relevance + importance + access
+            # patterns + category relevance) instead of pure cosine similarity.
+            # Falls back to basic search internally if attentional bias is
+            # unavailable.
+            results = self.memory_system.search_with_attention(
                 query=query,
                 n_results=page_size,
                 min_importance=min_importance,
-                tags=tags
+                tags=tags,
+                mode="auto",
             )
 
             print(f"   Results found: {len(results)}")
             if results:
+                r0 = results[0]
                 print(f"   First result:")
-                print(f"      Importance: {results[0]['importance']}")
-                print(f"      Relevance: {results[0]['relevance']}")
-                print(f"      Content: {results[0]['content'][:100]}...")
+                print(f"      Importance: {r0['importance']}")
+                print(f"      Relevance: {r0['relevance']}")
+                if 'attention_score' in r0:
+                    print(f"      Attention score: {r0['attention_score']:.3f}")
+                print(f"      Content: {r0['content'][:100]}...")
+
+            # Hebbian learning: record co-accessed memories so the system
+            # learns which memories cluster together over time.
+            if results and self.memory_system.learner:
+                memory_ids = [r['id'] for r in results if r.get('id')]
+                if memory_ids:
+                    self.memory_system.learner.on_memories_accessed(
+                        memory_ids=memory_ids,
+                        query=query
+                    )
 
             return {
                 "status": "OK",
@@ -912,12 +930,12 @@ class MemoryTools:
         """
         return self.integrations.lovense_tool(**kwargs)
 
-    def Assistant_dev_tool(self, **kwargs) -> Dict[str, Any]:
+    def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        Assistant self-development tool (wrapper).
+        agent self-development tool (wrapper).
         Read-only access to inspect codebase, logs, and system health.
         """
-        return self.integrations.Assistant_dev_tool(**kwargs)
+        return self.integrations.agent_dev_tool(**kwargs)
 
     def notebook_library(self, **kwargs) -> Dict[str, Any]:
         """
@@ -939,6 +957,13 @@ class MemoryTools:
         Focus/privacy mode control — queue channel mentions during DM time.
         """
         return self.integrations.sanctum_tool(**kwargs)
+
+    def browser_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Browser automation tool (wrapper).
+        Navigate websites, click buttons, fill forms, make reservations.
+        """
+        return self.integrations.browser_tool(**kwargs)
 
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT

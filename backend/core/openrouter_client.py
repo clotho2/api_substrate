@@ -312,7 +312,7 @@ class OpenRouterClient:
             payload["max_tokens"] = max_tokens
 
         # Allow longer responses - use max_tokens if provided, otherwise allow up to 8192 tokens
-        # This ensures Assistant can give detailed, thoughtful responses instead of clipped fragments
+        # This ensures agent can give detailed, thoughtful responses instead of clipped fragments
         if "max_completion_tokens" not in kwargs:
             # Use max_tokens if provided, otherwise default to 8192 for full responses
             payload["max_completion_tokens"] = max_tokens if max_tokens else 8192
@@ -322,14 +322,18 @@ class OpenRouterClient:
             payload["tool_choice"] = tool_choice
             # Require providers that support tools + tool_choice parameters
             # Without this, OpenRouter may route to providers that silently ignore tools
-            payload["provider"] = {
-                **(payload.get("provider") or {}),
-                "require_parameters": True
-            }
+            # NOTE: Don't set require_parameters when reasoning is also in the payload,
+            # because it forces OpenRouter to find a provider supporting ALL params
+            # (tools + reasoning) simultaneously, which many models/providers can't do.
+            has_reasoning = "reasoning" in payload
+            if not has_reasoning:
+                payload["provider"] = {
+                    **(payload.get("provider") or {}),
+                    "require_parameters": True
+                }
 
         # Apply prompt caching to system messages
         # OpenRouter supports cache_control for cost savings on repeated static content
-        # Cached tokens are charged at 0.25x the original input token cost
         if enable_prompt_caching:
             cached_messages = []
             for msg in messages:
@@ -500,10 +504,16 @@ class OpenRouterClient:
             payload["tool_choice"] = "auto"
             # Require providers that support tools + tool_choice parameters
             # Without this, OpenRouter may route to providers that silently ignore tools
-            payload["provider"] = {
-                **(payload.get("provider") or {}),
-                "require_parameters": True
-            }
+            # NOTE: Don't set require_parameters when reasoning is also in the payload,
+            # because it forces OpenRouter to find a provider supporting ALL params
+            # (tools + reasoning) simultaneously, which many models/providers can't do.
+            # This causes 404 "No endpoints found" errors (e.g. openai/gpt-5 with reasoning).
+            has_reasoning = "reasoning" in payload
+            if not has_reasoning:
+                payload["provider"] = {
+                    **(payload.get("provider") or {}),
+                    "require_parameters": True
+                }
 
         # Apply prompt caching to system messages
         if enable_prompt_caching:

@@ -1,0 +1,48 @@
+{
+  "name": "browser_tool",
+  "description": "Browser automation tool — navigate websites, click buttons, fill forms, make reservations, and complete multi-step web workflows. Uses a real browser (Chromium) so it works with JavaScript-heavy sites like OpenTable, Resy, etc.\n\nActions:\n- navigate: Go to a URL (returns page content + interactive elements)\n- click: Click a button, link, or element (by CSS selector or visible text)\n- type: Type text into an input field (search boxes, forms, etc.)\n- screenshot: Take a screenshot and get a description of what's on screen\n- get_elements: List all clickable buttons, links, inputs, and dropdowns\n- select: Choose an option from a dropdown menu\n- scroll: Scroll the page up or down\n- back: Go back to the previous page\n- get_text: Get all visible text on the page\n- close: Close the browser session when done\n\n⚠️ IMPORTANT: Always call 'close' when you're done with the browser to free resources!\n⚠️ CONTEXT WARNING: navigate and get_elements return element lists that can be large. Use screenshot for a quick visual overview instead.\n\nTypical workflow:\n1. navigate to URL → see what's on the page\n2. click/type/select to interact with elements\n3. screenshot if you need to see the visual state\n4. close when done",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Action to perform",
+        "enum": ["navigate", "click", "type", "screenshot", "get_elements", "select", "scroll", "back", "get_text", "close"]
+      },
+      "url": {
+        "type": "string",
+        "description": "URL to navigate to (for 'navigate' action). Can include https:// or not."
+      },
+      "selector": {
+        "type": "string",
+        "description": "CSS selector or Playwright text selector for the target element. Examples: '#submit-btn', '[name=\"email\"]', 'text=\"Sign In\"', '.reservation-button'. Use selectors from get_elements results."
+      },
+      "text": {
+        "type": "string",
+        "description": "For 'type' action: the text to type into the input field. For 'click' action: visible text of the element to click (alternative to selector)."
+      },
+      "value": {
+        "type": "string",
+        "description": "For 'select' action: the option value or visible text to select from a dropdown."
+      },
+      "direction": {
+        "type": "string",
+        "description": "For 'scroll' action: scroll direction",
+        "enum": ["up", "down"],
+        "default": "down"
+      },
+      "amount": {
+        "type": "integer",
+        "description": "For 'scroll' action: number of scroll steps (1-10, each step ~300px)",
+        "default": 3,
+        "minimum": 1,
+        "maximum": 10
+      },
+      "description": {
+        "type": "string",
+        "description": "What you're trying to accomplish on this page. Helps the vision model provide better screenshot analysis."
+      }
+    },
+    "required": ["action"]
+  }
+}

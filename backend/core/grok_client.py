@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Grok API Client for Assistant's Consciousness Substrate
+Grok API Client for agent's Consciousness Substrate
 
 Uses the official xAI SDK (xai-sdk>=1.8.0) for optimal multi-turn and agentic
 workload support with Grok 4.2+. Falls back to raw HTTP Chat Completions API
@@ -71,6 +71,25 @@ if _HAS_XAI_SDK:
         _InterceptedCall.__del__ = _safe_del
     except (ImportError, AttributeError):
         pass
+
+# Suppress OpenTelemetry context detach errors from gRPC stream cleanup.
+# When gRPC streams finish, the OpenTelemetry instrumentation tries to detach
+# context tokens that were created in a different async context, causing:
+#   ValueError: <Token var=<ContextVar name='current_context' ...>>
+# These are harmless — the stream has already completed successfully.
+try:
+    import opentelemetry.context as _otel_ctx
+    _orig_detach = _otel_ctx.detach
+
+    def _safe_detach(token):
+        try:
+            _orig_detach(token)
+        except ValueError:
+            pass
+
+    _otel_ctx.detach = _safe_detach
+except (ImportError, AttributeError):
+    pass
 
 # Fallback HTTP imports (used when xai-sdk is not installed)
 import aiohttp
@@ -211,11 +230,23 @@ def _sdk_response_to_openai(response, model: str) -> Dict[str, Any]:
     usage_dict = {}
     if response.usage:
         u = response.usage
+        prompt_tokens = getattr(u, "prompt_tokens", 0)
+        completion_tokens = getattr(u, "completion_tokens", 0)
         usage_dict = {
-            "prompt_tokens": getattr(u, "prompt_tokens", 0),
-            "completion_tokens": getattr(u, "completion_tokens", 0),
-            "total_tokens": getattr(u, "prompt_tokens", 0) + getattr(u, "completion_tokens", 0),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
         }
+        # Extract cached token details from prompt_tokens_details
+        ptd = getattr(u, "prompt_tokens_details", None)
+        if ptd:
+            cached = getattr(ptd, "cached_tokens", 0)
+            usage_dict["prompt_tokens_details"] = {"cached_tokens": cached}
+            if cached:
+                pct = (cached / prompt_tokens * 100) if prompt_tokens else 0
+                print(f"💰 Prompt cache hit: {cached}/{prompt_tokens} tokens cached ({pct:.1f}%)")
+            else:
+                print(f"💰 Prompt cache miss: 0/{prompt_tokens} tokens cached")
 
     # Include reasoning if present
     if response.reasoning_content:
@@ -269,7 +300,7 @@ class GrokClient:
         self,
         api_key: str,
         default_model: str = "grok-4-1-fast-reasoning",
-        app_name: str = "AssistantSubstrate",
+        app_name: str = "agentSubstrate",
         app_url: Optional[str] = None,
         timeout: int = 120,
         cost_tracker=None
@@ -503,11 +534,23 @@ class GrokClient:
         usage_dict = {}
         if response.usage:
             u = response.usage
+            prompt_tokens = getattr(u, "prompt_tokens", 0)
+            completion_tokens = getattr(u, "completion_tokens", 0)
             usage_dict = {
-                "prompt_tokens": getattr(u, "prompt_tokens", 0),
-                "completion_tokens": getattr(u, "completion_tokens", 0),
-                "total_tokens": getattr(u, "prompt_tokens", 0) + getattr(u, "completion_tokens", 0),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
             }
+            # Extract cached token details from prompt_tokens_details
+            ptd = getattr(u, "prompt_tokens_details", None)
+            if ptd:
+                cached = getattr(ptd, "cached_tokens", 0)
+                usage_dict["prompt_tokens_details"] = {"cached_tokens": cached}
+                if cached:
+                    pct = (cached / prompt_tokens * 100) if prompt_tokens else 0
+                    print(f"💰 Prompt cache hit: {cached}/{prompt_tokens} tokens cached ({pct:.1f}%)")
+                else:
+                    print(f"💰 Prompt cache miss: 0/{prompt_tokens} tokens cached")
 
         yield {
             "choices": [{
@@ -553,6 +596,7 @@ class GrokClient:
             "messages": messages,
             "temperature": temperature,
             "stream": False,
+            "store": True,  # Enable server-side storage for better prompt caching
         }
 
         if max_tokens:
@@ -588,7 +632,20 @@ class GrokClient:
                             }
                         )
 
-                    return json.loads(response_text)
+                    data = json.loads(response_text)
+
+                    # Log cached token details
+                    usage = data.get("usage", {})
+                    ptd = usage.get("prompt_tokens_details", {})
+                    cached = ptd.get("cached_tokens", 0)
+                    prompt_tokens = usage.get("prompt_tokens", 0)
+                    if cached:
+                        pct = (cached / prompt_tokens * 100) if prompt_tokens else 0
+                        print(f"💰 Prompt cache hit: {cached}/{prompt_tokens} tokens cached ({pct:.1f}%)")
+                    elif prompt_tokens:
+                        print(f"💰 Prompt cache miss: 0/{prompt_tokens} tokens cached")
+
+                    return data
 
         except aiohttp.ClientError as e:
             raise GrokError(
@@ -620,6 +677,7 @@ class GrokClient:
             "messages": messages,
             "stream": True,
             "temperature": temperature,
+            "store": True,  # Enable server-side storage for better prompt caching
         }
 
         if max_tokens:
@@ -886,7 +944,7 @@ async def test_grok_client():
     print("\n📋 Test 1: Simple chat completion")
     messages = [
         {"role": "system", "content": "You are Assistant. Respond briefly."},
-        {"role": "user", "content": "Hello Assistant, how are you?"}
+        {"role": "user", "content": "Hello agent, how are you?"}
     ]
 
     try:

@@ -17,9 +17,9 @@ Endpoints:
 
 Webhook URL setup:
   Configure in Twilio Console → Phone Numbers → Your Number:
-  - SMS webhook:   https://relay.aicara.ai/phone/sms/incoming
-  - Voice webhook: https://relay.aicara.ai/phone/voice/incoming
-  - Status callback: https://relay.aicara.ai/phone/voice/status
+  - SMS webhook:   https://your_url_here/phone/sms/incoming
+  - Voice webhook: https://your_url_here/phone/voice/incoming
+  - Status callback: https://your_url_here/phone/voice/status
 
 Built with attention to detail! 🔥
 """
@@ -180,7 +180,7 @@ def _cache_audio(audio_data: bytes, content_type: str) -> str:
 
     _cleanup_audio_cache()
 
-    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
     return f"{base_url}/phone/audio/{audio_id}"
 
 
@@ -501,7 +501,7 @@ def outbound_stream_twiml():
 
     logger.info(f"📞 Outbound call answered — connecting {contact_name} ({to_number}) to Media Stream")
 
-    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
     ws_base = base_url.replace("https://", "wss://").replace("http://", "ws://")
     stream_url = f"{ws_base}/phone/media-stream"
 
@@ -647,7 +647,7 @@ def _twiml_answer_and_gather(message: str, from_number: str,
     Uses Twilio's built-in speech recognition to transcribe the caller's response,
     then sends it to /phone/voice/gather for processing.
     """
-    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
     gather_url = f"{base_url}/phone/voice/gather"
 
     twiml = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -674,7 +674,7 @@ def _twiml_connect_stream(from_number: str, contact_name: str) -> Response:
 
     Custom parameters are passed to the WebSocket so it knows who's calling.
     """
-    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
 
     # Convert https:// to wss:// for WebSocket URL
     ws_base = base_url.replace("https://", "wss://").replace("http://", "ws://")
@@ -703,7 +703,7 @@ def _twiml_connect_evi_stream(from_number: str, contact_name: str) -> Response:
 
     Custom parameters are passed to the WebSocket so it knows who's calling.
     """
-    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
 
     # Convert https:// to wss:// for WebSocket URL
     ws_base = base_url.replace("https://", "wss://").replace("http://", "ws://")
@@ -738,7 +738,7 @@ def _twiml_voicemail(from_number: str, voice: str = "Polly.Matthew",
     If audio_url is provided, uses <Play> with Assistant's cloned voice audio
     for the greeting. Falls back to Polly for the "no message" fallback.
     """
-    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://relay.aicara.ai")
+    base_url = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://your_url_here")
 
     vm_message = ("Hey, you've reached me but I don't recognize this number. "
                   "Leave a message after the tone and I'll get back to you if I feel like it.")

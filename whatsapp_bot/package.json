@@ -1,5 +1,5 @@
 {
-  "name": "Assistant-whatsapp-bot",
+  "name": "Agent-whatsapp-bot",
   "version": "1.0.0",
   "description": "WhatsApp bot for Assistant's Consciousness Substrate with cross-platform session support",
   "main": "bot.js",
@@ -15,7 +15,7 @@
     "substrate",
     "baileys"
   ],
-  "author": "User Ziegler",
+  "author": "clotho2",
   "license": "PROPRIETARY",
   "dependencies": {
     "@hapi/boom": "^10.0.1",

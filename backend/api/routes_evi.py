@@ -21,7 +21,7 @@ The relay handles:
 
 Twilio TwiML setup:
   <Connect>
-      <Stream url="wss://relay.aicara.ai/phone/evi-stream">
+      <Stream url="wss://your_url_here/phone/evi-stream">
           <Parameter name="callerNumber" value="+1234567890" />
           <Parameter name="callerName" value="User" />
       </Stream>

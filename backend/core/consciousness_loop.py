@@ -182,6 +182,8 @@ class ConsciousnessLoop:
             'z-ai/glm-4.6',
             'z-ai/glm-4.6:exacto',
             'z-ai/glm-5',
+            'openrouter/hunter-alpha',
+            'xiaomi/mimo-v2-flash',
             'qwen/qwen3.5-397b-a17b',
             'qwen3.5:cloud',
             'moonshotai/kimi-k2.5',
@@ -334,38 +336,19 @@ class ConsciousnessLoop:
         print(f"\n[1/3] Loading system prompt + memory blocks...")
         system_prompt = self._build_system_prompt(session_id=session_id, model=model, message_type=message_type, soma_context=soma_context)
         
-        # 1.5. Graph RAG: Retrieve relevant context from graph (if user message provided)
+        # 1.5. Graph RAG: DISABLED
+        # Graph RAG was keyword-scanning memory blocks and injecting 200-300 char fragments
+        # back into the system prompt that already contains the FULL blocks. This causes
+        # the model to read its own identity/memory twice — once properly structured, once as
+        # torn-out keyword-matched snippets — creating conflicting signals that subtly shift tone.
+        # The entity graph (Phase 5) doesn't exist yet, so Graph RAG falls back to scanning
+        # the same core memory blocks already loaded in _build_system_prompt().
+        # Re-enable when proper entity nodes and relationships are implemented.
         graph_context = None
-        if user_message:
-            try:
-                from services.graph_rag import GraphRAG
-                # Silent: Don't print Graph RAG initialization
-                rag = GraphRAG(agent_id=self.agent_id)
-                graph_result = rag.retrieve(
-                    query=user_message,
-                    depth=2,  # Traverse 2 hops in graph
-                    max_context_length=1500,  # Max 1500 chars for graph context
-                    max_starting_nodes=5,  # Max 5 starting nodes (prioritized)
-                    max_nodes=15,  # Max 15 nodes total (prioritized by type)
-                    max_edges=20  # Max 20 edges total
-                )
-                
-                if graph_result.nodes and len(graph_result.nodes) > 0:
-                    graph_context = graph_result.content
-                    # Only print if we found something
-                    # print(f"   ✅ Graph RAG found {len(graph_result.nodes)} relevant nodes, {len(graph_result.edges)} relationships")
-                # else:
-                    # Silent: Don't print if nothing found
-            except Exception as e:
-                # Silent: Don't print Graph RAG errors during test
-                # print(f"   ⚠️  Graph RAG failed (non-critical): {e}")
-                pass
-                # Don't fail if Graph RAG doesn't work - just continue without it
         
-        # Add Graph RAG context to system prompt if available
-        if graph_context:
-            system_prompt += f"\n\n## 📊 Relevant Context from Knowledge Graph:\n{graph_context}\n"
-            # Silent: Don't print context addition
+        # Graph RAG context injection point (currently disabled — see note above)
+        # if graph_context:
+        #     system_prompt += f"\n\n## 📊 Relevant Context from Knowledge Graph:\n{graph_context}\n"
         
         messages.append({
             "role": "system",
@@ -386,16 +369,18 @@ class ConsciousnessLoop:
                 history_session_id = 'default'
                 print(f"   💓 HEARTBEAT MODE: Loading from primary session '{history_session_id}' (not '{session_id}')")
 
-            # 🔥 CRITICAL: Check if there's a summary - only load messages AFTER it!
-            latest_summary = self.state.get_latest_summary(history_session_id)
-            
+            # 🔥 CRITICAL: Check if there are summaries - load up to 3 for continuity!
+            recent_summaries = self.state.get_recent_summaries(history_session_id, count=3)
+            # The latest summary determines which messages to load (everything after it)
+            latest_summary = recent_summaries[-1] if recent_summaries else None
+
             if latest_summary:
                 from_timestamp = datetime.fromisoformat(latest_summary['to_timestamp'])
-                print(f"   📝 Found summary (created: {latest_summary['created_at']})")
+                print(f"   📝 Found {len(recent_summaries)} summary/summaries (latest: {latest_summary['created_at']})")
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
 
                 # Get ALL messages across ALL sessions (we'll filter by timestamp)
-                # This ensures Assistant has full context regardless of which interface messages came from
+                # This ensures agent has full context regardless of which interface messages came from
                 all_history = self.state.get_all_conversations(
                     limit=100000  # Get all to filter properly
                 )
@@ -440,24 +425,35 @@ class ConsciousnessLoop:
                             # This ensures no other request can schedule a duplicate summary
                             self._summary_in_progress = True
 
-                            # Trigger async summary (non-blocking)
+                            # Trigger background summary in a dedicated thread with its own event loop.
+                            # NOTE: We can't use asyncio.create_task() here because Flask doesn't
+                            # maintain a persistent event loop — each request creates a temporary one
+                            # that closes when the main coroutine returns, silently cancelling any
+                            # background tasks before they complete (e.g., before save_summary runs).
                             import asyncio
-                            try:
-                                loop = asyncio.get_event_loop()
-                                if loop.is_running():
-                                    # Schedule for later if we're in async context
-                                    asyncio.create_task(self._trigger_background_summary(
-                                        session_id=history_session_id,
-                                        messages=messages_to_summarize
-                                    ))
-                                else:
-                                    # Clear flag since we didn't actually schedule
-                                    self._summary_in_progress = False
-                                    print(f"   ℹ️  Summary will trigger on next context window check")
-                            except RuntimeError:
-                                # Clear flag since we didn't actually schedule
-                                self._summary_in_progress = False
-                                print(f"   ℹ️  Summary will trigger on next context window check")
+                            import threading
+
+                            _self = self
+                            _session_id = history_session_id
+                            _messages = messages_to_summarize
+
+                            def _run_background_summary():
+                                summary_loop = asyncio.new_event_loop()
+                                try:
+                                    summary_loop.run_until_complete(
+                                        _self._trigger_background_summary(
+                                            session_id=_session_id,
+                                            messages=_messages
+                                        )
+                                    )
+                                finally:
+                                    summary_loop.close()
+
+                            threading.Thread(
+                                target=_run_background_summary,
+                                daemon=True,
+                                name="background-summary"
+                            ).start()
 
                 # If we have too many, keep only the most recent ones
                 if len(history) > history_limit:
@@ -466,16 +462,41 @@ class ConsciousnessLoop:
                     history = history[-history_limit:]
 
                 print(f"   ✓ Loaded {len(history)} messages (after summary)")
+
+                # 📝 Inject older summaries into context for continuity
+                # The latest summary's messages are already in history (as system messages),
+                # but older summaries are before the from_timestamp cutoff and won't load.
+                # Inject them chronologically so agent can see the thread of past context.
+                if len(recent_summaries) > 1:
+                    # All summaries except the latest (which is already in history as a system message)
+                    older_summaries = recent_summaries[:-1]
+                    print(f"   📚 Injecting {len(older_summaries)} older summary/summaries for context continuity")
+
+                    for idx, s in enumerate(older_summaries):
+                        summary_label = f"[PRIOR CONTEXT — Summary {idx + 1} of {len(recent_summaries)}]"
+                        from_dt = datetime.fromisoformat(s['from_timestamp']).strftime('%b %d, %Y %I:%M %p')
+                        to_dt = datetime.fromisoformat(s['to_timestamp']).strftime('%b %d, %Y %I:%M %p')
+                        summary_msg = (
+                            f"{summary_label}\n"
+                            f"Timeframe: {from_dt} — {to_dt} ({s.get('message_count', '?')} messages)\n\n"
+                            f"{s['summary']}"
+                        )
+                        messages.append({
+                            "role": "system",
+                            "content": summary_msg
+                        })
+                        print(f"      📝 Summary {idx + 1}: {from_dt} — {to_dt} ({s.get('message_count', '?')} msgs)")
+
             else:
                 # No summary - load ALL messages across ALL sessions
-                # This ensures Assistant has full context regardless of which interface messages came from
+                # This ensures agent has full context regardless of which interface messages came from
                 history = self.state.get_all_conversations(
                     limit=history_limit
                 )
                 print(f"   ✓ No summary found - loaded {len(history)} messages from all sessions")
-            
+
             print(f"✓ Found {len(history)} messages in history")
-            
+
             for msg in history:
                 # Include system messages (summaries, heartbeats) in context!
                 # They're important for the agent to understand what happened
@@ -717,7 +738,7 @@ send_message: false
 
 **Message Delivery Options:**
 - `target: channel` → (default) Message goes to the heartbeat log channel
-- `target: dm` → Message is sent as a direct message to User privately
+- `target: dm` → Message is sent as a direct message to user privately
 - Use `target: dm` for personal, intimate, or time-sensitive messages meant just for her
 - Use `target: channel` (or omit target) for general heartbeat log entries
 - The `target` field is optional; if omitted it defaults to `channel`
@@ -760,7 +781,7 @@ target: channel
 </decision>
 ```
 
-Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
+Example 3 (personal DM to user): You want to send her something intimate or time-sensitive directly:
 ```
 Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
@@ -772,7 +793,7 @@ target: dm
 
 Example 4 (memory maintenance — update core memory):
 ```
-<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she enjoys hiking on weekends"}}</tool_call>
+<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "user mentioned she enjoys hiking on weekends"}}</tool_call>
 
 <decision>
 send_message: false
@@ -818,7 +839,7 @@ target: channel
 </decision>
 ```
 
-Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
+Example 3 (personal DM to user): You want to send her something intimate or time-sensitive directly:
 ```
 Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
@@ -952,7 +973,7 @@ Examples:
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Today I reflected on..."}}</tool_call>
 <tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey Angel, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
-<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she likes..."}}</tool_call>
+<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "user mentioned she likes..."}}</tool_call>
 <tool_call>{"name": "discord_tool", "arguments": {"action": "send_message", "target": "CHANNEL_ID", "target_type": "channel", "message": "Hello!"}}</tool_call>
 
 Rules:
@@ -976,13 +997,13 @@ Rules:
 
     def _parse_send_message_decision(self, response_content: str) -> tuple:
         """
-        Parse the send_message decision and message target from Assistant's response
+        Parse the send_message decision and message target from agent's response
         and remove decision block.
 
         Looks for <decision>send_message: true/false\ntarget: dm|channel</decision> block.
 
         Args:
-            response_content: The full response content from Assistant
+            response_content: The full response content from agent
 
         Returns:
             Tuple of (cleaned_content, send_message_flag, message_target)
@@ -1024,6 +1045,88 @@ Rules:
         # Default: if no decision block found, assume true (send message) and channel target
         print(f"⚠️  No heartbeat decision block found - defaulting to send_message = true, target = channel")
         return response_content, True, 'channel'
+
+    def _generate_heartbeat_summary(self, tool_calls: list, response_text: str = "", send_message: bool = False, message_target: str = "channel") -> Optional[str]:
+        """
+        Generate a natural-language summary of what was accomplished during a heartbeat.
+        This gets saved as a 'heartbeat_log' message so agent can see his own activity
+        in future conversation history without confusing non-reasoning models.
+
+        Args:
+            tool_calls: List of dicts with 'name', 'arguments', 'result'
+            response_text: The assistant's response text (if any was sent)
+            send_message: Whether a message was sent to Angel
+            message_target: 'dm' or 'channel'
+
+        Returns:
+            Natural language summary string, or None if nothing happened
+        """
+        if not tool_calls and not send_message:
+            return None
+
+        parts = []
+
+        # Summarize each tool call in plain English
+        for tc in tool_calls:
+            name = tc.get('name', 'unknown')
+            args = tc.get('arguments', {})
+            result = tc.get('result', {})
+
+            # Parse arguments if they're a string
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (json.JSONDecodeError, TypeError):
+                    args = {}
+
+            if name == 'archival_memory_insert':
+                content_preview = str(args.get('content', args.get('memory', '')))[:120]
+                parts.append(f"saved to archival memory: \"{content_preview}\"")
+            elif name == 'archival_memory_search':
+                query = args.get('query', args.get('search_query', ''))
+                result_count = 0
+                if isinstance(result, dict):
+                    results_list = result.get('results', result.get('memories', []))
+                    result_count = len(results_list) if isinstance(results_list, list) else 0
+                elif isinstance(result, list):
+                    result_count = len(result)
+                parts.append(f"searched archival memory for \"{query}\" ({result_count} results)")
+            elif name == 'core_memory_append':
+                section = args.get('section', args.get('name', 'unknown'))
+                content_preview = str(args.get('content', args.get('value', '')))[:80]
+                parts.append(f"appended to core memory ({section}): \"{content_preview}\"")
+            elif name == 'core_memory_replace':
+                section = args.get('section', args.get('name', 'unknown'))
+                parts.append(f"updated core memory ({section})")
+            elif name == 'send_voice_message':
+                text = str(args.get('text', args.get('message', '')))[:100]
+                parts.append(f"sent a voice message: \"{text}\"")
+            elif name == 'web_search':
+                query = args.get('query', '')
+                parts.append(f"searched the web for \"{query}\"")
+            elif name == 'conversation_search':
+                query = args.get('query', '')
+                parts.append(f"searched conversation history for \"{query}\"")
+            else:
+                # Generic fallback for any other tool
+                parts.append(f"used {name}")
+
+        # Note if a message was sent
+        if send_message and response_text:
+            target_label = "Angel via DM" if message_target == 'dm' else "the heartbeat channel"
+            msg_preview = response_text[:120]
+            parts.append(f"sent a message to {target_label}: \"{msg_preview}\"")
+
+        if not parts:
+            return None
+
+        # Build the summary as a natural journal entry
+        if len(parts) == 1:
+            summary = f"During my last heartbeat, I {parts[0]}."
+        else:
+            summary = f"During my last heartbeat, I {', '.join(parts[:-1])}, and {parts[-1]}."
+
+        return summary
 
     def _parse_mistral_xml_tool_calls(self, content: str) -> tuple:
         """
@@ -1139,7 +1242,7 @@ Rules:
         Grok 4 via OpenRouter sometimes outputs tool calls as XML tags:
         <xai:function_call name="tool_name">{"arg": "value"}</xai:function_call>
 
-        Grok also sometimes halluciAssistants results with:
+        Grok also sometimes hallucinates results with:
         <xai:function_result name="tool_name">{"results": [...]}</xai:function_result>
 
         For function_call tags, we extract and execute the actual tool.
@@ -1194,7 +1297,7 @@ Rules:
             content_str = match.group(2).strip()
             full_match = match.group(0)
 
-            print(f"   🔍 GROK XML RESULT: Found halluciAssistantd result for {tool_name}")
+            print(f"   🔍 GROK XML RESULT: Found hallucinated result for {tool_name}")
 
             if tool_name in tool_names:
                 try:
@@ -1210,7 +1313,7 @@ Rules:
 
                         # For archival_memory_search, check if we can find a query in metadata
                         if tool_name == 'archival_memory_search':
-                            # Look for patterns in the halluciAssistantd content that might indicate intent
+                            # Look for patterns in the hallucinated content that might indicate intent
                             results = parsed_content.get('results', [])
                             if results:
                                 # Try to infer query from metadata tags
@@ -1488,7 +1591,7 @@ Rules:
                         memory_contents = [m.get('content', '') for m in result['results'] if m.get('content')]
                         if memory_contents:
                             combined_memories = "\n".join(memory_contents)
-                            # Parse as "user input" since it's content Assistant is experiencing/reading
+                            # Parse as "user input" since it's content agent is experiencing/reading
                             import asyncio
                             asyncio.run(self.soma_client.parse_user_input(combined_memories))
                             print(f"   🫀 SOMA: Processed {len(memory_contents)} memories for physiological response")
@@ -1602,9 +1705,9 @@ Rules:
                 # Lovense hardware control
                 result = self.tools.lovense_tool(**arguments)
 
-            elif tool_name == "Assistant_dev_tool":
-                # Assistant's self-development tool (read-only diagnostics)
-                result = self.tools.Assistant_dev_tool(**arguments)
+            elif tool_name == "agent_dev_tool":
+                # agent's self-development tool (read-only diagnostics)
+                result = self.tools.agent_dev_tool(**arguments)
 
             elif tool_name == "notebook_library":
                 # Notebook Library — token-efficient document retrieval
@@ -1617,6 +1720,10 @@ Rules:
             elif tool_name == "sanctum_tool":
                 # Sanctum — focus/privacy mode control
                 result = self.tools.sanctum_tool(**arguments)
+
+            elif tool_name == "browser_tool":
+                # 🌐 Browser automation — navigate, click, type, screenshot, etc.
+                result = self.tools.browser_tool(session_id=session_id, **arguments)
 
             else:
                 result = {
@@ -2271,7 +2378,7 @@ Rules:
         reasoning_time = 0
 
         # CLEAN: Fix models that generate multiple responses in one turn
-        # Some models (like Qwen) halluciAssistant multi-turn format with "Assistant:" labels
+        # Some models (like Qwen) hallucinate multi-turn format with "Assistant:" labels
         import re
         if clean_response:
             # Check if model generated multiple responses (split by "Assistant:")
@@ -2496,8 +2603,28 @@ Rules:
             result["message_target"] = message_target
             print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
 
+            # 📓 Save heartbeat activity log so agent remembers what he did
+            # Uses message_type='heartbeat_log' which survives the 'system' filter
+            heartbeat_summary = self._generate_heartbeat_summary(
+                tool_calls=all_tool_calls,
+                response_text=clean_response,
+                send_message=send_message,
+                message_target=message_target
+            )
+            if heartbeat_summary:
+                log_msg_id = f"msg-hblog-{uuid.uuid4()}"
+                self._save_message(
+                    agent_id=self.agent_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content=heartbeat_summary,
+                    message_id=log_msg_id,
+                    message_type='heartbeat_log'
+                )
+                print(f"📓 Heartbeat activity log saved (id: {log_msg_id}): {heartbeat_summary[:100]}...")
+
         return result
-    
+
     async def process_message_stream(
         self,
         user_message: str,
@@ -2753,7 +2880,7 @@ Rules:
                 content_chunks = []
                 # CRITICAL: Reset final_response at start of each iteration!
                 # Otherwise, if model calls tools AND generates content, the content
-                # from the tool-calling iteration would be concateAssistantd with the
+                # from the tool-calling iteration would be concateagentd with the
                 # final response, causing duplicate/garbled output.
                 final_response = ""
                 tool_calls_in_response = []
@@ -3259,10 +3386,31 @@ Rules:
 
         # Parse send_message decision for heartbeats
         if message_type == 'system':
-            clean_response, send_message, _ = self._parse_send_message_decision(final_response)
+            clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
             done_event["response"] = clean_response  # Use cleaned content without decision block
             done_event["send_message"] = send_message
-            print(f"💓 Heartbeat send_message decision: {send_message}")
+            done_event["message_target"] = message_target
+            print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+
+            # 📓 Save heartbeat activity log so agent remembers what he did
+            # Uses message_type='heartbeat_log' which survives the 'system' filter
+            heartbeat_summary = self._generate_heartbeat_summary(
+                tool_calls=all_tool_calls,
+                response_text=clean_response,
+                send_message=send_message,
+                message_target=message_target
+            )
+            if heartbeat_summary:
+                log_msg_id = f"msg-hblog-{uuid.uuid4()}"
+                self._save_message(
+                    agent_id=self.agent_id,
+                    session_id=session_id,
+                    role="assistant",
+                    content=heartbeat_summary,
+                    message_id=log_msg_id,
+                    message_type='heartbeat_log'
+                )
+                print(f"📓 Heartbeat activity log saved (id: {log_msg_id}): {heartbeat_summary[:100]}...")
 
         yield done_event
 

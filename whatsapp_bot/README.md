@@ -57,7 +57,7 @@ Assistant: "Good to hear. Want to debrief?"
 ### Prerequisites
 
 - **Node.js 18+** - Runtime for the bot
-- **Assistant Substrate API** - Running on localhost:8284 or relay.aicara.ai
+- **Assistant Substrate API** - Running on localhost:8284 or your_url_here
 - **WhatsApp Account** - For linking the bot
 
 ### Installation (Simple!)
@@ -69,9 +69,9 @@ cd whatsapp_bot
 # Run setup script (installs deps, tests connection)
 ./setup.sh
 
-# Configure for your server (if using relay.aicara.ai)
+# Configure for your server (if using your_url_here)
 nano .env
-# Change: SUBSTRATE_API_URL=https://relay.aicara.ai
+# Change: SUBSTRATE_API_URL=https://your_url_here
 
 # Start the bot
 npm start
@@ -99,7 +99,7 @@ npm start
 ```bash
 # Substrate API URL
 # Local: http://localhost:8284
-# Production: https://relay.aicara.ai
+# Production: https://your_url_here
 SUBSTRATE_API_URL=http://localhost:8284
 
 # Authentication directory (created automatically)
@@ -417,7 +417,7 @@ npm start
 
 2. Check `SUBSTRATE_API_URL` in `.env`
 
-3. If using `relay.aicara.ai`, verify Cloudflare tunnel is up
+3. If using `your_url_here`, verify Cloudflare tunnel is up
 
 ### Messages Not Sending
 
@@ -672,7 +672,7 @@ Assistant: "The outline we created on Discord Tuesday is complete. Want to revie
 
 Proprietary software. See [LICENSE](../LICENSE) for details.
 
-**Copyright © 2025 User Ziegler. All Rights Reserved.**
+**Copyright © 2025 Clotho2. All Rights Reserved.**
 
 ---
 

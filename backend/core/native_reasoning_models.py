@@ -13,6 +13,7 @@ NATIVE_REASONING_MODELS = {
     'openai/o1-preview',
     'openai/o1-mini',
     'openai/gpt-5',
+    'openai/gpt-4o-2024-11-20',
     'gpt-5',
     'deepseek/deepseek-r1',
     'deepseek/deepseek-v3.2',
@@ -31,6 +32,8 @@ NATIVE_REASONING_MODELS = {
     'qwen3-235b-a22b-thinking',
     'qwen/qwen3.5-397b-a17b',
     'qwen3.5:cloud',
+    'openrouter/hunter-alpha',
+    'xiaomi/mimo-v2-flash',
     'x-ai/grok-4.1-fast',
     'grok-4.20-experimental-beta-0304-reasoning',
     # GLM 4.7 (Z-AI) - has built-in reasoning and tool calling

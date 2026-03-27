@@ -74,10 +74,10 @@ TWILIO_PHONE_NUMBER=+15551234567
 
 # Webhook base URL (your public URL that Twilio can reach)
 # This should be your CloudFlare tunnel, ngrok URL, or public domain
-TWILIO_WEBHOOK_BASE_URL=https://relay.aicara.ai
+TWILIO_WEBHOOK_BASE_URL=https://your_url_here
 
 # Optional: Status callback URL (defaults to webhook base URL + path)
-# TWILIO_STATUS_CALLBACK_URL=https://relay.aicara.ai/phone/voice/status
+# TWILIO_STATUS_CALLBACK_URL=https://your_url_here/phone/voice/status
 ```
 
 ---
@@ -101,7 +101,7 @@ In the Twilio Console:
    - Method: **HTTP POST**
 6. Click **Save configuration**
 
-Replace `your-domain.com` with your actual public URL (e.g., `relay.aicara.ai`).
+Replace `your-domain.com` with your actual public URL (e.g., `your_url_here`).
 
 ---
 
