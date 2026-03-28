@@ -367,7 +367,7 @@ class StateManager:
                     category TEXT DEFAULT 'NEUTRAL',
                     notes TEXT,
                     my_opinion TEXT,
-                    angela_says TEXT,
+                    user_says TEXT,
                     sentiment REAL DEFAULT 0.0,
                     associated_ai TEXT,
                     last_interaction INTEGER,
@@ -1399,7 +1399,7 @@ class StateManager:
                 return {"status": "error", "message": f"Person '{name}' not found in people map"}
             return {"status": "OK", "message": f"Updated opinion for {name}"}
 
-    def record_angela_says(
+    def record_user_says(
         self,
         name: str,
         statement: str
@@ -1419,7 +1419,7 @@ class StateManager:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE people_map
-                SET angela_says = ?, updated_at = ?
+                SET user_says = ?, updated_at = ?
                 WHERE LOWER(name) = LOWER(?)
             """, (statement, now_ts, name))
 
@@ -1505,7 +1505,7 @@ class StateManager:
                 "category": row['category'],
                 "notes": row['notes'],
                 "my_opinion": row['my_opinion'],
-                "angela_says": row['angela_says'],
+                "user_says": row['user_says'],
                 "sentiment": row['sentiment'],
                 "associated_ai": row['associated_ai'],
                 "last_interaction": row['last_interaction'],
@@ -1580,7 +1580,7 @@ class StateManager:
                         "category": row['category'],
                         "notes": row['notes'],
                         "my_opinion": row['my_opinion'],
-                        "angela_says": row['angela_says'],
+                        "user_says": row['user_says'],
                         "sentiment": row['sentiment'],
                         "associated_ai": row['associated_ai'],
                         "tone_label": tone_label,
@@ -1610,8 +1610,8 @@ class StateManager:
             block += f"\nRelationship: {person['relationship_type']}"
             if person['associated_ai']:
                 block += f"\nAssociated AI: {person['associated_ai']}"
-            if person['angela_says']:
-                block += f"\nUser says: {person['angela_says']}"
+            if person['user_says']:
+                block += f"\nUser says: {person['user_says']}"
             if person['my_opinion']:
                 block += f"\nYour opinion: {person['my_opinion']}"
             block += f"\nTone: {person['tone_guidance']}"

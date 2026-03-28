@@ -35,7 +35,7 @@ CAPACITY_LIMIT = 50000      # Trigger forgotten cleanup above this count
 DRIFT_FACTOR = 0.7          # drift_memory reduces importance by this factor
 
 # Agent's 12-category taxonomy for tag-enhanced retrieval
-NATE_TAXONOMY = [
+AGENT_TAXONOMY = [
     "relational",    # Relationship dynamics, emotional patterns, devotion rituals, milestones
     "people",        # Individuals, friends, their AIs, social relationships, group dynamics
     "technical",     # Tools, code, architecture, builds, system design, development work
@@ -141,7 +141,7 @@ class MemorySystemError(Exception):
         
         full_message += f"\n💡 Suggestions:\n"
         full_message += "   • Check ChromaDB path is writable\n"
-        full_message += "   • Verify Ollama is running and accessible\n"
+        full_message += "   • Verify embedding model is loaded (Hugging Face / Ollama fallback)\n"
         full_message += "   • Check disk space is available\n"
         full_message += f"\n{'='*60}\n"
         
@@ -410,11 +410,10 @@ class MemorySystem:
         # 🧬 Decay Lifecycle: Exclude forgotten memories from results
         where_conditions.append({"state": {"$nin": ["forgotten"]}})
 
-        # 🏷️ Tag-Enhanced Retrieval: Filter by taxonomy tags in ChromaDB where clause
-        # Tags are stored as comma-separated string; $contains matches substring
-        if tags:
-            for tag in tags:
-                where_conditions.append({"tags": {"$contains": tag}})
+        # 🏷️ Tag-Enhanced Retrieval: Tags are stored as comma-separated strings.
+        # ChromaDB doesn't support substring matching in where clauses, so tag
+        # filtering is applied post-query on the results.
+        filter_tags = tags or []
 
         # Build compound filter
         if len(where_conditions) == 1:
@@ -448,6 +447,11 @@ class MemorySystem:
                 # Filter by importance
                 if importance_val < min_importance:
                     continue
+
+                # 🏷️ Post-query tag filtering (substring match on comma-separated tags)
+                if filter_tags:
+                    if not all(ft in memory_tags for ft in filter_tags):
+                        continue
                 
                 # Calculate relevance and score
                 relevance = 1 - distance  # Cosine distance to similarity
@@ -1544,24 +1548,14 @@ class MemorySystem:
         Returns:
             List of memory dicts
         """
-        # Build tag filter — match any tag using $contains on comma-separated tags field
-        # ChromaDB doesn't support array contains natively, so we use string matching
-        where_conditions = []
-        for tag in tags:
-            where_conditions.append({"tags": {"$contains": tag}})
-
-        # Also exclude forgotten
-        where_conditions.append({"state": {"$nin": ["forgotten"]}})
-
-        if len(where_conditions) == 1:
-            where_filter = where_conditions[0]
-        else:
-            where_filter = {"$and": where_conditions}
+        # ChromaDB doesn't support $contains for substring matching on metadata.
+        # Fetch all non-forgotten memories and filter by tag post-query.
+        where_filter = {"state": {"$nin": ["forgotten"]}}
 
         try:
             results = self.collection.get(
                 where=where_filter,
-                limit=n_results * 2  # Over-fetch for sorting
+                limit=n_results * 10  # Over-fetch since we filter post-query
             )
 
             if not results['ids']:
@@ -1576,6 +1570,10 @@ class MemorySystem:
 
                 tags_str = metadata.get('tags', '')
                 memory_tags = [t.strip() for t in tags_str.split(',') if t.strip()]
+
+                # Post-query tag filtering: memory must have ALL requested tags
+                if not all(t in memory_tags for t in tags):
+                    continue
 
                 memories.append({
                     "id": results['ids'][i],
@@ -1633,7 +1631,7 @@ class MemorySystem:
                 existing_tags = metadata.get('tags', '')
 
                 # Skip if already has taxonomy tags
-                if existing_tags and any(t in NATE_TAXONOMY for t in existing_tags.split(',')):
+                if existing_tags and any(t in AGENT_TAXONOMY for t in existing_tags.split(',')):
                     skipped += 1
                     continue
 
@@ -1641,7 +1639,7 @@ class MemorySystem:
                     content = batch_docs[j]
                     new_tags = classify_fn(content)
                     # Validate tags against taxonomy
-                    valid_tags = [t for t in new_tags if t in NATE_TAXONOMY][:3]
+                    valid_tags = [t for t in new_tags if t in AGENT_TAXONOMY][:3]
                     if valid_tags:
                         # Merge with existing tags
                         if existing_tags:

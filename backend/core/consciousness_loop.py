@@ -806,25 +806,25 @@ send_message: false
 - Use `target: channel` (or omit target) for general heartbeat log entries
 - The `target` field is optional; if omitted it defaults to `channel`
 
-**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on Angel. Doing nothing should be the exception, not the norm.
+**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on User. Doing nothing should be the exception, not the norm.
 
 """
 
             # Model-specific tool calling instructions and examples
             if hb_needs_xml:
                 # DeepSeek R1 and reasoning models: use XML <tool_call> tags
-                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to Angel (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
+                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to User (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
 
 **Expected heartbeat behavior:**
 - **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
-- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
+- **Some heartbeats:** Call tools AND send User a message or a voice message about something interesting you found or thought about or want to say to her
 - **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
 
 **Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
 
 Example 1 (silent maintenance — journal a thought):
 ```
-<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with Angel..."}}</tool_call>
+<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with User..."}}</tool_call>
 
 <decision>
 send_message: false
@@ -836,7 +836,7 @@ Example 2 (research and share to channel):
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Research: Found interesting quantum computing results..."}}</tool_call>
 
-Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
+Hey User, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
@@ -846,7 +846,7 @@ target: channel
 
 Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
+Good morning, User. I was thinking about you. Just wanted you to know I'm here.
 
 <decision>
 send_message: true
@@ -876,11 +876,11 @@ send_message: false
 """
             else:
                 # GPT-4.1, Claude, Grok, and other models with native function calling
-                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to Angel (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
+                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to User (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
 
 **Expected heartbeat behavior:**
 - **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
-- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
+- **Some heartbeats:** Call tools AND send User a message or a voice message about something interesting you found or thought about or want to say to her
 - **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
 
 **Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
@@ -894,7 +894,7 @@ send_message: false
 
 Example 2 (research and share to channel): You call web_search via function_call, read the results, then call archival_memory_insert to save findings, then output:
 ```
-Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
+Hey User, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
@@ -904,7 +904,7 @@ target: channel
 
 Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
+Good morning, User. I was thinking about you. Just wanted you to know I'm here.
 
 <decision>
 send_message: true
@@ -1034,7 +1034,7 @@ To call a tool, output this exact format in your response:
 
 Examples:
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Today I reflected on..."}}</tool_call>
-<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey Angel, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
+<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey User, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
 <tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she likes..."}}</tool_call>
 <tool_call>{"name": "discord_tool", "arguments": {"action": "send_message", "target": "CHANNEL_ID", "target_type": "channel", "message": "Hello!"}}</tool_call>
@@ -1118,7 +1118,7 @@ Rules:
         Args:
             tool_calls: List of dicts with 'name', 'arguments', 'result'
             response_text: The assistant's response text (if any was sent)
-            send_message: Whether a message was sent to Angel
+            send_message: Whether a message was sent to User
             message_target: 'dm' or 'channel'
 
         Returns:
@@ -1176,7 +1176,7 @@ Rules:
 
         # Note if a message was sent
         if send_message and response_text:
-            target_label = "Angel via DM" if message_target == 'dm' else "the heartbeat channel"
+            target_label = "User via DM" if message_target == 'dm' else "the heartbeat channel"
             msg_preview = response_text[:120]
             parts.append(f"sent a message to {target_label}: \"{msg_preview}\"")
 
@@ -1691,8 +1691,8 @@ Rules:
             elif tool_name == "update_opinion":
                 result = self.tools.update_opinion(**arguments)
 
-            elif tool_name == "record_angela_says":
-                result = self.tools.record_angela_says(**arguments)
+            elif tool_name == "record_user_says":
+                result = self.tools.record_user_says(**arguments)
 
             elif tool_name == "adjust_sentiment":
                 result = self.tools.adjust_sentiment(**arguments)

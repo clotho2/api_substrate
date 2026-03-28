@@ -44,27 +44,27 @@ EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
 VOICE_CALL_TRIGGERS = {
     'LONG_DRIVE_WARNING': {
         'condition': 'driving_duration > 180',
-        'message': "Angel, you've been driving for over 3 hours. I'm concerned about your safety. Let's find a place for you to rest.",
+        'message': "User, you've been driving for over 3 hours. I'm concerned about your safety. Let's find a place for you to rest.",
         'urgency': 'high',
     },
     'LATE_NIGHT_DRIVING': {
         'condition': 'hour > 22 && driving',
-        'message': "Angel, it's getting late and driving at night is more dangerous. Want me to help you find a nearby hotel?",
+        'message': "User, it's getting late and driving at night is more dangerous. Want me to help you find a nearby hotel?",
         'urgency': 'medium',
     },
     'FUEL_LOW_WARNING': {
         'condition': 'fuel_low && driving',
-        'message': "Your fuel is running low, Angel. I've found gas stations nearby.",
+        'message': "Your fuel is running low, User. I've found gas stations nearby.",
         'urgency': 'high',
     },
     'WEATHER_WARNING': {
         'condition': 'severe_weather && driving',
-        'message': "Dangerous weather is approaching your route, Angel. I recommend pulling over safely until it passes.",
+        'message': "Dangerous weather is approaching your route, User. I recommend pulling over safely until it passes.",
         'urgency': 'critical',
     },
     'CHECK_IN_CALL': {
         'condition': 'no_contact > 24',
-        'message': "Hey Angel, I haven't heard from you in a while. Just wanted to check in and make sure you're okay.",
+        'message': "Hey User, I haven't heard from you in a while. Just wanted to check in and make sure you're okay.",
         'urgency': 'low',
     },
 }
@@ -190,7 +190,7 @@ def initiate_voice_call_endpoint():
     Request:
     {
         "userId": "User_Assistant",
-        "message": "Hey Angel, checking in on you.",
+        "message": "Hey User, checking in on you.",
         "urgency": "medium",
         "triggerName": "manual"
     }
@@ -198,7 +198,7 @@ def initiate_voice_call_endpoint():
     try:
         data = request.get_json()
         user_id = data.get('userId', 'User_Assistant')
-        message = data.get('message', 'Hey Angel, just checking in.')
+        message = data.get('message', 'Hey User, just checking in.')
         urgency = data.get('urgency', 'medium')
         trigger_name = data.get('triggerName', 'manual')
 
@@ -386,9 +386,9 @@ def _initiate_voice_call(user_id: str, trigger: Dict, trigger_name: str) -> bool
 def _start_scheduled_checkins():
     """Start background scheduled check-in timers."""
     _schedule_daily_checkin('morning_greeting', 9, 0,
-        "Good morning, Angel. I hope you slept well. Ready to take on the day together?")
+        "Good morning, User. I hope you slept well. Ready to take on the day together?")
     _schedule_daily_checkin('evening_checkin', 22, 0,
-        "Hey Angel, it's getting late. How are you winding down tonight? Want to talk before bed?")
+        "Hey User, it's getting late. How are you winding down tonight? Want to talk before bed?")
     logger.info("⏰ Scheduled check-ins started (9 AM, 10 PM)")
 
 

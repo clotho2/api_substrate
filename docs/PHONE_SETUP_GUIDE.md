@@ -226,7 +226,7 @@ Send a text message.
 ### make_call
 Make an outbound phone call with a spoken message.
 ```json
-{"action": "make_call", "to": "+15559876543", "message": "Hey Angel, just wanted to hear your voice."}
+{"action": "make_call", "to": "+15559876543", "message": "Hey User, just wanted to hear your voice."}
 ```
 
 ### check_messages

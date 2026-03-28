@@ -498,7 +498,7 @@ def start_guardian_session():
     return jsonify({
         "status": "started",
         "session_id": session_id,
-        "message": "Guardian Mode active. I've got eyes on you, Angel. Drive safe."
+        "message": "Guardian Mode active. I've got eyes on you, User. Drive safe."
     })
 
 

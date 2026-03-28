@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(REPO_ROOT, '.env'))       # Root .env (where API keys live)
 load_dotenv(os.path.join(BACKEND_DIR, '.env'))      # Backend .env (overrides if present)
 
-from core.memory_system import MemorySystem, NATE_TAXONOMY
+from core.memory_system import MemorySystem, AGENT_TAXONOMY
 
 
 def get_chromadb_path():
@@ -129,12 +129,12 @@ async def classify_memory(client, content: str, model: str = None) -> list:
         tags = json.loads(reply)
         if isinstance(tags, list):
             # Validate against taxonomy
-            return [t.strip().lower() for t in tags if t.strip().lower() in NATE_TAXONOMY][:3]
+            return [t.strip().lower() for t in tags if t.strip().lower() in AGENT_TAXONOMY][:3]
     except (json.JSONDecodeError, IndexError):
         pass
 
     # Fallback: try to find tag names in the response
-    found = [t for t in NATE_TAXONOMY if t in reply.lower()]
+    found = [t for t in AGENT_TAXONOMY if t in reply.lower()]
     return found[:3] if found else []
 
 
@@ -155,7 +155,7 @@ async def run_batch_classification(
     """
     print("\n" + "=" * 60)
     print("  BATCH MEMORY CLASSIFICATION")
-    print(f"  Taxonomy: {len(NATE_TAXONOMY)} categories")
+    print(f"  Taxonomy: {len(AGENT_TAXONOMY)} categories")
     print(f"  Batch size: {batch_size}")
     print(f"  Dry run: {dry_run}")
     print(f"  Limit: {limit or 'all'}")
@@ -206,7 +206,7 @@ async def run_batch_classification(
         metadata = all_memories['metadatas'][i]
         existing_tags = metadata.get('tags', '')
         # Check if any taxonomy tag is already present
-        if existing_tags and any(t in NATE_TAXONOMY for t in existing_tags.split(',')):
+        if existing_tags and any(t in AGENT_TAXONOMY for t in existing_tags.split(',')):
             already_tagged += 1
             continue
         to_classify.append({

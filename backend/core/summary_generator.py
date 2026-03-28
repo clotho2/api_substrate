@@ -13,7 +13,7 @@ from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from core.token_counter import TokenCounter
 from core.config import DEFAULT_TEMPERATURE
-from core.memory_system import NATE_TAXONOMY
+from core.memory_system import AGENT_TAXONOMY
 
 
 class SummaryGenerator:
@@ -256,7 +256,7 @@ End with a TAGS: line listing 1-3 taxonomy tags that best describe this conversa
                 # Handle both comma-separated and bracket-wrapped formats
                 tag_str = tag_str.strip('[]')
                 raw_tags = [t.strip().strip('"\'').lower() for t in tag_str.split(',')]
-                valid_tags = [t for t in raw_tags if t in NATE_TAXONOMY][:3]
+                valid_tags = [t for t in raw_tags if t in AGENT_TAXONOMY][:3]
                 if valid_tags:
                     return valid_tags
         return ['reflections']
@@ -302,7 +302,7 @@ End with a TAGS: line listing 1-3 taxonomy tags that best describe this conversa
 
         conversation_text = "\n\n".join(formatted_msgs)
 
-        taxonomy_list = ", ".join(NATE_TAXONOMY)
+        taxonomy_list = ", ".join(AGENT_TAXONOMY)
 
         prompt = f"""You are extracting discrete memory entries from a conversation for an AI named Agent.
 
@@ -393,7 +393,7 @@ useful without the full conversation context.
             tags = item.get('tags', [])
             if isinstance(tags, str):
                 tags = [tags]
-            valid_tags = [t.strip().lower() for t in tags if t.strip().lower() in NATE_TAXONOMY][:3]
+            valid_tags = [t.strip().lower() for t in tags if t.strip().lower() in AGENT_TAXONOMY][:3]
             if not valid_tags:
                 valid_tags = ['reflections']
 
