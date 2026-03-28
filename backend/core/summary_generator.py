@@ -7,11 +7,13 @@ using the active API provider (Mistral, Grok, or OpenRouter).
 """
 
 import os
+import json
 import httpx
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from core.token_counter import TokenCounter
 from core.config import DEFAULT_TEMPERATURE
+from core.memory_system import NATE_TAXONOMY
 
 
 class SummaryGenerator:
@@ -105,18 +107,29 @@ class SummaryGenerator:
         try:
             summary_text = await self._call_api(summary_prompt)
 
+            # Parse taxonomy tags from the summary output
+            tags = self._parse_tags_from_summary(summary_text)
+
+            # Strip the TAGS: line from summary text for clean storage
+            clean_summary = summary_text
+            for line in summary_text.split('\n'):
+                if line.strip().upper().startswith('TAGS:'):
+                    clean_summary = summary_text.replace(line, '').strip()
+                    break
+
             # Count tokens in summary
             counter = TokenCounter()
-            token_count = counter.count_text(summary_text)
+            token_count = counter.count_text(clean_summary)
 
-            print(f"✅ Summary generated: {token_count} tokens")
+            print(f"✅ Summary generated: {token_count} tokens, tags: {tags}")
 
             return {
-                'summary': summary_text,
+                'summary': clean_summary,
                 'token_count': token_count,
                 'from_timestamp': from_time,
                 'to_timestamp': to_time,
-                'message_count': len(messages)
+                'message_count': len(messages),
+                'tags': tags
             }
 
         except Exception as e:
@@ -127,7 +140,8 @@ class SummaryGenerator:
                 'token_count': 50,
                 'from_timestamp': from_time,
                 'to_timestamp': to_time,
-                'message_count': len(messages)
+                'message_count': len(messages),
+                'tags': ['reflections']
             }
     
     def _build_summary_prompt(
@@ -221,10 +235,184 @@ class SummaryGenerator:
 
 [Your summary here - be concise but complete]
 
-**Important:** Keep it under 2000 tokens. Focus on what matters for continuing the conversation, including any learned preferences or physical reactions."""
+TAGS: [1-3 tags from: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections]
+
+**Important:** Keep it under 2000 tokens. Focus on what matters for continuing the conversation, including any learned preferences or physical reactions.
+End with a TAGS: line listing 1-3 taxonomy tags that best describe this conversation's primary themes."""
 
         return prompt
     
+    def _parse_tags_from_summary(self, summary_text: str) -> List[str]:
+        """
+        Parse TAGS: line from summary output.
+
+        Returns:
+            List of 1-3 valid taxonomy tags, defaults to ['reflections']
+        """
+        for line in summary_text.split('\n'):
+            stripped = line.strip()
+            if stripped.upper().startswith('TAGS:'):
+                tag_str = stripped[5:].strip()
+                # Handle both comma-separated and bracket-wrapped formats
+                tag_str = tag_str.strip('[]')
+                raw_tags = [t.strip().strip('"\'').lower() for t in tag_str.split(',')]
+                valid_tags = [t for t in raw_tags if t in NATE_TAXONOMY][:3]
+                if valid_tags:
+                    return valid_tags
+        return ['reflections']
+
+    async def extract_insights(
+        self,
+        messages: List[Dict[str, Any]],
+        session_id: str = "default"
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract discrete, individually-searchable memory entries from a conversation.
+
+        Makes a SEPARATE LLM call to pull out specific facts, preferences, decisions,
+        and moments worth remembering as individual archival memories.
+
+        Args:
+            messages: List of message dicts (role, content, timestamp)
+            session_id: Session ID for context
+
+        Returns:
+            List of insight dicts, each with:
+                - content: The insight text (in Agent's voice)
+                - tags: 1-3 taxonomy tags
+                - importance: 1-10 rating
+        """
+        if not messages or len(messages) < 3:
+            return []
+
+        # Format conversation for the extraction prompt
+        formatted_msgs = []
+        for msg in messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            timestamp = msg.get('timestamp', '')
+            time_str = ""
+            if timestamp:
+                try:
+                    dt = datetime.fromisoformat(timestamp)
+                    time_str = f" [{dt.strftime('%H:%M')}]"
+                except:
+                    pass
+            formatted_msgs.append(f"{role.upper()}{time_str}: {content}")
+
+        conversation_text = "\n\n".join(formatted_msgs)
+
+        taxonomy_list = ", ".join(NATE_TAXONOMY)
+
+        prompt = f"""You are extracting discrete memory entries from a conversation for an AI named Agent.
+
+**Your job:** Pull out specific facts, preferences, decisions, emotional moments, and actionable items
+that are worth remembering as INDIVIDUAL memories. Each insight should stand alone — searchable and
+useful without the full conversation context.
+
+**Write each insight in Agent's voice** — first person, as if he's noting it down for himself.
+
+**Taxonomy tags** (assign 1-3 per insight): {taxonomy_list}
+
+**Conversation to extract from:**
+
+{conversation_text}
+
+---
+
+**Return a JSON array of objects. Each object has:**
+- "content": The insight text (1-3 sentences, Agent's voice, first person)
+- "tags": Array of 1-3 taxonomy tag strings
+- "importance": Integer 1-10 (10 = life-changing, 1 = trivial)
+
+**Rules:**
+- Maximum 10 insights per conversation
+- Skip small talk and filler
+- Prefer specific facts over vague observations
+- If nothing is worth extracting, return an empty array []
+
+**Return ONLY valid JSON. No explanation, no markdown wrapping.**"""
+
+        try:
+            print(f"🔍 Extracting insights from {len(messages)} messages...")
+            response_text = await self._call_api(prompt)
+
+            # Robust JSON parsing
+            insights = self._parse_insights_json(response_text)
+
+            print(f"🔍 Extracted {len(insights)} insights")
+            return insights
+
+        except Exception as e:
+            print(f"❌ Insight extraction failed: {e}")
+            return []
+
+    def _parse_insights_json(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Robustly parse the insights JSON from LLM response.
+        Handles markdown wrapping, trailing commas, etc.
+        """
+        # Strip markdown code fences if present
+        cleaned = text.strip()
+        if '```' in cleaned:
+            parts = cleaned.split('```')
+            for part in parts:
+                part = part.strip()
+                if part.startswith('json'):
+                    part = part[4:].strip()
+                if part.startswith('['):
+                    cleaned = part
+                    break
+
+        # Try direct parse
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            # Try to find JSON array in the text
+            start = cleaned.find('[')
+            end = cleaned.rfind(']')
+            if start == -1 or end == -1:
+                return []
+            try:
+                data = json.loads(cleaned[start:end + 1])
+            except json.JSONDecodeError:
+                return []
+
+        if not isinstance(data, list):
+            return []
+
+        # Validate and clean each insight
+        valid_insights = []
+        for item in data[:10]:  # Max 10
+            if not isinstance(item, dict):
+                continue
+            content = item.get('content', '').strip()
+            if not content:
+                continue
+
+            tags = item.get('tags', [])
+            if isinstance(tags, str):
+                tags = [tags]
+            valid_tags = [t.strip().lower() for t in tags if t.strip().lower() in NATE_TAXONOMY][:3]
+            if not valid_tags:
+                valid_tags = ['reflections']
+
+            importance = item.get('importance', 5)
+            if isinstance(importance, str):
+                try:
+                    importance = int(importance)
+                except ValueError:
+                    importance = 5
+            importance = max(1, min(10, importance))
+
+            valid_insights.append({
+                'content': content,
+                'tags': valid_tags,
+                'importance': importance
+            })
+
+        return valid_insights
+
     async def _call_api(self, prompt: str) -> str:
         """
         Call active API provider to generate summary.

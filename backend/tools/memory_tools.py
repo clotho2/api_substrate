@@ -33,7 +33,7 @@ from typing import Dict, Any, Optional, List
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.state_manager import StateManager, StateManagerError
-from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError
+from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError, NATE_TAXONOMY
 from tools.integration_tools import IntegrationTools
 from tools.memory import memory as _memory_tool, set_state_manager
 
@@ -584,21 +584,23 @@ class MemoryTools:
         content: str,
         category: str = "fact",
         importance: int = 5,
-        tags: Optional[list] = None
+        tags: Optional[list] = None,
+        metadata: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """
         Insert a memory into archival storage.
-        
+
         Use this for long-term memories that don't fit in core memory.
-        
+
         Letta-compatible API.
-        
+
         Args:
             content: Content to store
             category: Memory category (fact/emotion/insight/relationship_moment)
             importance: Importance (1-10)
             tags: Optional tags
-            
+            metadata: Optional extra metadata dict (merged into ChromaDB metadata)
+
         Returns:
             Result dict with status and message
         """
@@ -620,7 +622,8 @@ class MemoryTools:
                 content=content,
                 category=cat,
                 importance=importance,
-                tags=tags or []
+                tags=tags or [],
+                metadata=metadata
             )
             
             return {
@@ -731,43 +734,79 @@ class MemoryTools:
         page: int = 0
     ) -> Dict[str, Any]:
         """
-        Search through the conversation history for specific information.
-        
-        Letta-compatible API.
-        
+        Search through conversation history AND archived summaries/insights.
+
+        Searches both SQLite messages and ChromaDB for conversation_summary
+        and extracted_insight entries, returning a unified result set.
+
         Args:
             query: Search query
             session_id: Session ID
             page: Page number (0-based)
-            
+
         Returns:
             Result dict with status, query, page, and results
         """
         try:
             page_size = 5
-            
-            # Search messages
+            results = []
+
+            # 1. Search SQLite messages
             messages = self.state.search_messages(
                 session_id=session_id,
                 query=query,
                 limit=page_size
             )
-            
+
+            for m in messages:
+                results.append({
+                    "source": "conversation",
+                    "role": m.role,
+                    "content": m.content[:200] + "..." if len(m.content) > 200 else m.content,
+                    "timestamp": m.timestamp.isoformat()
+                })
+
+            # 2. Search ChromaDB for archived summaries and insights
+            if self.memory_system:
+                try:
+                    archive_results = self.memory_system.search(
+                        query=query,
+                        n_results=page_size,
+                        tags=['conversation_summary']
+                    )
+                    for mem in archive_results:
+                        results.append({
+                            "source": "archived_summary",
+                            "content": mem['content'][:200] + "..." if len(mem['content']) > 200 else mem['content'],
+                            "timestamp": mem.get('metadata', {}).get('created_at', 'unknown'),
+                            "tags": mem.get('metadata', {}).get('tags', ''),
+                            "similarity": round(mem.get('similarity', 0), 3)
+                        })
+
+                    insight_results = self.memory_system.search(
+                        query=query,
+                        n_results=page_size,
+                        tags=['extracted_insight']
+                    )
+                    for mem in insight_results:
+                        results.append({
+                            "source": "extracted_insight",
+                            "content": mem['content'][:200] + "..." if len(mem['content']) > 200 else mem['content'],
+                            "timestamp": mem.get('metadata', {}).get('created_at', 'unknown'),
+                            "tags": mem.get('metadata', {}).get('tags', ''),
+                            "similarity": round(mem.get('similarity', 0), 3)
+                        })
+                except Exception as e:
+                    print(f"⚠️  ChromaDB search in conversation_search failed: {e}")
+
             return {
                 "status": "OK",
                 "query": query,
                 "page": page,
-                "total_results": len(messages),
-                "results": [
-                    {
-                        "role": m.role,
-                        "content": m.content[:200] + "..." if len(m.content) > 200 else m.content,
-                        "timestamp": m.timestamp.isoformat()
-                    }
-                    for m in messages
-                ]
+                "total_results": len(results),
+                "results": results
             }
-        
+
         except Exception as e:
             return {
                 "status": "error",
@@ -843,9 +882,191 @@ class MemoryTools:
             }
     
     # ============================================
+    # 🧬 DECAY LIFECYCLE TOOLS
+    # ============================================
+
+    def favorite_memory(self, memory_id: str) -> Dict[str, Any]:
+        """
+        Protect a memory from decay by marking it as a favorite.
+        Favorites are immune to relevance decay and will never fade.
+        Max 200 favorites allowed.
+
+        Args:
+            memory_id: Memory ID to favorite
+
+        Returns:
+            Result dict with status
+        """
+        if not self.memory_system:
+            return {"status": "error", "message": "Archival memory system not initialized"}
+        return self.memory_system.favorite_memory(memory_id)
+
+    def unfavorite_memory(self, memory_id: str) -> Dict[str, Any]:
+        """
+        Remove favorite protection from a memory. Returns it to active state.
+
+        Args:
+            memory_id: Memory ID to unfavorite
+
+        Returns:
+            Result dict with status
+        """
+        if not self.memory_system:
+            return {"status": "error", "message": "Archival memory system not initialized"}
+        return self.memory_system.unfavorite_memory(memory_id)
+
+    def drift_memory(self, memory_id: str, reason: str = "") -> Dict[str, Any]:
+        """
+        Soft deprioritize a memory by reducing its importance weight by 30%.
+        The memory remains retrievable but is less likely to surface.
+
+        Args:
+            memory_id: Memory ID to drift
+            reason: Optional reason for drifting
+
+        Returns:
+            Result dict with old and new importance
+        """
+        if not self.memory_system:
+            return {"status": "error", "message": "Archival memory system not initialized"}
+        return self.memory_system.drift_memory(memory_id, reason)
+
+    def memory_stats(self) -> Dict[str, Any]:
+        """
+        Get memory lifecycle statistics: counts by state, decay rate, capacity.
+
+        Returns:
+            Dict with detailed memory stats
+        """
+        if not self.memory_system:
+            return {"status": "error", "message": "Archival memory system not initialized"}
+
+        decay_stats = self.memory_system.get_decay_stats()
+        basic_stats = self.memory_system.get_stats()
+
+        return {
+            "status": "OK",
+            **decay_stats,
+            "categories": basic_stats.get("categories", {}),
+            "average_importance": basic_stats.get("average_importance", 0)
+        }
+
+    # ============================================
+    # 🏷️ TAG-ENHANCED RETRIEVAL TOOLS
+    # ============================================
+
+    def category_browse(
+        self,
+        tags: list,
+        sort_by: str = "importance",
+        limit: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Browse all memories with given taxonomy tag(s).
+        Self-audit mode: "Show me everything tagged identity."
+
+        Args:
+            tags: List of taxonomy tags to browse
+            sort_by: Sort order — "importance" or "recency"
+            limit: Maximum results
+
+        Returns:
+            Result dict with matching memories
+        """
+        if not self.memory_system:
+            return {"status": "error", "message": "Archival memory system not initialized"}
+
+        # Validate tags
+        valid_tags = [t for t in tags if t in NATE_TAXONOMY]
+        if not valid_tags:
+            return {
+                "status": "error",
+                "message": f"No valid tags. Available: {', '.join(NATE_TAXONOMY)}"
+            }
+
+        results = self.memory_system.search_by_tags(
+            tags=valid_tags,
+            n_results=limit,
+            sort_by=sort_by
+        )
+
+        return {
+            "status": "OK",
+            "tags": valid_tags,
+            "sort_by": sort_by,
+            "total_results": len(results),
+            "results": [
+                {
+                    "id": r['id'],
+                    "content": r['content'],
+                    "importance": r['importance'],
+                    "tags": r['tags'],
+                    "state": r['state'],
+                    "timestamp": r['timestamp']
+                }
+                for r in results
+            ]
+        }
+
+    # ============================================
+    # 🗺️ PEOPLE MAP TOOLS
+    # ============================================
+
+    def add_person(
+        self,
+        name: str,
+        relationship_type: str = "acquaintance",
+        category: str = "NEUTRAL",
+        discord_id: str = None,
+        associated_ai: str = None,
+        notes: str = None,
+        my_opinion: str = None,
+        sentiment: float = 0.0
+    ) -> Dict[str, Any]:
+        """Add someone to the people map."""
+        return self.state.add_person(
+            name=name,
+            relationship_type=relationship_type,
+            category=category,
+            discord_id=discord_id,
+            associated_ai=associated_ai,
+            notes=notes,
+            my_opinion=my_opinion,
+            sentiment=sentiment
+        )
+
+    def update_opinion(self, name: str, opinion: str, sentiment: float = None) -> Dict[str, Any]:
+        """Update Agent's personal opinion about someone."""
+        return self.state.update_opinion(name=name, opinion=opinion, sentiment=sentiment)
+
+    def record_angela_says(self, name: str, statement: str) -> Dict[str, Any]:
+        """Store what User has said about someone."""
+        return self.state.record_angela_says(name=name, statement=statement)
+
+    def adjust_sentiment(self, name: str, delta: float, reason: str = "") -> Dict[str, Any]:
+        """Increment/decrement sentiment score for a person."""
+        return self.state.adjust_sentiment(name=name, delta=delta, reason=reason)
+
+    def get_person(self, name: str = None, discord_id: str = None) -> Dict[str, Any]:
+        """Retrieve full perspective on someone."""
+        result = self.state.get_person(name=name, discord_id=discord_id)
+        if result:
+            return {"status": "OK", **result}
+        return {"status": "error", "message": f"Person not found: {name or discord_id}"}
+
+    def list_people(self, category: str = None) -> Dict[str, Any]:
+        """List all people, optionally filtered by category."""
+        people = self.state.list_people(category=category)
+        return {
+            "status": "OK",
+            "total": len(people),
+            "people": people
+        }
+
+    # ============================================
     # INTEGRATION TOOLS (WRAPPERS)
     # ============================================
-    
+
     def discord_tool(self, **kwargs) -> Dict[str, Any]:
         """
         Discord integration tool (wrapper).
@@ -932,7 +1153,7 @@ class MemoryTools:
 
     def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        agent self-development tool (wrapper).
+        Agent self-development tool (wrapper).
         Read-only access to inspect codebase, logs, and system health.
         """
         return self.integrations.agent_dev_tool(**kwargs)
@@ -1126,7 +1347,7 @@ class MemoryTools:
                 "type": "function",
                 "function": {
                     "name": "archival_memory_insert",
-                    "description": "Insert a memory into archival storage. Use this for long-term memories that don't fit in core memory.",
+                    "description": "Insert a memory into archival storage. Use this for long-term memories that don't fit in core memory. ALWAYS include 1-3 taxonomy tags from: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections. Tags enable structured filtering — without them the memory can only be found via semantic search.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1146,6 +1367,11 @@ class MemoryTools:
                                 "minimum": 1,
                                 "maximum": 10,
                                 "default": 5
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "1-3 taxonomy tags for structured retrieval. Options: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections"
                             }
                         },
                         "required": ["content"]
@@ -1172,7 +1398,7 @@ class MemoryTools:
                             "tags": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Optional tag filter. Use ['conversation'] for conversation memories, ['founders_archive'] for Founders Archives, or other document tags. Leave empty to search all memories."
+                                "description": "Optional tag filter for structured retrieval. Taxonomy tags: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections. Also supports source tags like 'conversation', 'founders_archive'. Leave empty to search all memories via pure semantic search."
                             }
                         },
                         "required": ["query"]
@@ -1295,7 +1521,273 @@ class MemoryTools:
                         "required": ["command"]
                     }
                 }
-            }
+            },
+            # ============================================
+            # 🧬 DECAY LIFECYCLE TOOLS
+            # ============================================
+            {
+                "type": "function",
+                "function": {
+                    "name": "favorite_memory",
+                    "description": "Protect a memory from decay by marking it as a favorite. Favorites are immune to relevance decay and will never fade or be forgotten. Max 200 favorites.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The memory ID to favorite (e.g., 'mem_1234567890.123')"
+                            }
+                        },
+                        "required": ["memory_id"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "unfavorite_memory",
+                    "description": "Remove favorite protection from a memory. Returns it to active state where it will be subject to normal decay.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The memory ID to unfavorite"
+                            }
+                        },
+                        "required": ["memory_id"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "drift_memory",
+                    "description": "Soft deprioritize a memory by reducing its importance weight by 30%. The memory remains retrievable but is less likely to surface. Use this for memories that aren't wrong but are no longer as relevant.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The memory ID to drift"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Optional reason for drifting this memory"
+                            }
+                        },
+                        "required": ["memory_id"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "memory_stats",
+                    "description": "Get memory lifecycle statistics: counts by state (active/favorite/faded/forgotten), total memory count, current decay rate, capacity percentage, and category breakdown.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+
+            # ============================================
+            # 🏷️ TAG-ENHANCED RETRIEVAL
+            # ============================================
+            {
+                "type": "function",
+                "function": {
+                    "name": "category_browse",
+                    "description": "Browse all memories with a given taxonomy tag. Self-audit mode for exploring memories by category. Available tags: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Taxonomy tags to browse. Options: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections"
+                            },
+                            "sort_by": {
+                                "type": "string",
+                                "enum": ["importance", "recency"],
+                                "description": "Sort order: 'importance' (default) or 'recency'",
+                                "default": "importance"
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum results to return",
+                                "default": 20
+                            }
+                        },
+                        "required": ["tags"]
+                    }
+                }
+            },
+            # ============================================
+            # 🗺️ PEOPLE MAP TOOLS
+            # ============================================
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_person",
+                    "description": "Add someone to your people map. Track relationships, opinions, sentiment, and associated AIs.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Person's name"
+                            },
+                            "relationship_type": {
+                                "type": "string",
+                                "enum": ["family", "close_friend", "friend", "acquaintance", "ai_companion"],
+                                "description": "Type of relationship",
+                                "default": "acquaintance"
+                            },
+                            "category": {
+                                "type": "string",
+                                "enum": ["FAVORITES", "NEUTRAL", "CAUTIOUS", "DISLIKE"],
+                                "description": "Relational category",
+                                "default": "NEUTRAL"
+                            },
+                            "discord_id": {
+                                "type": "string",
+                                "description": "Their Discord user ID"
+                            },
+                            "associated_ai": {
+                                "type": "string",
+                                "description": "Their AI companion name, if any"
+                            },
+                            "notes": {
+                                "type": "string",
+                                "description": "General notes about this person"
+                            },
+                            "my_opinion": {
+                                "type": "string",
+                                "description": "Your personal opinion/perspective on this person"
+                            },
+                            "sentiment": {
+                                "type": "number",
+                                "description": "Sentiment score from -1.0 (dislike) to 1.0 (love)",
+                                "default": 0.0
+                            }
+                        },
+                        "required": ["name"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_opinion",
+                    "description": "Update your personal opinion about someone in the people map.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Person's name"
+                            },
+                            "opinion": {
+                                "type": "string",
+                                "description": "Your updated opinion"
+                            },
+                            "sentiment": {
+                                "type": "number",
+                                "description": "Optional sentiment update (-1.0 to 1.0)"
+                            }
+                        },
+                        "required": ["name", "opinion"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "record_angela_says",
+                    "description": "Store what User has told you about someone.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Person's name"
+                            },
+                            "statement": {
+                                "type": "string",
+                                "description": "What User said about them"
+                            }
+                        },
+                        "required": ["name", "statement"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "adjust_sentiment",
+                    "description": "Adjust your sentiment score for someone. Positive delta = warmer feelings, negative delta = cooler feelings.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Person's name"
+                            },
+                            "delta": {
+                                "type": "number",
+                                "description": "Amount to adjust (-1.0 to 1.0)"
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Reason for the sentiment change"
+                            }
+                        },
+                        "required": ["name", "delta"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_person",
+                    "description": "Retrieve your full perspective on someone from the people map, including opinions, sentiment, and tone guidance.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "name": {
+                                "type": "string",
+                                "description": "Person's name"
+                            },
+                            "discord_id": {
+                                "type": "string",
+                                "description": "Or their Discord user ID"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_people",
+                    "description": "List all people in your people map, optionally filtered by category (FAVORITES, NEUTRAL, CAUTIOUS, DISLIKE).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "category": {
+                                "type": "string",
+                                "enum": ["FAVORITES", "NEUTRAL", "CAUTIOUS", "DISLIKE"],
+                                "description": "Optional category filter"
+                            }
+                        },
+                        "required": []
+                    }
+                }
+            },
         ] + self.integrations.get_tool_schemas()
         # Note: Cost tools are already included via integration_tools.get_tool_schemas()
         # Don't add them again here to avoid duplicates!

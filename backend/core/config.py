@@ -9,6 +9,16 @@ import os
 
 
 # ============================================
+# HEBBIAN ASSOCIATION SETTINGS
+# ============================================
+# Kill switch: set HEBBIAN_ENABLED=false in .env to disable without code change
+HEBBIAN_ENABLED = os.environ.get('HEBBIAN_ENABLED', 'true').lower() == 'true'
+HEBBIAN_MAX_ADDITIONS = int(os.environ.get('HEBBIAN_MAX_ADDITIONS', '5'))
+HEBBIAN_MIN_STRENGTH = float(os.environ.get('HEBBIAN_MIN_STRENGTH', '0.3'))
+HEBBIAN_MAX_PER_SEED = int(os.environ.get('HEBBIAN_MAX_PER_SEED', '3'))
+
+
+# ============================================
 # OLLAMA HELPERS (must be defined before get_default_model)
 # ============================================
 

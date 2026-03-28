@@ -11,23 +11,23 @@ This tool combines core Discord functionality into one powerful tool:
 
 ADVANCED TIME FILTERING:
 ------------------------
-✅ Heute zwischen 12-13 Uhr: start_time="12:00", end_time="13:00"
-✅ Gestern zwischen X-Y: start_time="yesterday 14:00", end_time="yesterday 16:00"
-✅ Datum X zwischen Zeit Y-Z: start_time="2024-01-15 09:00", end_time="2024-01-15 17:00"
-✅ Letzter Donnerstag (ganzer Tag): time_filter="last_thursday"
-✅ Letzter Donnerstag 10-12 Uhr: time_filter="last_thursday", start_time="10:00", end_time="12:00"
-✅ Keyword-Suche: search_keywords="bug error deployment"
-✅ Kombiniert: Wochentag + Zeitraum + Keywords möglich!
+✅ Today between 12-13: start_time="12:00", end_time="13:00"
+✅ Yesterday between X-Y: start_time="yesterday 14:00", end_time="yesterday 16:00"
+✅ Date X between time Y-Z: start_time="2024-01-15 09:00", end_time="2024-01-15 17:00"
+✅ Last Thursday (whole day): time_filter="last_thursday"
+✅ Last Thursday 10-12: time_filter="last_thursday", start_time="10:00", end_time="12:00"
+✅ Keyword search: search_keywords="bug error deployment"
+✅ Combined: Weekday + time range + keywords supported!
 
 SMART PAGINATION & RESULT LIMITS:
 ----------------------------------
-✅ Durchsucht automatisch die GESAMTE Message-History (bis 5000 Messages zurück)
-✅ Stoppt intelligent wenn Zeitraum erreicht ist
-✅ Gibt NUR Messages im gewählten Zeitraum zurück
-✅ Findet auch Messages von vor Tagen/Wochen - selbst in sehr aktiven Chats!
-✅ Effizient: Holt nur so viele Messages wie nötig
-⚠️  Keyword-Suche: Max 10 Ergebnisse (verhindert Overload, zeigt neueste zuerst)
-💡 Best Practice: Kombiniere Keywords MIT Zeitfiltern für präzise Ergebnisse!
+✅ Automatically searches the ENTIRE message history (up to 5000 messages back)
+✅ Stops intelligently when time range is reached
+✅ Returns ONLY messages in the selected time range
+✅ Finds messages from days/weeks ago - even in very active chats!
+✅ Efficient: Fetches only as many messages as needed
+⚠️  Keyword search: Max 10 results (prevents overload, shows newest first)
+💡 Best practice: Combine keywords WITH time filters for precise results!
 
 USAGE EXAMPLES:
 ---------------

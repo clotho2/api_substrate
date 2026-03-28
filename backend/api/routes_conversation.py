@@ -254,23 +254,19 @@ def trigger_summary(session_id='default'):
             from tools.memory_tools import MemoryTools
             memory_tools = MemoryTools(_state_manager)
             
-            archive_text = f"""📅 Chat Zusammenfassung ({from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')})
+            archive_text = f"""📅 Conversation Summary ({from_ts.strftime('%Y-%m-%d %H:%M')} - {to_ts.strftime('%Y-%m-%d %H:%M')})
 
 {summary_result['summary']}
 
 ---
-📊 Stats: {summary_result['message_count']} Nachrichten zusammengefasst"""
-            
-            memory_tools.add_to_archive(
+📊 Stats: {summary_result['message_count']} messages summarized"""
+
+            tags = summary_result.get('tags', ['reflections'])
+            memory_tools.archival_memory_insert(
                 content=archive_text,
-                metadata={
-                    'type': 'conversation_summary',
-                    'session_id': session_id,
-                    'summary_id': summary_id,
-                    'from_timestamp': summary_result['from_timestamp'],
-                    'to_timestamp': summary_result['to_timestamp'],
-                    'message_count': summary_result['message_count']
-                }
+                category="insight",
+                importance=6,
+                tags=['conversation_summary', 'source:manual'] + tags
             )
             logger.info(f"✅ Summary saved to Archive Memory!")
         except Exception as e:
@@ -278,17 +274,17 @@ def trigger_summary(session_id='default'):
         
         # Save summary as System Message in messages table!
         import uuid
-        summary_content = f"""📝 **ZUSAMMENFASSUNG** (Manuell erstellt)
+        summary_content = f"""📝 **SUMMARY** (Manually created)
 
-**Zeitraum:** {from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')}  
-**Nachrichten:** {summary_result['message_count']}
+**Period:** {from_ts.strftime('%Y-%m-%d %H:%M')} - {to_ts.strftime('%Y-%m-%d %H:%M')}
+**Messages:** {summary_result['message_count']}
 
 {summary_result['summary']}
 
 ---
-📊 Diese Zusammenfassung umfasst {summary_result['message_count']} Nachrichten vom {from_ts.strftime('%d.%m.%Y %H:%M')} bis {to_ts.strftime('%d.%m.%Y %H:%M')}.
+📊 This summary covers {summary_result['message_count']} messages from {from_ts.strftime('%Y-%m-%d %H:%M')} to {to_ts.strftime('%Y-%m-%d %H:%M')}.
 
-💾 Vollständige Details: `search_archive()` oder `read_archive()`"""
+💾 Full details: `search_archive()` or `read_archive()`"""
         
         summary_msg_id = f"msg-{uuid.uuid4()}"
         _state_manager.add_message(

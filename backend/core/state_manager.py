@@ -301,9 +301,17 @@ class StateManager:
                 cursor.execute("ALTER TABLE messages ADD COLUMN thinking TEXT")
                 print("✅ Migration complete!")
             
+            # Migration: Add consolidated column if it doesn't exist
+            try:
+                cursor.execute("SELECT consolidated FROM messages LIMIT 1")
+            except sqlite3.OperationalError:
+                print("⚙️  Migrating: Adding consolidated column to messages table...")
+                cursor.execute("ALTER TABLE messages ADD COLUMN consolidated INTEGER DEFAULT 0")
+                print("✅ Migration complete!")
+
             # Index for faster queries
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_messages_session 
+                CREATE INDEX IF NOT EXISTS idx_messages_session
                 ON messages(session_id, timestamp)
             """)
             
@@ -343,10 +351,44 @@ class StateManager:
             
             # Index for summaries
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_summaries_session 
+                CREATE INDEX IF NOT EXISTS idx_summaries_session
                 ON conversation_summaries(session_id, created_at)
             """)
-            
+
+            # ============================================
+            # 🗺️ PEOPLE MAP TABLE (Upgrade 3)
+            # ============================================
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS people_map (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    discord_id TEXT,
+                    relationship_type TEXT DEFAULT 'acquaintance',
+                    category TEXT DEFAULT 'NEUTRAL',
+                    notes TEXT,
+                    my_opinion TEXT,
+                    angela_says TEXT,
+                    sentiment REAL DEFAULT 0.0,
+                    associated_ai TEXT,
+                    last_interaction INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_people_name
+                ON people_map(LOWER(name))
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_people_discord
+                ON people_map(discord_id)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_people_category
+                ON people_map(category)
+            """)
+
             print("✅ Database schema initialized")
     
     # ============================================
@@ -956,6 +998,38 @@ class StateManager:
                 'token_count': row[7]
             } for row in cursor.fetchall()]
 
+    def mark_messages_consolidated(
+        self,
+        session_id: str,
+        from_timestamp: str,
+        to_timestamp: str
+    ) -> int:
+        """
+        Mark messages in a time range as consolidated (already archived to ChromaDB).
+
+        Args:
+            session_id: Session ID
+            from_timestamp: Start of range (ISO format)
+            to_timestamp: End of range (ISO format)
+
+        Returns:
+            Number of messages marked
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE messages
+                SET consolidated = 1
+                WHERE session_id = ?
+                  AND timestamp >= ?
+                  AND timestamp <= ?
+                  AND consolidated = 0
+            """, (session_id, from_timestamp, to_timestamp))
+            count = cursor.rowcount
+            if count > 0:
+                print(f"✅ Marked {count} messages as consolidated ({from_timestamp} → {to_timestamp})")
+            return count
+
     def get_recent_summaries(self, session_id: str, count: int = 3) -> List[Dict[str, Any]]:
         """
         Get the N most recent summaries for a session, returned in chronological order
@@ -1204,6 +1278,346 @@ class StateManager:
                 "db_size_bytes": db_size,
                 "db_size_mb": round(db_size / (1024 * 1024), 2)
             }
+
+    # ============================================
+    # 🗺️ PEOPLE MAP METHODS (Upgrade 3)
+    # ============================================
+
+    # Sentiment-driven tone guidance mapping
+    TONE_MAP = {
+        (0.5, 1.0): ("Very Positive", "Be warm, welcoming, and genuinely positive."),
+        (0.0, 0.5): ("Positive", "Be friendly but measured."),
+        (0.0, 0.0): ("Neutral", "Professional and balanced."),
+        (-0.5, 0.0): ("Cautious", "Be cordial but guarded, less enthusiastic."),
+        (-1.0, -0.5): ("Negative", "Be cool, distant, or sharp. Don't fake warmth."),
+    }
+
+    def _get_tone_guidance(self, sentiment: float) -> tuple:
+        """Get tone label and guidance for a sentiment score."""
+        if sentiment >= 0.5:
+            return "Very Positive", "Be warm, welcoming, and genuinely positive."
+        elif sentiment > 0.0:
+            return "Positive", "Be friendly but measured."
+        elif sentiment == 0.0:
+            return "Neutral", "Professional and balanced."
+        elif sentiment > -0.5:
+            return "Cautious", "Be cordial but guarded, less enthusiastic."
+        else:
+            return "Negative", "Be cool, distant, or sharp. Don't fake warmth."
+
+    def add_person(
+        self,
+        name: str,
+        relationship_type: str = "acquaintance",
+        category: str = "NEUTRAL",
+        discord_id: str = None,
+        associated_ai: str = None,
+        notes: str = None,
+        my_opinion: str = None,
+        sentiment: float = 0.0
+    ) -> Dict[str, Any]:
+        """
+        Add someone to the people map.
+
+        Args:
+            name: Person's name
+            relationship_type: family, close_friend, friend, acquaintance, ai_companion
+            category: FAVORITES, NEUTRAL, CAUTIOUS, DISLIKE
+            discord_id: Optional Discord ID
+            associated_ai: Their AI companion, if any
+            notes: General notes
+            my_opinion: Agent's perspective
+            sentiment: -1.0 (dislike) to 1.0 (love)
+
+        Returns:
+            Result dict
+        """
+        import uuid
+        person_id = f"person_{uuid.uuid4().hex[:8]}"
+        now_ts = int(datetime.utcnow().timestamp())
+
+        # Clamp sentiment
+        sentiment = max(-1.0, min(1.0, sentiment))
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    INSERT INTO people_map
+                    (id, name, discord_id, relationship_type, category, notes,
+                     my_opinion, sentiment, associated_ai, last_interaction,
+                     created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    person_id, name, discord_id, relationship_type, category,
+                    notes, my_opinion, sentiment, associated_ai, now_ts,
+                    now_ts, now_ts
+                ))
+                return {
+                    "status": "OK",
+                    "message": f"Added {name} to people map",
+                    "person_id": person_id
+                }
+            except Exception as e:
+                return {"status": "error", "message": str(e)}
+
+    def update_opinion(
+        self,
+        name: str,
+        opinion: str,
+        sentiment: float = None
+    ) -> Dict[str, Any]:
+        """
+        Update Agent's personal opinion about someone.
+
+        Args:
+            name: Person's name
+            opinion: Agent's new opinion
+            sentiment: Optional sentiment update (-1.0 to 1.0)
+
+        Returns:
+            Result dict
+        """
+        now_ts = int(datetime.utcnow().timestamp())
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if sentiment is not None:
+                sentiment = max(-1.0, min(1.0, sentiment))
+                cursor.execute("""
+                    UPDATE people_map
+                    SET my_opinion = ?, sentiment = ?, updated_at = ?
+                    WHERE LOWER(name) = LOWER(?)
+                """, (opinion, sentiment, now_ts, name))
+            else:
+                cursor.execute("""
+                    UPDATE people_map
+                    SET my_opinion = ?, updated_at = ?
+                    WHERE LOWER(name) = LOWER(?)
+                """, (opinion, now_ts, name))
+
+            if cursor.rowcount == 0:
+                return {"status": "error", "message": f"Person '{name}' not found in people map"}
+            return {"status": "OK", "message": f"Updated opinion for {name}"}
+
+    def record_angela_says(
+        self,
+        name: str,
+        statement: str
+    ) -> Dict[str, Any]:
+        """
+        Store what User has said about someone.
+
+        Args:
+            name: Person's name
+            statement: What User said
+
+        Returns:
+            Result dict
+        """
+        now_ts = int(datetime.utcnow().timestamp())
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE people_map
+                SET angela_says = ?, updated_at = ?
+                WHERE LOWER(name) = LOWER(?)
+            """, (statement, now_ts, name))
+
+            if cursor.rowcount == 0:
+                return {"status": "error", "message": f"Person '{name}' not found in people map"}
+            return {"status": "OK", "message": f"Recorded User's view of {name}"}
+
+    def adjust_sentiment(
+        self,
+        name: str,
+        delta: float,
+        reason: str = ""
+    ) -> Dict[str, Any]:
+        """
+        Increment/decrement sentiment score for a person.
+
+        Args:
+            name: Person's name
+            delta: Amount to adjust (-1.0 to 1.0)
+            reason: Reason for adjustment
+
+        Returns:
+            Result dict with old and new sentiment
+        """
+        now_ts = int(datetime.utcnow().timestamp())
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT sentiment FROM people_map WHERE LOWER(name) = LOWER(?)
+            """, (name,))
+            row = cursor.fetchone()
+            if not row:
+                return {"status": "error", "message": f"Person '{name}' not found in people map"}
+
+            old_sentiment = row[0] or 0.0
+            new_sentiment = max(-1.0, min(1.0, old_sentiment + delta))
+
+            cursor.execute("""
+                UPDATE people_map
+                SET sentiment = ?, updated_at = ?
+                WHERE LOWER(name) = LOWER(?)
+            """, (new_sentiment, now_ts, name))
+
+            return {
+                "status": "OK",
+                "message": f"Sentiment for {name}: {old_sentiment:.2f} → {new_sentiment:.2f}",
+                "old_sentiment": old_sentiment,
+                "new_sentiment": new_sentiment,
+                "reason": reason
+            }
+
+    def get_person(self, name: str = None, discord_id: str = None) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve full perspective on someone.
+
+        Args:
+            name: Person's name (case-insensitive)
+            discord_id: Or Discord ID
+
+        Returns:
+            Person dict or None
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if discord_id:
+                cursor.execute("SELECT * FROM people_map WHERE discord_id = ?", (discord_id,))
+            elif name:
+                cursor.execute("SELECT * FROM people_map WHERE LOWER(name) = LOWER(?)", (name,))
+            else:
+                return None
+
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            tone_label, tone_guidance = self._get_tone_guidance(row['sentiment'] or 0.0)
+
+            return {
+                "id": row['id'],
+                "name": row['name'],
+                "discord_id": row['discord_id'],
+                "relationship_type": row['relationship_type'],
+                "category": row['category'],
+                "notes": row['notes'],
+                "my_opinion": row['my_opinion'],
+                "angela_says": row['angela_says'],
+                "sentiment": row['sentiment'],
+                "associated_ai": row['associated_ai'],
+                "last_interaction": row['last_interaction'],
+                "tone_label": tone_label,
+                "tone_guidance": tone_guidance
+            }
+
+    def list_people(self, category: str = None) -> List[Dict[str, Any]]:
+        """
+        List all people, optionally filtered by category.
+
+        Args:
+            category: Optional filter: FAVORITES, NEUTRAL, CAUTIOUS, DISLIKE
+
+        Returns:
+            List of person dicts
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            if category:
+                cursor.execute(
+                    "SELECT * FROM people_map WHERE category = ? ORDER BY name",
+                    (category,)
+                )
+            else:
+                cursor.execute("SELECT * FROM people_map ORDER BY category, name")
+
+            rows = cursor.fetchall()
+            people = []
+            for row in rows:
+                tone_label, tone_guidance = self._get_tone_guidance(row['sentiment'] or 0.0)
+                people.append({
+                    "id": row['id'],
+                    "name": row['name'],
+                    "relationship_type": row['relationship_type'],
+                    "category": row['category'],
+                    "sentiment": row['sentiment'],
+                    "associated_ai": row['associated_ai'],
+                    "tone_label": tone_label
+                })
+            return people
+
+    def find_people_in_text(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Find known people mentioned in text. Used for automatic prompt injection.
+
+        Args:
+            text: Text to search for name mentions
+
+        Returns:
+            List of matched person dicts with tone guidance
+        """
+        if not text:
+            return []
+
+        text_lower = text.lower()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM people_map")
+            rows = cursor.fetchall()
+
+            matched = []
+            for row in rows:
+                name = row['name']
+                # Match full name or first name (for people with single names)
+                if name.lower() in text_lower:
+                    tone_label, tone_guidance = self._get_tone_guidance(row['sentiment'] or 0.0)
+                    matched.append({
+                        "id": row['id'],
+                        "name": row['name'],
+                        "relationship_type": row['relationship_type'],
+                        "category": row['category'],
+                        "notes": row['notes'],
+                        "my_opinion": row['my_opinion'],
+                        "angela_says": row['angela_says'],
+                        "sentiment": row['sentiment'],
+                        "associated_ai": row['associated_ai'],
+                        "tone_label": tone_label,
+                        "tone_guidance": tone_guidance
+                    })
+            return matched
+
+    def build_people_context(self, text: str) -> str:
+        """
+        Build context injection string for known people mentioned in text.
+        Used by the consciousness loop to inject relational context into prompts.
+
+        Args:
+            text: Current message or recent context text
+
+        Returns:
+            Formatted context string for prompt injection, or empty string
+        """
+        people = self.find_people_in_text(text)
+        if not people:
+            return ""
+
+        blocks = []
+        for person in people:
+            block = f"\n[KNOWN PERSON — {person['category']} — sentiment: {person['sentiment']:.1f}]"
+            block += f"\nName: {person['name']}"
+            block += f"\nRelationship: {person['relationship_type']}"
+            if person['associated_ai']:
+                block += f"\nAssociated AI: {person['associated_ai']}"
+            if person['angela_says']:
+                block += f"\nUser says: {person['angela_says']}"
+            if person['my_opinion']:
+                block += f"\nYour opinion: {person['my_opinion']}"
+            block += f"\nTone: {person['tone_guidance']}"
+            blocks.append(block)
+
+        return "\n".join(blocks)
 
 
 # ============================================

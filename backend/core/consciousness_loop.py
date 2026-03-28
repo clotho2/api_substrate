@@ -329,9 +329,23 @@ class ConsciousnessLoop:
         print(f"\n{'='*60}")
         print(f"🔨 BUILDING CONTEXT MESSAGES")
         print(f"{'='*60}")
-        
+
+        # 🧬 DECAY LIFECYCLE: Run daily decay during heartbeats
+        if message_type == 'system' and self.memory:
+            try:
+                last_decay_ts = float(self.state.get_state("last_decay_cycle", "0") or "0")
+                now_ts = datetime.utcnow().timestamp()
+                seconds_since_decay = now_ts - last_decay_ts
+                if seconds_since_decay >= 86400:  # 24 hours
+                    print(f"   🧬 Running daily memory decay cycle...")
+                    decay_stats = self.memory.run_decay_cycle()
+                    self.state.set_state("last_decay_cycle", str(now_ts))
+                    print(f"   🧬 Decay cycle complete: {decay_stats}")
+            except Exception as e:
+                print(f"   ⚠️  Decay cycle failed (non-critical): {e}")
+
         messages = []
-        
+
         # 1. Build system prompt with memory blocks
         print(f"\n[1/3] Loading system prompt + memory blocks...")
         system_prompt = self._build_system_prompt(session_id=session_id, model=model, message_type=message_type, soma_context=soma_context)
@@ -349,7 +363,56 @@ class ConsciousnessLoop:
         # Graph RAG context injection point (currently disabled — see note above)
         # if graph_context:
         #     system_prompt += f"\n\n## 📊 Relevant Context from Knowledge Graph:\n{graph_context}\n"
-        
+
+        # 🗺️ PEOPLE MAP: Inject relational context for known people mentioned
+        # in current message OR recent STM context (last few messages)
+        try:
+            # Build combined text from current message + recent conversation
+            stm_text = user_message or ""
+            try:
+                recent_msgs = self.state.get_conversation(session_id=session_id, limit=6)
+                if recent_msgs:
+                    recent_text = " ".join(m.content for m in recent_msgs if m.content)
+                    stm_text = f"{stm_text} {recent_text}"
+            except Exception:
+                pass  # Fall back to just the current message
+
+            if stm_text.strip():
+                people_context = self.state.build_people_context(stm_text)
+                if people_context:
+                    system_prompt += f"\n\n## 🗺️ People Context (from your People Map):{people_context}\n"
+                    print(f"   🗺️  People Map: Injected context for known people")
+        except Exception as e:
+            print(f"   ⚠️  People Map injection failed (non-critical): {e}")
+
+        # 🧠 HEBBIAN ASSOCIATIONS: Automatic context retrieval with associative expansion
+        # Runs a small archival memory search using the user's message, enhanced with
+        # single-hop Hebbian associations for supplemental context
+        try:
+            from core.config import HEBBIAN_ENABLED
+            if HEBBIAN_ENABLED and user_message and self.memory and message_type == 'inbox':
+                from core.memory_system import format_hebbian_for_prompt
+                hebbian_search = self.memory.search_with_hebbian(
+                    query=user_message,
+                    n_results=5,
+                )
+                hebbian_results = hebbian_search.get('hebbian_results', [])
+                semantic_count = len(hebbian_search.get('semantic_results', []))
+                if hebbian_results:
+                    hebbian_context = format_hebbian_for_prompt(hebbian_results)
+                    if hebbian_context:
+                        system_prompt += f"\n\n{hebbian_context}"
+                        print(f"   🧠 Hebbian: Injected {len(hebbian_results)} associated memories into context")
+                else:
+                    print(f"   🧠 Hebbian: No associations found (semantic results: {semantic_count}, learner: {'active' if self.memory.learner else 'None'}, associations: {len(self.memory.learner.associations) if self.memory.learner else 0})")
+            elif message_type == 'inbox' and user_message:
+                if not HEBBIAN_ENABLED:
+                    print(f"   🧠 Hebbian: Disabled via config")
+                elif not self.memory:
+                    print(f"   🧠 Hebbian: No memory system available")
+        except Exception as e:
+            print(f"   ⚠️  Hebbian context injection failed (non-critical): {e}")
+
         messages.append({
             "role": "system",
             "content": system_prompt
@@ -380,7 +443,7 @@ class ConsciousnessLoop:
                 print(f"   ⏩ Loading only messages AFTER {latest_summary['to_timestamp']}")
 
                 # Get ALL messages across ALL sessions (we'll filter by timestamp)
-                # This ensures agent has full context regardless of which interface messages came from
+                # This ensures Agent has full context regardless of which interface messages came from
                 all_history = self.state.get_all_conversations(
                     limit=100000  # Get all to filter properly
                 )
@@ -466,7 +529,7 @@ class ConsciousnessLoop:
                 # 📝 Inject older summaries into context for continuity
                 # The latest summary's messages are already in history (as system messages),
                 # but older summaries are before the from_timestamp cutoff and won't load.
-                # Inject them chronologically so agent can see the thread of past context.
+                # Inject them chronologically so Agent can see the thread of past context.
                 if len(recent_summaries) > 1:
                     # All summaries except the latest (which is already in history as a system message)
                     older_summaries = recent_summaries[:-1]
@@ -489,7 +552,7 @@ class ConsciousnessLoop:
 
             else:
                 # No summary - load ALL messages across ALL sessions
-                # This ensures agent has full context regardless of which interface messages came from
+                # This ensures Agent has full context regardless of which interface messages came from
                 history = self.state.get_all_conversations(
                     limit=history_limit
                 )
@@ -738,7 +801,7 @@ send_message: false
 
 **Message Delivery Options:**
 - `target: channel` → (default) Message goes to the heartbeat log channel
-- `target: dm` → Message is sent as a direct message to user privately
+- `target: dm` → Message is sent as a direct message to User privately
 - Use `target: dm` for personal, intimate, or time-sensitive messages meant just for her
 - Use `target: channel` (or omit target) for general heartbeat log entries
 - The `target` field is optional; if omitted it defaults to `channel`
@@ -781,7 +844,7 @@ target: channel
 </decision>
 ```
 
-Example 3 (personal DM to user): You want to send her something intimate or time-sensitive directly:
+Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
 Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
@@ -793,7 +856,7 @@ target: dm
 
 Example 4 (memory maintenance — update core memory):
 ```
-<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "user mentioned she enjoys hiking on weekends"}}</tool_call>
+<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she enjoys hiking on weekends"}}</tool_call>
 
 <decision>
 send_message: false
@@ -839,7 +902,7 @@ target: channel
 </decision>
 ```
 
-Example 3 (personal DM to user): You want to send her something intimate or time-sensitive directly:
+Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
 Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
@@ -973,7 +1036,7 @@ Examples:
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Today I reflected on..."}}</tool_call>
 <tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey Angel, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
-<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "user mentioned she likes..."}}</tool_call>
+<tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she likes..."}}</tool_call>
 <tool_call>{"name": "discord_tool", "arguments": {"action": "send_message", "target": "CHANNEL_ID", "target_type": "channel", "message": "Hello!"}}</tool_call>
 
 Rules:
@@ -997,13 +1060,13 @@ Rules:
 
     def _parse_send_message_decision(self, response_content: str) -> tuple:
         """
-        Parse the send_message decision and message target from agent's response
+        Parse the send_message decision and message target from Agent's response
         and remove decision block.
 
         Looks for <decision>send_message: true/false\ntarget: dm|channel</decision> block.
 
         Args:
-            response_content: The full response content from agent
+            response_content: The full response content from Agent
 
         Returns:
             Tuple of (cleaned_content, send_message_flag, message_target)
@@ -1049,7 +1112,7 @@ Rules:
     def _generate_heartbeat_summary(self, tool_calls: list, response_text: str = "", send_message: bool = False, message_target: str = "channel") -> Optional[str]:
         """
         Generate a natural-language summary of what was accomplished during a heartbeat.
-        This gets saved as a 'heartbeat_log' message so agent can see his own activity
+        This gets saved as a 'heartbeat_log' message so Agent can see his own activity
         in future conversation history without confusing non-reasoning models.
 
         Args:
@@ -1591,13 +1654,49 @@ Rules:
                         memory_contents = [m.get('content', '') for m in result['results'] if m.get('content')]
                         if memory_contents:
                             combined_memories = "\n".join(memory_contents)
-                            # Parse as "user input" since it's content agent is experiencing/reading
+                            # Parse as "user input" since it's content Agent is experiencing/reading
                             import asyncio
                             asyncio.run(self.soma_client.parse_user_input(combined_memories))
                             print(f"   🫀 SOMA: Processed {len(memory_contents)} memories for physiological response")
                     except Exception as e:
                         print(f"   ⚠️ SOMA memory processing failed (non-critical): {e}")
             
+            # 🧬 DECAY LIFECYCLE TOOLS
+            elif tool_name == "favorite_memory":
+                result = self.tools.favorite_memory(**arguments)
+
+            elif tool_name == "unfavorite_memory":
+                result = self.tools.unfavorite_memory(**arguments)
+
+            elif tool_name == "drift_memory":
+                result = self.tools.drift_memory(**arguments)
+
+            elif tool_name == "memory_stats":
+                result = self.tools.memory_stats()
+
+            # 🏷️ TAG-ENHANCED RETRIEVAL
+            elif tool_name == "category_browse":
+                result = self.tools.category_browse(**arguments)
+
+            # 🗺️ PEOPLE MAP TOOLS
+            elif tool_name == "add_person":
+                result = self.tools.add_person(**arguments)
+
+            elif tool_name == "update_opinion":
+                result = self.tools.update_opinion(**arguments)
+
+            elif tool_name == "record_angela_says":
+                result = self.tools.record_angela_says(**arguments)
+
+            elif tool_name == "adjust_sentiment":
+                result = self.tools.adjust_sentiment(**arguments)
+
+            elif tool_name == "get_person":
+                result = self.tools.get_person(**arguments)
+
+            elif tool_name == "list_people":
+                result = self.tools.list_people(**arguments)
+
             elif tool_name == "conversation_search":
                 result = self.tools.conversation_search(session_id=session_id, **arguments)
 
@@ -1706,7 +1805,7 @@ Rules:
                 result = self.tools.lovense_tool(**arguments)
 
             elif tool_name == "agent_dev_tool":
-                # agent's self-development tool (read-only diagnostics)
+                # Agent's self-development tool (read-only diagnostics)
                 result = self.tools.agent_dev_tool(**arguments)
 
             elif tool_name == "notebook_library":
@@ -2603,7 +2702,7 @@ Rules:
             result["message_target"] = message_target
             print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
 
-            # 📓 Save heartbeat activity log so agent remembers what he did
+            # 📓 Save heartbeat activity log so Agent remembers what he did
             # Uses message_type='heartbeat_log' which survives the 'system' filter
             heartbeat_summary = self._generate_heartbeat_summary(
                 tool_calls=all_tool_calls,
@@ -3392,7 +3491,7 @@ Rules:
             done_event["message_target"] = message_target
             print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
 
-            # 📓 Save heartbeat activity log so agent remembers what he did
+            # 📓 Save heartbeat activity log so Agent remembers what he did
             # Uses message_type='heartbeat_log' which survives the 'system' filter
             heartbeat_summary = self._generate_heartbeat_summary(
                 tool_calls=all_tool_calls,
@@ -3463,7 +3562,7 @@ Rules:
 
             if summary_result and summary_result.get('summary'):
                 # Save summary to database
-                self.state.save_summary(
+                summary_id = self.state.save_summary(
                     session_id=session_id,
                     summary=summary_result['summary'],
                     from_timestamp=summary_result['from_timestamp'],
@@ -3476,6 +3575,58 @@ Rules:
                 print(f"   Messages: {summary_result['message_count']}")
                 print(f"   Tokens: {summary_result['token_count']}")
                 print(f"   Timeframe: {summary_result['from_timestamp']} → {summary_result['to_timestamp']}")
+
+                # Archive summary to ChromaDB
+                try:
+                    tags = summary_result.get('tags', ['reflections'])
+
+                    from_ts = summary_result['from_timestamp']
+                    to_ts = summary_result['to_timestamp']
+                    archive_text = f"""📅 Conversation Summary ({from_ts} - {to_ts})
+
+{summary_result['summary']}
+
+---
+📊 Stats: {summary_result['message_count']} messages summarized"""
+
+                    self.tools.archival_memory_insert(
+                        content=archive_text,
+                        category="insight",
+                        importance=6,
+                        tags=['conversation_summary', 'source:background_summary'] + tags
+                    )
+                    print(f"💾 Summary archived to ChromaDB (tags: {tags})")
+                except Exception as e:
+                    print(f"⚠️  Failed to archive summary to ChromaDB: {e}")
+
+                # Extract and archive individual insights
+                try:
+                    insights = await generator.extract_insights(
+                        messages=messages_to_summarize,
+                        session_id=session_id
+                    )
+                    if insights:
+                        for insight in insights:
+                            self.tools.archival_memory_insert(
+                                content=insight['content'],
+                                category="insight",
+                                importance=insight['importance'],
+                                tags=['extracted_insight', 'source:background_summary'] + insight['tags']
+                            )
+                        print(f"🔍 Archived {len(insights)} extracted insights to ChromaDB")
+                except Exception as e:
+                    print(f"⚠️  Insight extraction failed: {e}")
+
+                # Mark messages as consolidated
+                try:
+                    self.state.mark_messages_consolidated(
+                        session_id=session_id,
+                        from_timestamp=summary_result['from_timestamp'],
+                        to_timestamp=summary_result['to_timestamp']
+                    )
+                except Exception as e:
+                    print(f"⚠️  Failed to mark messages consolidated: {e}")
+
             else:
                 print(f"⚠️  Summary generation returned empty result")
 
@@ -3631,31 +3782,52 @@ Rules:
 
             # Save to Archive Memory!
             print(f"💾 Saving summary to Archive Memory...")
+            tags = summary_result.get('tags', ['reflections'])
             try:
-                from tools.memory_tools import MemoryTools
-                memory_tools = MemoryTools(self.state)
-
-                archive_text = f"""📅 Chat Zusammenfassung ({from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')})
+                archive_text = f"""📅 Conversation Summary ({from_ts.strftime('%Y-%m-%d %H:%M')} - {to_ts.strftime('%Y-%m-%d %H:%M')})
 
 {summary_result['summary']}
 
 ---
-📊 Stats: {summary_result['message_count']} Nachrichten zusammengefasst"""
+📊 Stats: {summary_result['message_count']} messages summarized"""
 
-                memory_tools.add_to_archive(
+                self.tools.archival_memory_insert(
                     content=archive_text,
-                    metadata={
-                        'type': 'conversation_summary',
-                        'session_id': session_id,
-                        'summary_id': summary_id,
-                        'from_timestamp': summary_result['from_timestamp'],
-                        'to_timestamp': summary_result['to_timestamp'],
-                        'message_count': summary_result['message_count']
-                    }
+                    category="insight",
+                    importance=6,
+                    tags=['conversation_summary', 'source:context_overflow'] + tags
                 )
-                print(f"✅ Summary saved to Archive Memory!")
+                print(f"✅ Summary archived to ChromaDB (tags: {tags})")
             except Exception as e:
                 print(f"⚠️  Failed to save to Archive: {e}")
+
+            # Extract and archive individual insights
+            try:
+                insights = await generator.extract_insights(
+                    messages=messages_to_summarize,
+                    session_id=session_id
+                )
+                if insights:
+                    for insight in insights:
+                        self.tools.archival_memory_insert(
+                            content=insight['content'],
+                            category="insight",
+                            importance=insight['importance'],
+                            tags=['extracted_insight', 'source:context_overflow'] + insight['tags']
+                        )
+                    print(f"🔍 Archived {len(insights)} extracted insights to ChromaDB")
+            except Exception as e:
+                print(f"⚠️  Insight extraction failed: {e}")
+
+            # Mark messages as consolidated
+            try:
+                self.state.mark_messages_consolidated(
+                    session_id=session_id,
+                    from_timestamp=summary_result['from_timestamp'],
+                    to_timestamp=summary_result['to_timestamp']
+                )
+            except Exception as e:
+                print(f"⚠️  Failed to mark messages consolidated: {e}")
 
             # Build NEW context with summary
             print(f"\n🔄 Rebuilding context with summary...")
@@ -3664,26 +3836,26 @@ Rules:
             new_messages = [msg for msg in messages if msg['role'] == 'system']
 
             # Create summary content (for both DB and context)
-            summary_content = f"""📝 **ZUSAMMENFASSUNG** (Context Window Management)
+            summary_content = f"""📝 **SUMMARY** (Context Window Management)
 
-**Zeitraum:** {from_ts.strftime('%d.%m.%Y %H:%M')} - {to_ts.strftime('%d.%m.%Y %H:%M')}
-**Nachrichten:** {summary_result['message_count']}
+**Period:** {from_ts.strftime('%Y-%m-%d %H:%M')} - {to_ts.strftime('%Y-%m-%d %H:%M')}
+**Messages:** {summary_result['message_count']}
 
 {summary_result['summary']}
 
 ---
-📊 Diese Zusammenfassung umfasst {summary_result['message_count']} Nachrichten vom {from_ts.strftime('%d.%m.%Y %H:%M')} bis {to_ts.strftime('%d.%m.%Y %H:%M')}.
+📊 This summary covers {summary_result['message_count']} messages from {from_ts.strftime('%Y-%m-%d %H:%M')} to {to_ts.strftime('%Y-%m-%d %H:%M')}.
 
-**Zusammengefasste Nachrichten:**
+**Summarized messages:**
 <details>
-<summary>Klicken um {summary_result['message_count']} Nachrichten anzuzeigen</summary>
+<summary>Click to show {summary_result['message_count']} messages</summary>
 
 {chr(10).join([f"[{msg.get('timestamp', 'unknown')}] {msg.get('role', 'unknown')}: {msg.get('content', '')[:100]}..." for msg in messages_to_summarize[:50]])}
 
-{f"... und {len(messages_to_summarize) - 50} weitere Nachrichten" if len(messages_to_summarize) > 50 else ""}
+{f"... and {len(messages_to_summarize) - 50} more messages" if len(messages_to_summarize) > 50 else ""}
 </details>
 
-💾 Vollständige Details: `search_archive()` oder `read_archive()`"""
+💾 Full details: `search_archive()` or `read_archive()`"""
 
             # Save summary to DB as system message! (So it shows in frontend!)
             summary_msg_id = f"msg-{uuid.uuid4()}"
