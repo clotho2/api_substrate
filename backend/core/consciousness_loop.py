@@ -2832,10 +2832,11 @@ Rules:
             include_history=include_history,
             history_limit=history_limit,
             model=model,
+            user_message=user_message,  # Pass user message for Hebbian + People Map retrieval
             message_type=message_type,  # Pass message type for heartbeat handling
             soma_context=soma_context  # 🫀 Pass SOMA physiological context
         )
-        
+
         # Check context window
         messages = await self._manage_context_window(
             messages=messages,
@@ -2979,7 +2980,7 @@ Rules:
                 content_chunks = []
                 # CRITICAL: Reset final_response at start of each iteration!
                 # Otherwise, if model calls tools AND generates content, the content
-                # from the tool-calling iteration would be concateagentd with the
+                # from the tool-calling iteration would be concatenated with the
                 # final response, causing duplicate/garbled output.
                 final_response = ""
                 tool_calls_in_response = []
