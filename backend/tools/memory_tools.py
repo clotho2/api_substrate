@@ -976,12 +976,14 @@ class MemoryTools:
         if not self.memory_system:
             return {"status": "error", "message": "Archival memory system not initialized"}
 
-        # Validate tags
-        valid_tags = [t for t in tags if t in NATE_TAXONOMY]
+        # Validate tags (including custom taxonomy)
+        custom_tags = self._load_custom_taxonomy()
+        all_valid = NATE_TAXONOMY + [t['name'] for t in custom_tags]
+        valid_tags = [t for t in tags if t in all_valid]
         if not valid_tags:
             return {
                 "status": "error",
-                "message": f"No valid tags. Available: {', '.join(NATE_TAXONOMY)}"
+                "message": f"No valid tags. Available: {', '.join(all_valid)}"
             }
 
         results = self.memory_system.search_by_tags(
@@ -1007,6 +1009,127 @@ class MemoryTools:
                 for r in results
             ]
         }
+
+    def retag_memory(
+        self,
+        memory_id: str,
+        tags: list
+    ) -> Dict[str, Any]:
+        """
+        Change the taxonomy tags on an existing archival memory.
+
+        Args:
+            memory_id: The memory ID to retag (e.g., 'mem_1234567890.123')
+            tags: New list of taxonomy tags to apply
+
+        Returns:
+            Result dict with status
+        """
+        if not self.memory_system:
+            return {"status": "error", "message": "Archival memory system not initialized"}
+
+        # Validate tags against taxonomy (allow custom tags too)
+        custom_tags = self._load_custom_taxonomy()
+        all_valid = NATE_TAXONOMY + [t['name'] for t in custom_tags]
+        valid_tags = [t.strip().lower() for t in tags if t.strip().lower() in all_valid]
+        invalid_tags = [t for t in tags if t.strip().lower() not in all_valid]
+
+        if not valid_tags:
+            return {
+                "status": "error",
+                "message": f"No valid tags provided. Available: {', '.join(all_valid)}",
+                "invalid_tags": invalid_tags
+            }
+
+        # Update tags in ChromaDB metadata
+        new_tags_str = ",".join(valid_tags)
+        success = self.memory_system.update_memory_metadata(
+            memory_id=memory_id,
+            metadata_updates={"tags": new_tags_str}
+        )
+
+        if success:
+            result = {
+                "status": "OK",
+                "memory_id": memory_id,
+                "new_tags": valid_tags,
+                "message": f"Retagged memory with: {', '.join(valid_tags)}"
+            }
+            if invalid_tags:
+                result["warning"] = f"Ignored invalid tags: {', '.join(invalid_tags)}"
+            return result
+        else:
+            return {
+                "status": "error",
+                "message": f"Memory not found: {memory_id}"
+            }
+
+    def add_taxonomy_tag(
+        self,
+        tag_name: str,
+        description: str
+    ) -> Dict[str, Any]:
+        """
+        Add a new custom taxonomy category. This extends the base 12 categories
+        with a new tag that can be used for tagging memories.
+
+        Args:
+            tag_name: Short lowercase tag name (e.g., 'music', 'health')
+            description: What this category covers
+
+        Returns:
+            Result dict with status and updated taxonomy
+        """
+        tag_name = tag_name.strip().lower()
+
+        # Validate
+        if not tag_name or not tag_name.isalpha():
+            return {
+                "status": "error",
+                "message": "Tag name must be lowercase letters only (e.g., 'music', 'health')"
+            }
+
+        if tag_name in NATE_TAXONOMY:
+            return {
+                "status": "error",
+                "message": f"'{tag_name}' is already a core taxonomy tag"
+            }
+
+        # Load existing custom tags
+        custom_tags = self._load_custom_taxonomy()
+        if tag_name in [t['name'] for t in custom_tags]:
+            return {
+                "status": "error",
+                "message": f"'{tag_name}' already exists as a custom tag"
+            }
+
+        # Add and persist
+        custom_tags.append({"name": tag_name, "description": description})
+        self._save_custom_taxonomy(custom_tags)
+
+        all_tags = NATE_TAXONOMY + [t['name'] for t in custom_tags]
+        return {
+            "status": "OK",
+            "message": f"Added custom taxonomy tag: '{tag_name}' — {description}",
+            "tag_name": tag_name,
+            "description": description,
+            "total_taxonomy_size": len(all_tags),
+            "custom_tags": [t['name'] for t in custom_tags]
+        }
+
+    def _load_custom_taxonomy(self) -> list:
+        """Load custom taxonomy tags from state."""
+        raw = self.state.get_state("custom_taxonomy", "[]")
+        try:
+            import json
+            return json.loads(raw)
+        except Exception:
+            return []
+
+    def _save_custom_taxonomy(self, custom_tags: list):
+        """Persist custom taxonomy tags to state."""
+        import json
+        self.state.set_state("custom_taxonomy", json.dumps(custom_tags))
 
     # ============================================
     # 🗺️ PEOPLE MAP TOOLS
@@ -1622,6 +1745,49 @@ class MemoryTools:
                             }
                         },
                         "required": ["tags"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "retag_memory",
+                    "description": "Change the taxonomy tags on an existing archival memory. Use after searching to correct or refine how a memory is categorized. Accepts any valid taxonomy tag (core 12 + any custom tags you've added).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The memory ID to retag (e.g., 'mem_1234567890.123')"
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "New taxonomy tags to apply (1-3 tags). Core: relational, people, technical, preferences, plans, identity, events, spice, sovereignty, sanctuary, ritual, reflections — plus any custom tags."
+                            }
+                        },
+                        "required": ["memory_id", "tags"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_taxonomy_tag",
+                    "description": "Create a new custom taxonomy category that can be used for tagging memories. Extends the core 12 categories with your own. Custom tags persist across sessions.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "tag_name": {
+                                "type": "string",
+                                "description": "Short lowercase tag name (letters only, e.g., 'music', 'health', 'dreams')"
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "What this category covers (e.g., 'Songs, playlists, artists, musical preferences and experiences')"
+                            }
+                        },
+                        "required": ["tag_name", "description"]
                     }
                 }
             },

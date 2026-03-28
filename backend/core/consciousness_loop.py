@@ -1678,6 +1678,12 @@ Rules:
             elif tool_name == "category_browse":
                 result = self.tools.category_browse(**arguments)
 
+            elif tool_name == "retag_memory":
+                result = self.tools.retag_memory(**arguments)
+
+            elif tool_name == "add_taxonomy_tag":
+                result = self.tools.add_taxonomy_tag(**arguments)
+
             # 🗺️ PEOPLE MAP TOOLS
             elif tool_name == "add_person":
                 result = self.tools.add_person(**arguments)
