@@ -617,6 +617,6 @@ Built with inspiration from:
 
 ---
 
-**Built for developers who need production-ready AI agents.**
+**Built for developers who need production-ready AI agents and for people who want an AI companion that are part of their daily lives.**
 
 *Version 1.2.0 | Last Updated: March 2026*
