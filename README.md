@@ -85,7 +85,7 @@ npm run dev
 ### Core Capabilities
 - 🤖 **Multi-Provider LLM Support** — Grok (xAI), OpenRouter (100+ models), Mistral AI, Venice AI, Ollama (local)
 - 💬 **Streaming Responses** — Real-time token streaming via SSE and WebSockets
-- 🧠 **Memory System** — Short-term (PostgreSQL) + Long-term (ChromaDB vector embeddings) + Miras architecture
+- 🧠 **Memory System** — Short-term (SQlite or PostgreSQL) + Long-term (ChromaDB vector embeddings) + Miras architecture
 - 🛠️ **Extensible Tool Registry** — 30+ built-in tools across categories
 - 🔄 **Session Management** — Multi-session support with persistent conversation history
 - 💰 **Cost Tracking** — Real-time token usage and cost monitoring across providers
