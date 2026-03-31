@@ -1,12 +1,12 @@
-# 🚀 Quick Start Guide
+# Quick Start Guide
 
-Get Substrate AI running in under 5 minutes!
+Get Substrate AI running in under 5 minutes.
 
 ## Prerequisites
 
-- **Python 3.10+** - [Download](https://www.python.org/downloads/)
-- **Node.js 18+** - [Download](https://nodejs.org/)
-- **OpenRouter API Key** - [Get one free](https://openrouter.ai/keys)
+- **Python 3.10+** — [Download](https://www.python.org/downloads/)
+- **Node.js 18+** — [Download](https://nodejs.org/)
+- An API key for at least one LLM provider (see below)
 
 ---
 
@@ -17,144 +17,130 @@ Get Substrate AI running in under 5 minutes!
 git clone https://github.com/your-username/substrate-ai.git
 cd substrate-ai
 
-# Run the automatic setup
+# Run the setup wizard
 python setup.py
 ```
 
-The setup wizard will:
-- ✅ Create Python virtual environment
-- ✅ Install all dependencies
-- ✅ Create configuration files
+The wizard will:
+- ✅ Create a Python virtual environment
+- ✅ Install all backend dependencies
+- ✅ Walk you through choosing and configuring an LLM provider
+- ✅ Create `backend/.env` from the template
 - ✅ Install frontend packages
-- ✅ Validate everything works
+- ✅ Initialize the agent with sensible defaults
+- ✅ Validate everything
 
-**Then just add your API key:**
-```bash
-# Open backend/.env in your editor and add your key:
-OPENROUTER_API_KEY=sk-or-v1-your-actual-key-here
-```
+---
+
+## 🔑 Choosing an LLM Provider
+
+The setup wizard lets you pick one (you can add more later by editing `backend/.env`):
+
+| Provider | Key variable | Where to get a key | Notes |
+|---|---|---|---|
+| **Grok (xAI)** | `GROK_API_KEY` | [console.x.ai](https://console.x.ai/) | Recommended — fast, 131K context |
+| **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) | 100+ models (Claude, GPT-4, Llama…) |
+| **Mistral AI** | `MISTRAL_API_KEY` | [console.mistral.ai](https://console.mistral.ai/api-keys) | Magistral reasoning models |
+| **Venice AI** | `VENICE_API_KEY` | [venice.ai](https://venice.ai) | Privacy-focused, no logging |
+| **Ollama** | *(no key)* | [ollama.ai](https://ollama.ai/) | Local models on your machine |
+
+Multiple providers can be configured at once. The priority order is:
+**Mistral > Grok > OpenRouter > Venice > Ollama**
 
 ---
 
 ## 🎬 Start the Application
 
-### Option A: Quick Start Script (Easiest)
+### Option A: One command (easiest)
 
 ```bash
-# Start everything with one command
 ./start.sh
 ```
 
-### Option B: Manual Start
+### Option B: Manual start
 
-**Terminal 1 - Backend:**
+**Terminal 1 — Backend:**
 ```bash
 cd backend
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
 python api/server.py
 ```
 
-**Terminal 2 - Frontend:**
+**Terminal 2 — Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
 
-### 🎉 Open Your Browser
-
-Navigate to: **http://localhost:5173**
-
----
-
-## 🔑 Getting Your OpenRouter API Key
-
-1. Go to [openrouter.ai](https://openrouter.ai/)
-2. Click "Sign In" (Google/GitHub/Email)
-3. Go to [API Keys](https://openrouter.ai/keys)
-4. Click "Create Key"
-5. Copy the key (starts with `sk-or-v1-`)
-6. Paste into `backend/.env`
-
-**Free tier includes:**
-- Many free models (Llama, Mistral, etc.)
-- Pay-as-you-go for premium models (Claude, GPT-4, etc.)
+Open **http://localhost:5173** in your browser.
 
 ---
 
 ## 📝 Manual Setup (If Needed)
 
 <details>
-<summary>Click to expand manual setup steps</summary>
+<summary>Expand manual setup steps</summary>
 
-### 1. Clone Repository
+### 1. Clone and enter the repo
 ```bash
 git clone https://github.com/your-username/substrate-ai.git
 cd substrate-ai
 ```
 
-### 2. Backend Setup
+### 2. Backend setup
 ```bash
 cd backend
-
-# Create virtual environment
 python3 -m venv venv
-
-# Activate it
-source venv/bin/activate  # Mac/Linux
+source venv/bin/activate   # Mac/Linux
 # OR: venv\Scripts\activate  # Windows
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 3. Frontend Setup
+### 3. Frontend setup
 ```bash
 cd frontend
 npm install
 ```
 
-### 4. Configure API Key
+### 4. Configure your API key
 ```bash
 cd backend
-
-# Copy the example config
 cp .env.example .env
-
-# Edit .env and add your OpenRouter key
-nano .env  # or use any text editor
+# Edit .env and set your preferred provider key:
+#   GROK_API_KEY=xai-...
+#   OPENROUTER_API_KEY=sk-or-v1-...
+#   MISTRAL_API_KEY=...
+nano .env
 ```
 
-Change this line:
-```
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
-To:
-```
-OPENROUTER_API_KEY=sk-or-v1-your-actual-key
-```
-
-### 5. Create Directories
+### 5. Initialize the agent
 ```bash
-mkdir -p backend/logs
-mkdir -p backend/data/db
-mkdir -p backend/data/chromadb
+cd backend
+source venv/bin/activate
+python setup_agent.py
+```
+
+### 6. Create required directories (if missing)
+```bash
+mkdir -p backend/logs backend/data/db backend/data/chromadb
 ```
 
 </details>
 
 ---
 
-## ✨ Optional: Setup ALEX Agent
+## 🤖 Customizing Your Agent
 
-The repo includes **ALEX** - a pre-configured AI assistant:
+The agent's identity is stored in two files in `backend/data/`:
 
-```bash
-cd backend
-source venv/bin/activate
-python setup_alex.py
-```
+| File | Purpose |
+|---|---|
+| `system_prompt_persona.txt` | Who the agent is — personality, values, voice |
+| `system_prompt_instructions.txt` | How it behaves — response format, tool use rules, memory rules |
 
-This gives you a ready-to-use AI with personality and capabilities pre-configured!
+Edit these files to make the agent your own, then re-run `python backend/setup_agent.py` to reload them into the database.
+
+Memory blocks (core facts about the user and the relationship) can be edited live from the UI sidebar, or reset by running `setup_agent.py` again.
 
 ---
 
@@ -169,93 +155,71 @@ python3 --version
 # Kill any process on port 8284
 lsof -ti:8284 | xargs kill -9 2>/dev/null
 
-# Try starting again
-python api/server.py
+# Try again
+cd backend && source venv/bin/activate && python api/server.py
 ```
 
-### "Invalid API Key" error
+### "No API key" error
 
-1. Check `backend/.env` has your key
-2. Make sure no quotes around the key: `OPENROUTER_API_KEY=sk-or-v1-xxx` (not `"sk-or-v1-xxx"`)
-3. No extra spaces
-4. Key starts with `sk-or-v1-`
+- Open `backend/.env` and confirm one of the provider keys is set
+- No quotes around the key: `GROK_API_KEY=xai-xxx` (not `"xai-xxx"`)
+- No trailing spaces
 
 ### Frontend can't connect to backend
 
 ```bash
-# Check if backend is running
+# Confirm the backend is up
 curl http://localhost:8284/api/health
-# Should return: {"status":"healthy",...}
-
-# If not, start backend first!
+# Expected: {"status":"healthy",...}
 ```
 
-### Missing dependencies
+### Missing Python packages
 
 ```bash
-# Backend
 cd backend && source venv/bin/activate
 pip install -r requirements.txt
-
-# Frontend
-cd frontend && npm install
 ```
 
 ### Port already in use
 
 ```bash
-# Kill backend port
-lsof -ti:8284 | xargs kill -9
-
-# Kill frontend port
-lsof -ti:5173 | xargs kill -9
+lsof -ti:8284 | xargs kill -9   # backend
+lsof -ti:5173 | xargs kill -9   # frontend
 ```
 
 ---
 
-## 🎯 What's Next?
+## ➕ Optional Integrations
 
-Once running, try these:
+Once the core setup is working, enable additional features in `backend/.env`:
 
-### Chat with the AI
-Just type a message and press Enter!
-
-### Customize the Agent
-Click the **sidebar** to edit:
-- **Persona** - Who the AI is
-- **Human** - What it knows about you
-
-### Try Built-in Tools
-Ask the AI to:
-- *"Remember that I prefer Python over JavaScript"*
-- *"Search the web for latest AI news"*
-- *"What's the weather in Berlin?"*
-
-### Change Models
-Click the **gear icon** to switch between:
-- Free models (Llama, Mistral)
-- Premium models (Claude, GPT-4)
-
----
-
-## 📚 More Resources
-
-- [Full README](README.md) - Complete feature overview
-- [MCP System](MCP_SYSTEM_OVERVIEW.md) - Code execution & browser automation
-- [Memory Architecture](docs/MIRAS_TITANS_INTEGRATION.md) - How memory works
-- [PostgreSQL Setup](backend/POSTGRESQL_SETUP.md) - Database configuration
+| Feature | Guide |
+|---|---|
+| Telegram bot | `backend/TELEGRAM_SETUP.md` |
+| Phone & SMS (Twilio) | `docs/PHONE_SETUP_GUIDE.md` |
+| Voice calls (Hume EVI) | `docs/PHONE_SETUP_GUIDE.md` |
+| PostgreSQL persistence | `backend/POSTGRESQL_SETUP.md` |
+| Mistral large/reasoning models | `backend/MISTRAL_LARGE_3_SETUP.md` |
 
 ---
 
 ## 🛑 Stopping the Application
 
 ```bash
-# Press Ctrl+C in each terminal
-# Or kill by port:
-lsof -ti:8284 | xargs kill -9  # Backend
-lsof -ti:5173 | xargs kill -9  # Frontend
+# Ctrl+C in each terminal, or kill by port:
+lsof -ti:8284 | xargs kill -9   # backend
+lsof -ti:5173 | xargs kill -9   # frontend
 ```
 
 ---
 
-**Enjoy building with Substrate AI! 🧠✨**
+## 📚 More Resources
+
+- [README.md](README.md) — Full feature overview
+- [MCP System Overview](MCP_SYSTEM_OVERVIEW.md) — Code execution & browser automation
+- [Memory Architecture](docs/MIRAS_TITANS_INTEGRATION.md) — How the memory system works
+- [Service Deployment](SERVICE_DEPLOYMENT.md) — Running as a systemd service
+
+---
+
+**Enjoy building with Substrate AI! 🧠**

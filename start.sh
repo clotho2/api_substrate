@@ -49,14 +49,31 @@ start_backend() {
         echo -e "${YELLOW}⚠️  No .env file found. Creating from template...${NC}"
         if [ -f "$BACKEND_DIR/.env.example" ]; then
             cp "$BACKEND_DIR/.env.example" "$BACKEND_DIR/.env"
-            echo -e "${YELLOW}   Please edit backend/.env and add your OPENROUTER_API_KEY${NC}"
         fi
+        echo -e "${YELLOW}   Run 'python setup.py' to configure your API key, or edit backend/.env directly.${NC}"
+        exit 1
     fi
-    
-    # Check for API key
-    if grep -q "your_openrouter_api_key_here" "$BACKEND_DIR/.env" 2>/dev/null; then
-        echo -e "${RED}❌ Please add your OpenRouter API key to backend/.env${NC}"
-        echo -e "${YELLOW}   Get one at: https://openrouter.ai/keys${NC}"
+
+    # Check that at least one provider API key is configured
+    has_key=false
+    for key_name in GROK_API_KEY OPENROUTER_API_KEY MISTRAL_API_KEY VENICE_API_KEY; do
+        value=$(grep -E "^${key_name}=" "$BACKEND_DIR/.env" 2>/dev/null | cut -d= -f2-)
+        if [ -n "$value" ] && ! echo "$value" | grep -qiE "your_.*_api_key_here|^$"; then
+            has_key=true
+            break
+        fi
+    done
+    # Ollama cloud: needs both OLLAMA_API_URL and OLLAMA_MODEL
+    ollama_url=$(grep -E "^OLLAMA_API_URL=" "$BACKEND_DIR/.env" 2>/dev/null | cut -d= -f2-)
+    ollama_model=$(grep -E "^OLLAMA_MODEL=" "$BACKEND_DIR/.env" 2>/dev/null | cut -d= -f2-)
+    if [ -n "$ollama_url" ] && [ -n "$ollama_model" ]; then
+        has_key=true
+    fi
+
+    if [ "$has_key" = false ]; then
+        echo -e "${RED}❌ No API key found in backend/.env${NC}"
+        echo -e "${YELLOW}   Set one of: GROK_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY, or VENICE_API_KEY${NC}"
+        echo -e "${YELLOW}   Or run: python setup.py  to configure interactively${NC}"
         exit 1
     fi
     
