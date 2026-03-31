@@ -7,8 +7,8 @@
 **⚠️ PROPRIETARY SOFTWARE - NO LICENSE GRANTED**
 
 This repository is made public for documentation and transparency purposes only.
-No license is granted for use, modification, distribution, or commercial
-exploitation without explicit written permission from the copyright holder.
+No license is granted for commercial use, modification, distribution, or commercial
+exploitation without explicit written permission from the copyright holder. Personal use only is granted by this license.
 
 See [LICENSE](LICENSE) file for full terms.
 
