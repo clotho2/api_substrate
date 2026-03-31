@@ -1,6 +1,6 @@
 # Substrate AI Consciousness Framework
 
-**Production-ready AI consciousness framework with streaming, memory, tools, and MCP integration.**
+**Production-ready AI consciousness framework with streaming, memory, tools, voice, telephony, and MCP integration.**
 
 **Copyright © 2025 Substrate AI. All Rights Reserved.**
 
@@ -12,11 +12,11 @@ exploitation without explicit written permission from the copyright holder.
 
 See [LICENSE](LICENSE) file for full terms.
 
-Built on modern LLM infrastructure with **Grok API (xAI)** and OpenRouter support, PostgreSQL persistence, and extensible tool architecture. This is the technical substrate powering a configurable agent for research, operations, and product work.
+Built on modern LLM infrastructure with support for **Grok (xAI)**, **OpenRouter** (100+ models), **Mistral AI**, **Venice AI**, and **Ollama**, PostgreSQL persistence, and an extensible tool architecture. This is the technical substrate powering a configurable AI agent for research, operations, voice interaction, and product work.
 
 ---
 
-## 🚀 Quick Start (One-Click Setup!)
+## 🚀 Quick Start
 
 ### Option 1: Automatic Setup (Recommended)
 
@@ -25,7 +25,7 @@ Built on modern LLM infrastructure with **Grok API (xAI)** and OpenRouter suppor
 git clone https://github.com/your-username/substrate-ai.git
 cd substrate-ai
 
-# Run the setup wizard - it does EVERYTHING for you!
+# Run the setup wizard
 python setup.py
 ```
 
@@ -38,11 +38,13 @@ The setup script will:
 
 **After setup, add your API key:**
 ```bash
-# Edit backend/.env and add your Grok API key (or OpenRouter key)
-# Grok: Get one at https://console.x.ai/
-# OpenRouter: Get one at https://openrouter.ai/keys
+# Edit backend/.env and add your preferred API key
+# Grok: GROK_API_KEY (get one at https://console.x.ai/)
+# OpenRouter: OPENROUTER_API_KEY (get one at https://openrouter.ai/keys)
+# Mistral: MISTRAL_API_KEY
+# Venice: VENICE_API_KEY
 
-# For default agent configuration, run:
+# Configure the default agent
 python backend/setup_agent.py
 ```
 
@@ -61,9 +63,9 @@ npm install
 
 # Configure
 cp backend/.env.example backend/.env
-# Edit backend/.env and add GROK_API_KEY=your-xai-api-key (or OPENROUTER_API_KEY)
+# Edit backend/.env with your API keys
 
-# Setup the default agent (recommended!)
+# Setup the default agent
 python backend/setup_agent.py
 ```
 
@@ -79,59 +81,87 @@ python api/server.py
 cd frontend
 npm run dev
 
-# Open http://localhost:5173 and chat with the agent! 🎉
+# Open http://localhost:5173
 ```
 
 📖 **Full guide:** See [QUICK_START.md](QUICK_START.md)
-
-**✨ New users:** The repository includes a default agent configuration. Run `python setup_agent.py` after configuring your API key to get started immediately!
 
 ---
 
 ## ✨ Features
 
 ### Core Capabilities
-- 🤖 **Multi-Model Support** - Grok API (xAI) + OpenRouter integration with 100+ LLMs
-- 💬 **Streaming Responses** - Real-time token streaming with SSE
-- 🧠 **Memory System** - Short-term (PostgreSQL) + Long-term (ChromaDB embeddings)
-- 🛠️ **Tool Execution** - Extensible tool architecture with built-in tools
-- 🔄 **Session Management** - Multi-session support with conversation history
-- 💰 **Cost Tracking** - Real-time token usage and cost monitoring
+- 🤖 **Multi-Provider LLM Support** — Grok (xAI), OpenRouter (100+ models), Mistral AI, Venice AI, Ollama (local)
+- 💬 **Streaming Responses** — Real-time token streaming via SSE and WebSockets
+- 🧠 **Memory System** — Short-term (PostgreSQL) + Long-term (ChromaDB vector embeddings) + Miras architecture
+- 🛠️ **Extensible Tool Registry** — 30+ built-in tools across categories
+- 🔄 **Session Management** — Multi-session support with persistent conversation history
+- 💰 **Cost Tracking** — Real-time token usage and cost monitoring across providers
+- 🏃 **Daemon Mode** — 24/7 persistent process (no restart overhead, warm agent state)
+
+### Voice & Telephony
+- 📞 **Twilio Phone Integration** — Receive/make calls and SMS, call screening, contact management
+- 🎙️ **Bidirectional Voice Calls** — Real-time audio streaming (Twilio Media Streams + Whisper STT + TTS)
+- 🎤 **Hume EVI Integration** — Speech-to-speech voice calls with emotional intelligence
+- 🔊 **Local TTS/STT** — Pocket TTS server + Whisper STT server (no cloud API costs)
+
+### Communication Integrations
+- 🤖 **Telegram Bot** — Full bot with image/document support, auto-chunking, session management
+- 💬 **WhatsApp Bot** — Node.js-based WhatsApp integration
+- 🎮 **Discord Bot** — Message sending, channel integration, Sanctum mode support
+
+### Agent Autonomy
+- 📖 **Level 1: Read Tools** — Memory access, web search, diagnostics
+- ⚙️ **Level 2: Safe Execution** — Whitelisted command execution with rate limiting and audit logging
+- 🔧 **Level 3: File Editing & Git** — Syntax-validated file editing with auto-backup/rollback + Git workflow automation
+- 🔁 **Service Controller** — Start/stop/restart agent services from within the agent
 
 ### Advanced Features
-- 🧩 **MCP Integration** - Model Context Protocol for code execution & browser automation
-- 📊 **PostgreSQL Backend** - Scalable conversation & memory persistence
-- 🕸️ **Graph RAG** - Knowledge graph retrieval (works without Neo4j - uses local DB fallback!)
-- 🎯 **Vision Support** - Gemini Flash integration for image analysis
-- 🔐 **Security Hardened** - Sandboxed code execution, rate limiting, domain whitelisting
-- 📈 **Token Efficiency** - 98.7% context window savings via MCP code execution
-- 🎨 **Modern UI** - React + TypeScript + Tailwind CSS
+- 🧩 **MCP Integration** — Model Context Protocol: code execution sandbox, browser automation, notebook library
+- 📊 **PostgreSQL Backend** — Scalable conversation & memory persistence
+- 🕸️ **Graph RAG** — Knowledge graph retrieval (Neo4j optional; uses local DB fallback)
+- 🎯 **Vision Support** — Gemini Flash + Grok multimodal for image analysis
+- 🔐 **Security Hardened** — Sandboxed code execution, rate limiting, domain whitelisting
+- 🛡️ **Guardian Mode** — GPS heartbeat telemetry, emergency triggers, proactive intervention
+- 🏰 **Sanctum Mode** — Focus/privacy mode: queues non-urgent channel mentions during DMs
+- 🎨 **Modern UI** — React + TypeScript + Tailwind CSS
+- 💙 **AiCara Frontend Compatibility** — Drop-in API compatibility layer
 
-### 🧠 Miras Memory Architecture (NEW!)
+### 🧠 Miras Memory Architecture
 Based on Google Research [Titans/Miras papers](https://research.google/blog/titans-miras-helping-ai-have-long-term-memory/):
-- 🔄 **Retention Gates** - Dynamic memory decay/boost based on access patterns
-- 👁️ **Attentional Bias** - Multi-factor scoring (semantic + temporal + importance + access)
-- 🏛️ **Hierarchical Memory** - 3-tier system (Working → Episodic → Semantic)
-- 📈 **Online Learning** - Hebbian associations + feedback learning during runtime
+- 🔄 **Retention Gates** — Dynamic memory decay/boost based on access patterns
+- 👁️ **Attentional Bias** — Multi-factor scoring (semantic + temporal + importance + access)
+- 🏛️ **Hierarchical Memory** — 3-tier system (Working → Episodic → Semantic)
+- 📈 **Online Learning** — Hebbian associations + feedback learning during runtime
+- 🔁 **Nested Learning System** — Multi-frequency memory updates to prevent catastrophic forgetting
 
 ---
 
 ## 📚 Documentation
 
 ### Getting Started
-- **[Quick Start Guide](QUICK_START.md)** - 5-minute setup
-- **[System Structure](STRUCTURE.txt)** - Project layout overview
-- **[Example Agents](examples/README.md)** - Pre-configured agent templates
+- **[Quick Start Guide](QUICK_START.md)** — 5-minute setup
+- **[Setup Checklist](SETUP_CHECKLIST.md)** — Step-by-step verification
+- **[System Structure](STRUCTURE.txt)** — Project layout overview
+- **[Example Agents](examples/README.md)** — Pre-configured agent templates
+- **[Memory Import Guide](MEMORY_IMPORT_GUIDE.md)** — Importing conversations and memories
+
+### Features & Integrations
+- **[MCP System Overview](MCP_SYSTEM_OVERVIEW.md)** — Code execution & browser automation architecture
+- **[Phone Setup Guide](docs/PHONE_SETUP_GUIDE.md)** — Twilio SMS/voice call setup
+- **[Telegram Setup](backend/TELEGRAM_SETUP.md)** — Telegram bot configuration
+- **[Mistral Large 3 Setup](backend/MISTRAL_LARGE_3_SETUP.md)** — Mistral AI direct API setup
 
 ### Advanced Topics
-- **[MCP System Overview](MCP_SYSTEM_OVERVIEW.md)** - Code execution & browser automation architecture
-- **[Miras Memory Architecture](docs/MIRAS_TITANS_INTEGRATION.md)** - Research-backed memory system
-- **[PostgreSQL Setup](backend/POSTGRESQL_SETUP.md)** - Database configuration
-- **[Compatibility Guide](backend/COMPATIBILITY.md)** - System requirements
+- **[Miras Memory Architecture](docs/MIRAS_TITANS_INTEGRATION.md)** — Research-backed memory system
+- **[Nested Learning System](docs/NESTED_LEARNING_OVERVIEW.md)** — Multi-frequency memory updates
+- **[Level 2 Execution](docs/LEVEL2_EXECUTION.md)** — Safe command execution setup
+- **[Level 3 File Editing](docs/LEVEL3_PRIORITY1_FILE_EDITING.md)** — File editing with validation
 
-### Testing & Security
-- **[Testing Results](TESTING_RESULTS.md)** - Test coverage & validation
-- **[Security Checklist](FINAL_SECURITY_CHECK.md)** - Security audit & hardening
+### Infrastructure
+- **[Service Deployment](SERVICE_DEPLOYMENT.md)** — systemd service setup
+- **[PostgreSQL Setup](backend/POSTGRESQL_SETUP.md)** — Database configuration
+- **[Compatibility Guide](backend/COMPATIBILITY.md)** — System requirements
 
 ---
 
@@ -145,44 +175,47 @@ Based on Google Research [Titans/Miras papers](https://research.google/blog/tita
 │  • Memory blocks editor                         │
 │  • Cost & token tracking                        │
 └─────────────────┬───────────────────────────────┘
-                  │
-                  │ HTTP/SSE
+                  │ HTTP/SSE/WebSocket
                   │
 ┌─────────────────▼───────────────────────────────┐
-│           Backend (Python)                       │
+│           Backend (Python/Flask)                 │
 │                                                  │
 │  ┌────────────────────────────────────────┐    │
 │  │     Consciousness Loop                 │    │
-│  │  • Model routing (OpenRouter)          │    │
+│  │  • Multi-provider LLM routing          │    │
 │  │  • Stream management                   │    │
 │  │  • Tool execution                      │    │
 │  │  • Memory integration                  │    │
+│  │  • SOMA physiological context          │    │
 │  └────────────────────────────────────────┘    │
 │                                                  │
 │  ┌─────────────┐  ┌─────────────┐             │
 │  │  Memory     │  │   Tools     │             │
 │  │  System     │  │  Registry   │             │
 │  │  + MIRAS    │  │             │             │
-│  │ • Core      │  │ • Web       │             │
-│  │ • Archival  │  │ • Search    │             │
-│  │ • Embedding │  │ • Discord   │             │
-│  │ • Retention │  │ • ArXiv     │             │
-│  │ • Hebbian   │  │ • Jina      │             │
+│  │ • Core      │  │ • Web/Search│             │
+│  │ • Archival  │  │ • File/Git  │             │
+│  │ • Embedding │  │ • Voice     │             │
+│  │ • Retention │  │ • Comms     │             │
+│  │ • Hebbian   │  │ • Hardware  │             │
 │  └─────────────┘  └─────────────┘             │
 │                                                  │
 │  ┌────────────────────────────────────────┐    │
-│  │        Graph RAG System               │    │
-│  │  • Knowledge graph retrieval          │    │
-│  │  • Neo4j (optional) or local DB       │    │
-│  │  • Relationship extraction            │    │
+│  │     Integrations                       │    │
+│  │  • Telegram Bot                        │    │
+│  │  • Discord Bot                         │    │
+│  │  • Twilio SMS/Voice + Hume EVI         │    │
+│  │  • Guardian Mode (GPS/emergency)       │    │
+│  │  • Sanctum Mode (focus/privacy)        │    │
 │  └────────────────────────────────────────┘    │
 │                                                  │
 │  ┌────────────────────────────────────────┐    │
 │  │        MCP Integration                 │    │
 │  │  • Code execution sandbox              │    │
 │  │  • Browser automation (Playwright)     │    │
-│  │  • Skills learning system              │    │
-│  │  • Vision analysis (Gemini)            │    │
+│  │  • Notebook library server             │    │
+│  │  • Agent dev server                    │    │
+│  │  • Vision analysis (Gemini/Grok)       │    │
 │  └────────────────────────────────────────┘    │
 └──────────────────┬──────────────────────────────┘
                    │
@@ -190,7 +223,7 @@ Based on Google Research [Titans/Miras papers](https://research.google/blog/tita
       │            │            │            │
 ┌─────▼─────┐ ┌───▼────┐ ┌────▼─────┐ ┌────▼─────┐
 │PostgreSQL │ │ChromaDB│ │MCP Servers│ │  Neo4j   │
-│Persistence│ │Vectors │ │(External) │ │(Optional)│
+│Persistence│ │Vectors │ │(Stdio)    │ │(Optional)│
 └───────────┘ └────────┘ └──────────┘ └──────────┘
 ```
 
@@ -199,67 +232,96 @@ Based on Google Research [Titans/Miras papers](https://research.google/blog/tita
 ## 🔧 Tech Stack
 
 ### Backend
-- **Python 3.11+** - Core runtime
-- **Flask** - API server with SSE streaming
-- **PostgreSQL** - Primary database (conversation history, memory)
-- **ChromaDB** - Vector embeddings for semantic search
-- **Neo4j** - Graph database for Graph RAG (optional, local DB fallback)
-- **OpenRouter** - Multi-model LLM gateway
-- **RestrictedPython** - Sandboxed code execution
+- **Python 3.11+** — Core runtime
+- **Flask + flask-socketio** — API server with SSE and WebSocket streaming
+- **PostgreSQL** — Primary database (conversation history, memory, call logs)
+- **ChromaDB** — Vector embeddings for semantic search
+- **Neo4j** — Graph database for Graph RAG (optional, local DB fallback)
+- **RestrictedPython** — Sandboxed code execution
+
+### LLM Providers
+- **Grok (xAI)** — Native SDK + HTTP API, primary default
+- **OpenRouter** — Multi-model gateway (100+ LLMs)
+- **Mistral AI** — Direct API (Magistral reasoning models)
+- **Venice AI** — Privacy-focused, uncensored models
+- **Ollama** — Local model inference
+
+### Voice Stack
+- **Twilio** — Phone numbers, SMS, Media Streams (bidirectional audio)
+- **Hume EVI** — Empathic voice interface (speech-to-speech)
+- **Whisper** — Local speech-to-text
+- **Pocket TTS** — Local text-to-speech server
+
+### Communication
+- **python-telegram-bot** — Telegram integration
+- **WhatsApp (Node.js)** — WhatsApp bot
+- **Discord** — Bot integration
 
 ### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Tailwind CSS** - Styling
-- **Vite** - Build tool & dev server
+- **React 18** — UI framework
+- **TypeScript** — Type safety
+- **Tailwind CSS** — Styling
+- **Vite** — Build tool & dev server
 
 ### MCP Integration
-- **Playwright** - Browser automation (Chromium)
-- **Gemini 2.0 Flash** - Vision analysis (free tier)
-- **fastmcp** - MCP protocol implementation
-- **MCP Servers** - Stdio-based external tools
+- **Playwright** — Browser automation (Chromium)
+- **Gemini 2.0 Flash** — Vision analysis (free tier)
+- **fastmcp** — MCP protocol implementation
+- **Notebook Library MCP** — Document processing and notebook management
+- **Agent Dev MCP** — Agent development tools
 
 ---
 
-## 🛠️ Built-in Tools
+## 🛠️ Tools Reference
 
 ### Memory Management
-- `core_memory_append` - Add to agent's core memory
-- `core_memory_replace` - Modify core memory
-- `archival_memory_insert` - Store in long-term memory
-- `archival_memory_search` - Semantic search across memories
-
-### Miras Memory Architecture
-Advanced memory features based on Google Research:
-- `retention_gate.compute_retention()` - Calculate memory retention score
-- `attentional_bias.compute_attention_score()` - Multi-factor relevance scoring
-- `hierarchical_memory.store()` - Store in tiered memory system
-- `memory_learner.on_memories_accessed()` - Record Hebbian associations
-- `memory_learner.record_feedback()` - Learn from user feedback
+- `core_memory_append` — Add to agent's core memory
+- `core_memory_replace` — Modify core memory
+- `archival_memory_insert` — Store in long-term memory
+- `archival_memory_search` — Semantic search across memories
+- `memory_tag_tools` — Tag and filter memories
 
 ### Web & Research
-- `fetch_webpage` - Retrieve and parse web pages
-- `web_search` - DuckDuckGo search
-- `arxiv_search` - Academic paper search
-- `jina_reader` - Advanced web content extraction
+- `fetch_webpage` — Retrieve and parse web pages
+- `web_search` — DuckDuckGo search (free)
+- `tavily_search` — Tavily AI-optimized search
+- `arxiv_search` — Academic paper search
+- `jina_reader` — Advanced web content extraction
+- `deep_research` — Multi-step autonomous research (query decomposition → parallel search → synthesis)
+- `pdf_reader` — Extract text from PDFs and ArXiv LaTeX sources
 
-### Integration
-- `discord_send_message` - Discord bot integration
-- `spotify_control` - Spotify playback control
-- `execute_code` - Sandboxed Python execution (MCP)
+### Communication
+- `discord_send_message` — Discord bot integration
+- `phone_tool` — Twilio SMS send, call management, contact management
+- `send_voice_message` — Send ElevenLabs voice messages
 
-### Graph RAG
-- `/api/graph/nodes` - Get graph nodes
-- `/api/graph/edges` - Get graph relationships
-- `/api/graph/stats` - Graph statistics
-- `/api/graph/rag` - Retrieve context from knowledge graph
+### Agent Autonomy (Level 2 & 3)
+- `command_executor` — Whitelisted Linux command execution with audit logging
+- `file_editor` — Syntax-validated file editing with auto-backup and rollback
+- `git_workflow` — Git branch/commit/PR automation
+- `service_controller` — Start/stop/restart agent systemd services
 
-### Browser Automation (MCP)
-- `navigate` - Browser navigation
-- `screenshot` - Capture with vision analysis
-- `extract_text` - DOM text extraction
-- `click` / `fill_form` - Page interaction
-- `search_google` - Google search automation
+### Location & Places
+- `google_places_tool` — Google Places search
+- `places_search` — Location-based search
+
+### MCP / Execution
+- `execute_code` — Sandboxed Python execution (MCP)
+- `browser_tool` — Full browser automation (navigate, screenshot, click, fill)
+- `notebook_library_tool` — Document indexing and notebook search
+- `agent_dev_tool` — Agent development and testing utilities
+
+### Hardware & Integrations
+- `spotify_control` — Spotify playback control
+- `lovense_tool` — Lovense hardware control via MCP
+- `sanctum_tool` — Control focus/privacy mode (on/off/status/queue)
+- `cost_tools` — Query token usage and cost data
+
+### Graph RAG (API endpoints)
+- `GET /api/graph/nodes` — Get graph nodes
+- `GET /api/graph/edges` — Get graph relationships
+- `GET /api/graph/stats` — Graph statistics
+- `POST /api/graph/rag` — Retrieve context from knowledge graph
 
 ---
 
@@ -269,7 +331,7 @@ Advanced memory features based on Google Research:
 - Python 3.11+
 - Node.js 18+
 - PostgreSQL 14+ (optional, SQLite fallback available)
-- OpenRouter API key
+- An API key for at least one LLM provider
 
 ### Backend Setup
 
@@ -279,16 +341,15 @@ cd backend
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate  # Mac/Linux
-# venv\Scripts\activate  # Windows
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Configure environment
-cp config/.env.example .env
+cp .env.example .env
 # Edit .env with your API keys
 
-# Optional: Install Playwright for MCP browser automation
+# Optional: Playwright for MCP browser automation
 playwright install chromium
 ```
 
@@ -296,13 +357,69 @@ playwright install chromium
 
 ```bash
 cd frontend
-
-# Install dependencies
 npm install
-
-# Start dev server
 npm run dev
 ```
+
+### WhatsApp Bot Setup
+
+```bash
+cd whatsapp_bot
+npm install
+# Configure user_mapping.json (see user_mapping.json.example)
+node bot.js
+```
+
+### Telegram Bot Setup
+
+See [backend/TELEGRAM_SETUP.md](backend/TELEGRAM_SETUP.md) for full setup instructions.
+
+```bash
+# Add TELEGRAM_BOT_TOKEN to backend/.env
+python backend/telegram_bot.py
+```
+
+---
+
+## 📞 Voice & Telephony
+
+The framework supports two voice call pipelines:
+
+### Pipeline 1: STT → Consciousness Loop → TTS
+Real-time bidirectional audio via Twilio Media Streams WebSocket:
+- Caller audio → Twilio → Whisper STT → Consciousness Loop → TTS → Twilio → Caller
+- Supports barge-in (caller can interrupt mid-response)
+- Energy-based speech endpointing
+
+### Pipeline 2: Hume EVI (speech-to-speech)
+Lower latency pipeline using Hume's Empathic Voice Interface:
+- Caller audio → Twilio → EVI (integrated STT + LLM + TTS) → Twilio → Caller
+- Tool calls route through the substrate's MemoryTools
+- Context injection (system prompt, memory blocks, Graph RAG)
+
+See [docs/PHONE_SETUP_GUIDE.md](docs/PHONE_SETUP_GUIDE.md) for Twilio setup.
+
+---
+
+## 🛡️ Guardian Mode
+
+Guardian Mode provides safety features for real-world awareness:
+- **GPS Heartbeat** — Periodic location telemetry from mobile client
+- **Emergency Triggers** — Panic button routes through the consciousness loop
+- **Proactive Intervention** — Agent evaluates context and can reach out proactively
+- **Apple Watch Biometrics** — Heart rate and activity data integration
+
+Endpoints: `POST /api/guardian/heartbeat`, `POST /api/guardian/emergency`
+
+---
+
+## 🏰 Sanctum Mode
+
+When the user is in an active DM conversation, Sanctum Mode automatically queues non-urgent channel @mentions instead of delivering them to the consciousness loop. An auto-reply is sent in the channel:
+
+> "Assistant's in sanctum; will circle back when free."
+
+Queued mentions are reviewed during heartbeats. The agent can also manually activate/deactivate via the `sanctum_tool`.
 
 ---
 
@@ -313,15 +430,26 @@ npm run dev
 - ✅ 30-second timeout enforcement
 - ✅ 512MB memory limit per execution
 - ✅ Isolated workspace per session
-- ✅ No file system access outside sandbox
-- ✅ No network access except via MCP tools
 
-### Browser Automation Security
+### Level 2 Command Execution
+- ✅ Command whitelist (only approved binaries)
+- ✅ Rate limiting (max 15 commands/min)
+- ✅ Full audit log at `/var/log/agent_dev_commands.log`
+- ✅ Sandboxed to `/home/user`
+- ✅ Dry-run mode for safe testing
+
+### Level 3 File Editing
+- ✅ Path sandboxing (restricted to `/home/user`)
+- ✅ Syntax validation before write (Python, JSON, YAML, JS)
+- ✅ Dangerous pattern detection (eval, exec, `__import__`)
+- ✅ Timestamped auto-backup before every change
+- ✅ Auto-rollback on validation failure
+
+### Browser Automation
 - ✅ Domain whitelist (Wikipedia, GitHub, ArXiv, etc.)
 - ✅ Domain blacklist (banking, payments blocked)
 - ✅ Rate limiting (10 nav/min, 5 screenshots/min)
-- ✅ Headless mode only (no GUI)
-- ✅ HTTPS enforcement on sensitive operations
+- ✅ Headless mode only
 
 ### API Security
 - ✅ Rate limiting on all endpoints
@@ -329,84 +457,43 @@ npm run dev
 - ✅ Input sanitization
 - ✅ API key validation
 
-📋 **Full audit:** See [FINAL_SECURITY_CHECK.md](FINAL_SECURITY_CHECK.md)
-
 ---
 
-## 🚦 Usage Examples
+## 🚀 Service Deployment (systemd)
 
-### Basic Chat
+The repository includes systemd service files for production deployment:
 
-```python
-# The agent maintains context across messages
-User: "How are you doing today?"
-Assistant: "Steady and focused. How can I help?"
+| Service file | Description |
+|---|---|
+| `api-substrate.service` | Main backend API server |
+| `api-telegram.service` | Telegram bot process |
+| `substrate-agent.service` | Agent substrate (alternative config) |
+| `substrate-telegram.service` | Telegram bot (alternative config) |
+| `whatsapp_bot/nate-whatsapp.service` | WhatsApp bot |
+
+```bash
+sudo cp api-substrate.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable api-substrate
+sudo systemctl start api-substrate
 ```
 
-### Tool Usage
-
-```python
-# Memory tools
-User: "Remember that I prefer morning strategy sessions."
-Assistant: *uses core_memory_append*
-Assistant: "Noted. Morning strategy sessions are now part of your preferences."
-
-# Web search
-User: "What's the latest on quantum computing?"
-Assistant: *uses web_search*
-Assistant: "Here are the most recent updates on quantum computing..."
-```
-
-### MCP Code Execution
-
-```python
-# Browser automation with vision
-User: "Take a screenshot of Wikipedia's homepage and describe it"
-Agent: *writes code*
-```
-```python
-url = "https://en.wikipedia.org"
-result = await mcp.browser.screenshot(url, analyze=True)
-print(result['analysis'])
-```
-
-**Result:** Vision analysis returned, 98.7% token savings vs manual browsing
-
-📖 **Full MCP guide:** See [MCP_SYSTEM_OVERVIEW.md](MCP_SYSTEM_OVERVIEW.md)
-
----
-
-## 📊 Performance
-
-### Token Efficiency
-- **Without MCP:** ~100,000 tokens for complex web tasks
-- **With MCP:** ~2,000 tokens (98.7% reduction)
-- **Streaming:** <50ms first token latency
-
-### Execution Speed
-- **Code compilation:** <50ms (RestrictedPython)
-- **Typical execution:** 200-500ms
-- **Max timeout:** 30s (enforced)
-
-### Memory Performance
-- **Core memory:** O(1) access (PostgreSQL indexed)
-- **Archival search:** <200ms (ChromaDB vector similarity)
-- **Skills lookup:** O(log n) with semantic indexing
+See [SERVICE_DEPLOYMENT.md](SERVICE_DEPLOYMENT.md) for full instructions.
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Backend tests
+# Backend startup test
 cd backend
 python test_startup.py
 
-# Integration tests
+# MCP integration tests
 python test_mcp_integration.py
 
-# Full test results
-cat ../TESTING_RESULTS.md
+# Level 3 demo (file editing)
+python tools/test_level3_demo.py
 ```
 
 ---
@@ -414,21 +501,33 @@ cat ../TESTING_RESULTS.md
 ## 🗺️ Roadmap
 
 ### Completed ✅
-- [x] Multi-model OpenRouter integration
-- [x] Streaming SSE responses
+- [x] Multi-provider LLM support (Grok, OpenRouter, Mistral, Venice, Ollama)
+- [x] Streaming SSE + WebSocket responses
 - [x] PostgreSQL persistence
-- [x] Memory system (core + archival)
-- [x] Tool execution framework
+- [x] Memory system (core + archival + Miras architecture)
+- [x] Tool execution framework (30+ tools)
 - [x] MCP code execution sandbox
 - [x] Browser automation (Playwright)
-- [x] Vision analysis (Gemini)
+- [x] Vision analysis (Gemini + Grok multimodal)
 - [x] Skills learning system
 - [x] Cost tracking
-- [x] **Miras Memory Architecture** (December 2025)
-  - [x] Retention Gates (dynamic memory decay/boost)
-  - [x] Attentional Bias (multi-factor retrieval scoring)
-  - [x] Hierarchical Memory (Working → Episodic → Semantic)
-  - [x] Online Learning (Hebbian associations + feedback)
+- [x] **Miras Memory Architecture** (Retention Gates, Attentional Bias, Hierarchical Memory, Online Learning)
+- [x] **Nested Learning System** (multi-frequency memory updates)
+- [x] **Telegram bot** (text + image + document support)
+- [x] **WhatsApp bot** (Node.js)
+- [x] **Twilio SMS + voice calls** (bidirectional Media Streams)
+- [x] **Hume EVI** (speech-to-speech voice interface)
+- [x] **Local TTS/STT** (Pocket TTS + Whisper)
+- [x] **Level 2 safe command execution** (whitelisted + audited)
+- [x] **Level 3 file editing** (syntax validation, auto-backup, rollback)
+- [x] **Git workflow automation**
+- [x] **Guardian Mode** (GPS heartbeat, emergency triggers)
+- [x] **Sanctum Mode** (focus/privacy for DMs)
+- [x] **Daemon Mode** (24/7 persistent process)
+- [x] **Notebook library MCP server**
+- [x] **Agent dev MCP server**
+- [x] **Emotional intensity analyzer**
+- [x] systemd service deployment
 
 ### In Progress 🚧
 - [ ] Additional MCP servers (filesystem, database)
@@ -437,16 +536,37 @@ cat ../TESTING_RESULTS.md
 - [ ] Multi-agent orchestration
 
 ### Planned 🎯
-- [ ] Voice interface
-- [ ] Mobile app
+- [ ] Voice interface (mobile)
 - [ ] Cloud deployment templates
 - [ ] Plugin marketplace
 
 ---
 
-## 🤝 Contributing
+## 📦 Project Structure
 
-This is an open-source project. Contributions welcome!
+```
+api_substrate/
+├── backend/
+│   ├── api/              # Flask route blueprints (chat, agents, voice, guardian, etc.)
+│   ├── core/             # Consciousness loop, memory system, LLM clients, Miras
+│   ├── services/         # Background services (Whisper, TTS, Graph RAG, emotional analysis)
+│   ├── tools/            # Tool implementations (30+ tools)
+│   ├── letta_compat/     # Letta/MemGPT import compatibility
+│   └── telegram_bot.py   # Telegram bot entry point
+├── frontend/             # React + TypeScript + Tailwind UI
+├── mcp_servers/
+│   ├── agent_dev/        # Agent development MCP server
+│   └── notebook_library/ # Document indexing MCP server
+├── whatsapp_bot/         # Node.js WhatsApp integration
+├── docs/                 # Extended documentation
+├── examples/             # Pre-configured agent templates
+├── scripts/              # Setup and utility scripts
+└── tests/                # Test suite
+```
+
+---
+
+## 🤝 Contributing
 
 ### Development Setup
 1. Fork the repository
@@ -472,22 +592,27 @@ See [LICENSE](LICENSE) for details.
 ## 🙏 Acknowledgments
 
 ### Technologies
-- **OpenRouter** - Multi-model API gateway
-- **Anthropic MCP** - Model Context Protocol architecture
-- **Playwright** - Browser automation framework
-- **Gemini** - Vision analysis (Google)
-- **PostgreSQL** - Database engine
-- **ChromaDB** - Vector embeddings
+- **xAI / Grok** — Primary LLM API
+- **OpenRouter** — Multi-model API gateway
+- **Mistral AI** — Direct API with reasoning models
+- **Venice AI** — Privacy-focused LLM access
+- **Anthropic MCP** — Model Context Protocol architecture
+- **Playwright** — Browser automation framework
+- **Gemini** — Vision analysis (Google)
+- **PostgreSQL** — Database engine
+- **ChromaDB** — Vector embeddings
+- **Twilio** — Telephony infrastructure
+- **Hume** — Empathic voice interface
 
 ### Research
-- **Google Titans/Miras** - Advanced memory architecture (Retention Gates, Attentional Bias, Online Learning)
-- **"It's All Connected"** - Test-time memorization and retention research
+- **Google Titans/Miras** — Advanced memory architecture (Retention Gates, Attentional Bias, Online Learning)
+- **"It's All Connected"** — Test-time memorization and retention research
 
 ### Community
 Built with inspiration from:
-- Letta (formerly MemGPT) - Memory architecture patterns
-- LangChain - Tool execution concepts
-- AutoGPT - Agent autonomy ideas
+- Letta (formerly MemGPT) — Memory architecture patterns
+- LangChain — Tool execution concepts
+- AutoGPT — Agent autonomy ideas
 
 ---
 
@@ -495,94 +620,11 @@ Built with inspiration from:
 
 - 🐛 **Bug Reports:** GitHub Issues
 - 💬 **Questions:** GitHub Discussions
-- 📖 **Documentation:** See `/docs` folder
+- 📖 **Documentation:** See `/docs` folder and individual `*.md` files
 - 🔧 **Troubleshooting:** See [QUICK_START.md](QUICK_START.md)
 
 ---
 
 **Built for developers who need production-ready AI agents.**
 
-*Version 1.1.0 | Last Updated: December 2025*
-
----
-
-## 🧠 Miras Memory Architecture Details
-
-Based on [Google Research Titans & Miras papers](https://research.google/blog/titans-miras-helping-ai-have-long-term-memory/), this framework implements a 4-phase advanced memory system:
-
-### Phase 1: Retention Gates (~490 lines)
-**File:** `backend/core/retention_gate.py`
-
-Dynamic memory decay/boost based on:
-- Importance (35% weight)
-- Access count (30% weight)  
-- Temporal recency (25% weight)
-- Base retention (10% weight)
-
-```python
-from core.retention_gate import RetentionGate
-
-gate = RetentionGate()
-score = gate.compute_retention(memory)  # 0.0 - 1.0
-action = gate.get_action(score)  # BOOST, KEEP, CONSOLIDATE, DECAY, ARCHIVE
-```
-
-### Phase 2: Attentional Bias (~610 lines)
-**File:** `backend/core/attentional_bias.py`
-
-5 attention modes with automatic query analysis:
-- STANDARD - Balanced retrieval
-- SEMANTIC_HEAVY - Meaning-focused
-- TEMPORAL_HEAVY - Time-sensitive ("when did we...")
-- IMPORTANCE_HEAVY - Critical information
-- EMOTIONAL - Relationship/feeling queries
-
-```python
-from core.attentional_bias import QueryAnalyzer, AttentionalBias
-
-analyzer = QueryAnalyzer()
-mode = analyzer.analyze("When did we last meet?")  # → TEMPORAL
-
-bias = AttentionalBias()
-score = bias.compute_attention_score(memory, query, mode)
-```
-
-### Phase 3: Hierarchical Memory (~720 lines)
-**File:** `backend/core/hierarchical_memory.py`
-
-3-tier memory architecture:
-- **Working Memory** - Fast, volatile, LRU eviction (current session)
-- **Episodic Memory** - Medium-term, retention gates (recent history)
-- **Semantic Memory** - Long-term, Graph DB integration (permanent knowledge)
-
-```python
-from core.hierarchical_memory import HierarchicalMemory, MemoryItem
-
-hier = HierarchicalMemory()
-hier.store(memory_item)  # Auto-routes to appropriate tier
-hier.consolidate()  # Move memories between tiers
-```
-
-### Phase 4: Online Learning (~500 lines)
-**File:** `backend/core/memory_learner.py`
-
-Hebbian learning: "Neurons that fire together, wire together"
-- Memories accessed together form associations
-- User feedback adjusts importance
-- Association decay for unused connections
-
-```python
-from core.memory_learner import MemoryLearner, FeedbackType
-
-learner = MemoryLearner()
-learner.on_memories_accessed(['mem1', 'mem2'], query="...")  # Forms associations
-learner.record_feedback('mem1', FeedbackType.HELPFUL)  # +0.5 importance
-learner.record_feedback('mem2', FeedbackType.NOT_HELPFUL)  # -0.2 importance
-```
-
-**Total: ~2,320 lines of research-backed memory architecture!**
-
-📖 **Full documentation:** See [docs/MIRAS_TITANS_INTEGRATION.md](docs/MIRAS_TITANS_INTEGRATION.md)
-
-
-
+*Version 1.2.0 | Last Updated: March 2026*
