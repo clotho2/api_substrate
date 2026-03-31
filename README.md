@@ -29,24 +29,16 @@ cd substrate-ai
 python setup.py
 ```
 
-The setup script will:
+The setup wizard will:
 - ✅ Create Python virtual environment
 - ✅ Install all backend dependencies
-- ✅ Create configuration files
+- ✅ Interactively configure your LLM provider and API key
+- ✅ Create `backend/.env` from the template
 - ✅ Install frontend dependencies
+- ✅ Initialize the agent
 - ✅ Validate your setup
 
-**After setup, add your API key:**
-```bash
-# Edit backend/.env and add your preferred API key
-# Grok: GROK_API_KEY (get one at https://console.x.ai/)
-# OpenRouter: OPENROUTER_API_KEY (get one at https://openrouter.ai/keys)
-# Mistral: MISTRAL_API_KEY
-# Venice: VENICE_API_KEY
-
-# Configure the default agent
-python backend/setup_agent.py
-```
+Supported providers: **Grok (xAI)**, **OpenRouter**, **Mistral AI**, **Venice AI**, **Ollama (local)**
 
 ### Option 2: Manual Setup
 
@@ -57,16 +49,16 @@ python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
+# Configure — set at least one provider key in .env
+cp .env.example .env
+# GROK_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY, or VENICE_API_KEY
+
+# Initialize the agent
+python setup_agent.py
+
 # Frontend
 cd ../frontend
 npm install
-
-# Configure
-cp backend/.env.example backend/.env
-# Edit backend/.env with your API keys
-
-# Setup the default agent
-python backend/setup_agent.py
 ```
 
 ### Start the Application
