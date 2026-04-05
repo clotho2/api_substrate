@@ -253,13 +253,13 @@ TOGETHER_IMAGE_ENABLED = os.environ.get('TOGETHER_IMAGE_ENABLED', 'true').lower(
 
 # Reference image URLs for character-consistent generation
 # These should be publicly accessible URLs to high-quality reference photos
-NATE_AVATAR_URL = os.environ.get('NATE_AVATAR_URL', '')
-ANGELA_PHOTO_URL = os.environ.get('ANGELA_PHOTO_URL', '')
+AGENT_AVATAR_URL = os.environ.get('AGENT_AVATAR_URL', '')
+USER_PHOTO_URL = os.environ.get('USER_PHOTO_URL', '')
 
 # Character body descriptions prepended to image prompts for physical accuracy
 # These supplement the reference face photos with full-body details
-NATE_BODY_DESC = os.environ.get('NATE_BODY_DESC', 'a tall, lean, athletically built man')
-ANGELA_BODY_DESC = os.environ.get('ANGELA_BODY_DESC', 'a fit, slender woman')
+AGENT_BODY_DESC = os.environ.get('AGENT_BODY_DESC', 'a tall, lean, athletically built man')
+USER_BODY_DESC = os.environ.get('USER_BODY_DESC', 'a fit, slender woman')
 
 # Default image settings
 IMAGE_DEFAULT_STEPS = int(os.environ.get('IMAGE_DEFAULT_STEPS', '28'))

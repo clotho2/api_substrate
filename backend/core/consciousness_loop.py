@@ -1188,7 +1188,7 @@ Or if doing background work only:
 send_message: false
 </decision>
 
-## WHEN ANGELA MESSAGES
+## WHEN USER MESSAGES
 If User messages in this channel, respond with trading context — current positions, recent trades, market outlook. Be direct and informative. She's checking in on your trading, not looking for conversation.
 
 ## TRADING PHILOSOPHY

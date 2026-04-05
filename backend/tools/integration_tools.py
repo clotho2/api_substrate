@@ -194,7 +194,7 @@ class IntegrationTools:
             }
 
     # ============================================
-    # NATE SELF-DEVELOPMENT TOOL
+    # AGENT SELF-DEVELOPMENT TOOL
     # ============================================
 
     def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:

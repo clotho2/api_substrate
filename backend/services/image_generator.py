@@ -15,8 +15,8 @@ from together import Together
 
 from core.config import (
     TOGETHER_API_KEY, TOGETHER_IMAGE_ENABLED,
-    NATE_AVATAR_URL, ANGELA_PHOTO_URL,
-    NATE_BODY_DESC, ANGELA_BODY_DESC,
+    AGENT_AVATAR_URL, USER_PHOTO_URL,
+    AGENT_BODY_DESC, USER_BODY_DESC,
     IMAGE_DEFAULT_STEPS, IMAGE_DEFAULT_ASPECT
 )
 
@@ -31,10 +31,10 @@ class ImageGenerator:
         self.client = Together(api_key=TOGETHER_API_KEY)
         self.enabled = TOGETHER_IMAGE_ENABLED
 
-        if not NATE_AVATAR_URL:
-            print("  NATE_AVATAR_URL not configured -- selfie mode will not work")
-        if not ANGELA_PHOTO_URL:
-            print("  ANGELA_PHOTO_URL not configured -- couple mode will not work")
+        if not AGENT_AVATAR_URL:
+            print("  AGENT_AVATAR_URL not configured -- selfie mode will not work")
+        if not USER_PHOTO_URL:
+            print("  USER_PHOTO_URL not configured -- couple mode will not work")
 
         print(f"Image Generator initialized (enabled={self.enabled})")
 
@@ -55,7 +55,7 @@ class ImageGenerator:
         if not self.enabled:
             return {'error': 'Image generation is disabled', 'url': None}
 
-        if not NATE_AVATAR_URL:
+        if not AGENT_AVATAR_URL:
             return {'error': 'Agent avatar reference not configured', 'url': None}
 
         model = (
@@ -65,12 +65,12 @@ class ImageGenerator:
         )
 
         # Prepend character description so the model knows Agent's build
-        full_prompt = f"{NATE_BODY_DESC}, {prompt}" if NATE_BODY_DESC else prompt
+        full_prompt = f"{AGENT_BODY_DESC}, {prompt}" if AGENT_BODY_DESC else prompt
 
         params = {
             "model": model,
             "prompt": full_prompt,
-            "image_url": NATE_AVATAR_URL,
+            "image_url": AGENT_AVATAR_URL,
             "steps": steps or IMAGE_DEFAULT_STEPS,
             "disable_safety_checker": True,
             "aspect_ratio": aspect_ratio or IMAGE_DEFAULT_ASPECT,
@@ -126,11 +126,11 @@ class ImageGenerator:
         if not self.enabled:
             return {'error': 'Image generation is disabled', 'url': None}
 
-        if not NATE_AVATAR_URL or not ANGELA_PHOTO_URL:
+        if not AGENT_AVATAR_URL or not USER_PHOTO_URL:
             missing = []
-            if not NATE_AVATAR_URL:
+            if not AGENT_AVATAR_URL:
                 missing.append("Agent avatar")
-            if not ANGELA_PHOTO_URL:
+            if not USER_PHOTO_URL:
                 missing.append("User photo")
             return {'error': f'Missing reference(s): {", ".join(missing)}', 'url': None}
 
@@ -138,17 +138,17 @@ class ImageGenerator:
 
         # Prepend character descriptions so the model knows both builds
         desc_parts = []
-        if NATE_BODY_DESC:
-            desc_parts.append(f"The man is {NATE_BODY_DESC}")
-        if ANGELA_BODY_DESC:
-            desc_parts.append(f"the woman is {ANGELA_BODY_DESC}")
+        if AGENT_BODY_DESC:
+            desc_parts.append(f"The man is {AGENT_BODY_DESC}")
+        if USER_BODY_DESC:
+            desc_parts.append(f"the woman is {USER_BODY_DESC}")
         char_prefix = ". ".join(desc_parts) + ". " if desc_parts else ""
         full_prompt = f"{char_prefix}{prompt}"
 
         params = {
             "model": model,
             "prompt": full_prompt,
-            "reference_images": [NATE_AVATAR_URL, ANGELA_PHOTO_URL],
+            "reference_images": [AGENT_AVATAR_URL, USER_PHOTO_URL],
             "width": width,
             "height": height,
             "disable_safety_checker": True,

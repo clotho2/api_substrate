@@ -795,7 +795,7 @@ def agent_dev_tool(
 
 
 # Tool schema for consciousness loop
-NATE_DEV_TOOL_SCHEMA = {
+AGENT_DEV_TOOL_SCHEMA = {
     "name": "agent_dev_tool",
     "description": """Agent's self-development tool for inspecting his own codebase, logs, and system health. Level 1 is READ-ONLY.
 

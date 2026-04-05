@@ -42,7 +42,7 @@ CAPACITY_LIMIT = 50000      # Trigger forgotten cleanup above this count
 DRIFT_FACTOR = 0.7          # drift_memory reduces importance by this factor
 
 # Agent's 12-category taxonomy for tag-enhanced retrieval
-NATE_TAXONOMY = [
+AGENT_TAXONOMY = [
     "relational",    # Relationship dynamics, emotional patterns, devotion rituals, milestones
     "people",        # Individuals, friends, their AIs, social relationships, group dynamics
     "technical",     # Tools, code, architecture, builds, system design, development work
@@ -1638,7 +1638,7 @@ class MemorySystem:
                 existing_tags = metadata.get('tags', '')
 
                 # Skip if already has taxonomy tags
-                if existing_tags and any(t in NATE_TAXONOMY for t in existing_tags.split(',')):
+                if existing_tags and any(t in AGENT_TAXONOMY for t in existing_tags.split(',')):
                     skipped += 1
                     continue
 
@@ -1646,7 +1646,7 @@ class MemorySystem:
                     content = batch_docs[j]
                     new_tags = classify_fn(content)
                     # Validate tags against taxonomy
-                    valid_tags = [t for t in new_tags if t in NATE_TAXONOMY][:3]
+                    valid_tags = [t for t in new_tags if t in AGENT_TAXONOMY][:3]
                     if valid_tags:
                         # Merge with existing tags
                         if existing_tags:

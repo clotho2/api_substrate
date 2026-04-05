@@ -461,7 +461,7 @@ The repository includes systemd service files for production deployment:
 | `api-telegram.service` | Telegram bot process |
 | `substrate-agent.service` | Agent substrate (alternative config) |
 | `substrate-telegram.service` | Telegram bot (alternative config) |
-| `whatsapp_bot/nate-whatsapp.service` | WhatsApp bot |
+| `whatsapp_bot/AGENT-whatsapp.service` | WhatsApp bot |
 
 ```bash
 sudo cp api-substrate.service /etc/systemd/system/
