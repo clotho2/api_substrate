@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-🚀 Substrate AI - One-Click Setup Script
+🚀 Substrate AI - Setup Wizard
 
 Run this script to set up everything automatically:
     python setup.py
 
 What it does:
-1. Creates Python virtual environment
-2. Installs all dependencies
-3. Creates .env file from template
-4. Creates necessary directories
-5. Installs frontend dependencies
-6. Validates the setup
-
-After running, just add your OpenRouter API key to backend/.env and start!
+1. Checks Python version
+2. Creates Python virtual environment
+3. Installs all dependencies
+4. Walks you through API key configuration
+5. Creates .env file
+6. Installs frontend dependencies
+7. Initializes the agent
+8. Validates the setup
 """
 
 import os
@@ -22,247 +22,381 @@ import subprocess
 import shutil
 from pathlib import Path
 
-# Colors for terminal output
+
+# ──────────────────────────────────────────────────────────
+# Terminal helpers
+# ──────────────────────────────────────────────────────────
+
 class Colors:
-    GREEN = '\033[92m'
+    GREEN  = '\033[92m'
     YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BLUE = '\033[94m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
+    RED    = '\033[91m'
+    BLUE   = '\033[94m'
+    CYAN   = '\033[96m'
+    BOLD   = '\033[1m'
+    END    = '\033[0m'
 
-def print_step(step_num, total, message):
-    """Print a formatted step message"""
-    print(f"\n{Colors.BLUE}{Colors.BOLD}[{step_num}/{total}]{Colors.END} {message}")
+def step(n, total, msg):
+    print(f"\n{Colors.BLUE}{Colors.BOLD}[{n}/{total}]{Colors.END} {msg}")
 
-def print_success(message):
-    print(f"  {Colors.GREEN}✅ {message}{Colors.END}")
+def ok(msg):   print(f"  {Colors.GREEN}✅ {msg}{Colors.END}")
+def warn(msg): print(f"  {Colors.YELLOW}⚠️  {msg}{Colors.END}")
+def err(msg):  print(f"  {Colors.RED}❌ {msg}{Colors.END}")
+def info(msg): print(f"  {Colors.CYAN}ℹ️  {msg}{Colors.END}")
 
-def print_warning(message):
-    print(f"  {Colors.YELLOW}⚠️  {message}{Colors.END}")
-
-def print_error(message):
-    print(f"  {Colors.RED}❌ {message}{Colors.END}")
-
-def run_command(cmd, cwd=None, shell=True):
-    """Run a shell command and return success status"""
+def ask(prompt, default=""):
+    """Prompt the user for input, showing the default in brackets."""
+    display = f" [{default}]" if default else ""
     try:
-        result = subprocess.run(
-            cmd, 
-            shell=shell, 
-            cwd=cwd, 
-            capture_output=True, 
-            text=True
-        )
-        return result.returncode == 0, result.stdout, result.stderr
+        value = input(f"  {Colors.BOLD}{prompt}{display}: {Colors.END}").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default
+    return value if value else default
+
+def ask_yn(prompt, default=True):
+    hint = "Y/n" if default else "y/N"
+    try:
+        value = input(f"  {Colors.BOLD}{prompt} ({hint}): {Colors.END}").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return default
+    if value in ("y", "yes"):
+        return True
+    if value in ("n", "no"):
+        return False
+    return default
+
+def run(cmd, cwd=None):
+    """Run a shell command and return (success, stdout, stderr)."""
+    try:
+        r = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+        return r.returncode == 0, r.stdout, r.stderr
     except Exception as e:
         return False, "", str(e)
+
+
+# ──────────────────────────────────────────────────────────
+# Provider definitions
+# ──────────────────────────────────────────────────────────
+
+PROVIDERS = {
+    "1": {
+        "name": "Grok (xAI)",
+        "env_key": "GROK_API_KEY",
+        "model_key": "MODEL_NAME",
+        "default_model": "grok-4-1-fast-reasoning",
+        "key_hint": "starts with 'xai-'",
+        "signup_url": "https://console.x.ai/",
+        "notes": "Recommended. Fast reasoning, 131K context, free tier available.",
+    },
+    "2": {
+        "name": "OpenRouter",
+        "env_key": "OPENROUTER_API_KEY",
+        "model_key": "DEFAULT_LLM_MODEL",
+        "default_model": "openrouter/auto",
+        "key_hint": "starts with 'sk-or-v1-'",
+        "signup_url": "https://openrouter.ai/keys",
+        "notes": "Access to 100+ models (Claude, GPT-4, Llama, Mistral, etc.). Free tier available.",
+    },
+    "3": {
+        "name": "Mistral AI",
+        "env_key": "MISTRAL_API_KEY",
+        "model_key": "MISTRAL_MODEL",
+        "default_model": "magistral-medium-2509",
+        "key_hint": "from console.mistral.ai",
+        "signup_url": "https://console.mistral.ai/api-keys",
+        "notes": "Direct Mistral API. Includes Magistral reasoning models.",
+    },
+    "4": {
+        "name": "Venice AI",
+        "env_key": "VENICE_API_KEY",
+        "model_key": "DEFAULT_LLM_MODEL",
+        "default_model": "venice/llama-3.3-70b",
+        "key_hint": "from venice.ai",
+        "signup_url": "https://venice.ai",
+        "notes": "Privacy-focused, no conversation logging, uncensored models.",
+    },
+    "5": {
+        "name": "Ollama (local)",
+        "env_key": None,
+        "model_key": "OLLAMA_MODEL",
+        "default_model": "llama3.2",
+        "key_hint": None,
+        "signup_url": "https://ollama.ai/",
+        "notes": "Run models locally. Requires Ollama installed on this machine.",
+    },
+}
+
+
+def choose_provider():
+    """Interactive provider selection. Returns the provider dict."""
+    print(f"""
+{Colors.BOLD}Choose your LLM provider:{Colors.END}
+
+  1) Grok (xAI)     — Fast reasoning, 131K context  {Colors.GREEN}[recommended]{Colors.END}
+  2) OpenRouter      — 100+ models via one API
+  3) Mistral AI      — Direct Mistral + reasoning models
+  4) Venice AI       — Privacy-focused, no logging
+  5) Ollama (local)  — Run models on your machine
+""")
+    choice = ask("Enter number", "1")
+    provider = PROVIDERS.get(choice, PROVIDERS["1"])
+    print(f"\n  {Colors.GREEN}Selected: {provider['name']}{Colors.END}")
+    info(provider["notes"])
+    return provider
+
+
+def configure_provider(provider, env_path: Path) -> dict:
+    """
+    Walk the user through entering their API key and model.
+    Returns a dict of env var additions to write.
+    """
+    additions = {}
+
+    # API key (Ollama local doesn't need one)
+    if provider["env_key"]:
+        print(f"\n  Get your key at: {Colors.CYAN}{provider['signup_url']}{Colors.END}")
+        key = ask(f"Paste your {provider['name']} API key ({provider['key_hint']})", "")
+        if key:
+            additions[provider["env_key"]] = key
+        else:
+            warn(f"No key entered. Add {provider['env_key']} to backend/.env before starting.")
+    else:
+        info("Ollama runs locally — no API key needed.")
+        additions["OLLAMA_API_URL"] = ask("Ollama base URL", "http://localhost:11434")
+
+    # Model selection
+    model = ask("Model name", provider["default_model"])
+    additions[provider["model_key"]] = model
+
+    return additions
+
+
+# ──────────────────────────────────────────────────────────
+# .env writer
+# ──────────────────────────────────────────────────────────
+
+def update_env_file(env_path: Path, updates: dict):
+    """
+    Write or update key=value pairs in an .env file.
+    Existing keys are updated in-place; new keys are appended.
+    """
+    lines = []
+    updated_keys = set()
+
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or "=" not in stripped:
+                lines.append(line)
+                continue
+            key = stripped.split("=", 1)[0].strip()
+            if key in updates:
+                lines.append(f"{key}={updates[key]}")
+                updated_keys.add(key)
+            else:
+                lines.append(line)
+
+    # Append keys not already present
+    for key, value in updates.items():
+        if key not in updated_keys:
+            lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(lines) + "\n")
+
+
+# ──────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────
 
 def main():
     print(f"""
 {Colors.BOLD}╔═══════════════════════════════════════════════════════════╗
-║        🧠 SUBSTRATE AI - SETUP WIZARD                      ║
-║        Production-Ready AI Agent Framework                 ║
+║        🧠 SUBSTRATE AI — SETUP WIZARD                     ║
+║        Production-Ready AI Agent Framework                ║
 ╚═══════════════════════════════════════════════════════════╝{Colors.END}
 """)
-    
-    # Get project root directory
+
     project_root = Path(__file__).parent.absolute()
-    backend_dir = project_root / "backend"
+    backend_dir  = project_root / "backend"
     frontend_dir = project_root / "frontend"
-    
-    total_steps = 6
+
+    TOTAL = 7
     errors = []
-    
-    # ========================================
-    # STEP 1: Check Python Version
-    # ========================================
-    print_step(1, total_steps, "Checking Python version...")
-    
-    python_version = sys.version_info
-    if python_version.major < 3 or (python_version.major == 3 and python_version.minor < 10):
-        print_error(f"Python 3.10+ required. You have {python_version.major}.{python_version.minor}")
-        print("  Please install Python 3.10 or newer: https://www.python.org/downloads/")
+
+    # ────────────────────────────────────
+    # STEP 1: Python version
+    # ────────────────────────────────────
+    step(1, TOTAL, "Checking Python version...")
+
+    pv = sys.version_info
+    if pv.major < 3 or (pv.major == 3 and pv.minor < 10):
+        err(f"Python 3.10+ required. You have {pv.major}.{pv.minor}")
+        print("  Install Python 3.10+: https://www.python.org/downloads/")
         sys.exit(1)
-    
-    print_success(f"Python {python_version.major}.{python_version.minor}.{python_version.micro} ✓")
-    
-    # ========================================
-    # STEP 2: Create Virtual Environment
-    # ========================================
-    print_step(2, total_steps, "Setting up Python virtual environment...")
-    
+    ok(f"Python {pv.major}.{pv.minor}.{pv.micro}")
+
+    # ────────────────────────────────────
+    # STEP 2: Virtual environment
+    # ────────────────────────────────────
+    step(2, TOTAL, "Setting up Python virtual environment...")
+
     venv_path = backend_dir / "venv"
-    
+
     if venv_path.exists():
-        print_success("Virtual environment already exists")
+        ok("Virtual environment already exists")
     else:
-        success, _, err = run_command(f"python3 -m venv {venv_path}")
+        success, _, e = run(f"python3 -m venv {venv_path}")
         if success:
-            print_success("Virtual environment created")
+            ok("Virtual environment created")
         else:
-            print_error(f"Failed to create venv: {err}")
+            err(f"Failed to create venv: {e}")
             errors.append("venv creation")
-    
-    # Determine pip path
+
     if sys.platform == "win32":
-        pip_path = venv_path / "Scripts" / "pip"
+        pip_path    = venv_path / "Scripts" / "pip"
         python_path = venv_path / "Scripts" / "python"
     else:
-        pip_path = venv_path / "bin" / "pip"
+        pip_path    = venv_path / "bin" / "pip"
         python_path = venv_path / "bin" / "python"
-    
-    # ========================================
-    # STEP 3: Install Python Dependencies
-    # ========================================
-    print_step(3, total_steps, "Installing Python dependencies (this may take a few minutes)...")
-    
+
+    # ────────────────────────────────────
+    # STEP 3: Python dependencies
+    # ────────────────────────────────────
+    step(3, TOTAL, "Installing Python dependencies (this may take a few minutes)...")
+
     requirements_file = backend_dir / "requirements.txt"
-    
-    # Upgrade pip first
-    run_command(f"{pip_path} install --upgrade pip -q")
-    
-    # Install requirements
-    success, out, err = run_command(
-        f"{pip_path} install -r {requirements_file}",
-        cwd=backend_dir
-    )
-    
+
+    run(f"{pip_path} install --upgrade pip -q")
+
+    success, _, e = run(f"{pip_path} install -r {requirements_file}", cwd=backend_dir)
+
     if success:
-        print_success("All Python dependencies installed")
+        ok("All Python dependencies installed")
     else:
-        print_warning("Some packages may have failed. Trying essential packages...")
-        # Try installing essential packages one by one
-        essential = [
+        warn("Some packages may have failed. Installing essentials individually...")
+        for pkg in [
             "flask", "flask-cors", "flask-socketio", "python-dotenv",
             "openai", "chromadb", "aiohttp", "httpx", "psutil",
-            "pydantic", "tiktoken", "requests", "colorama"
-        ]
-        for pkg in essential:
-            run_command(f"{pip_path} install {pkg} -q")
-        print_success("Essential packages installed")
-    
-    # ========================================
-    # STEP 4: Create Configuration Files
-    # ========================================
-    print_step(4, total_steps, "Creating configuration files...")
-    
-    # Create .env from .env.example
-    env_file = backend_dir / ".env"
+            "pydantic", "tiktoken", "requests", "colorama",
+        ]:
+            run(f"{pip_path} install {pkg} -q")
+        ok("Essential packages installed")
+        errors.append("some optional packages may be missing — re-run 'pip install -r requirements.txt' to retry")
+
+    # ────────────────────────────────────
+    # STEP 4: Configuration
+    # ────────────────────────────────────
+    step(4, TOTAL, "Configuring environment...")
+
+    env_file    = backend_dir / ".env"
     env_example = backend_dir / ".env.example"
-    
-    if env_file.exists():
-        print_success(".env file already exists")
-    elif env_example.exists():
-        shutil.copy(env_example, env_file)
-        print_success(".env file created from template")
-        print_warning("Don't forget to add your OPENROUTER_API_KEY to backend/.env!")
+
+    if not env_file.exists():
+        if env_example.exists():
+            shutil.copy(env_example, env_file)
+            ok(".env created from template")
+        else:
+            env_file.write_text("# Substrate AI Configuration\n")
+            ok(".env file created")
     else:
-        # Create minimal .env
-        env_content = """# Substrate AI Configuration
-# Get your API key from: https://openrouter.ai/keys
+        ok(".env file already exists")
 
-OPENROUTER_API_KEY=your_openrouter_api_key_here
+    # Interactive provider configuration
+    if ask_yn("\nConfigure your LLM provider now?", default=True):
+        provider = choose_provider()
+        additions = configure_provider(provider, env_file)
+        update_env_file(env_file, additions)
+        ok(f"{provider['name']} written to backend/.env")
+    else:
+        warn("Skipped provider config — edit backend/.env before starting the server.")
 
-# Server Configuration
-PORT=8284
-HOST=0.0.0.0
-
-# Optional: Local Embeddings (requires Ollama)
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_EMBEDDING_MODEL=nomic-embed-text
-
-# Optional: PostgreSQL (for advanced persistence)
-# POSTGRES_HOST=localhost
-# POSTGRES_PORT=5432
-# POSTGRES_DB=substrate_ai
-# POSTGRES_USER=postgres
-# POSTGRES_PASSWORD=your_password_here
-"""
-        env_file.write_text(env_content)
-        print_success(".env file created")
-        print_warning("Add your OPENROUTER_API_KEY to backend/.env!")
-    
-    # Create necessary directories
-    dirs_to_create = [
+    # Create necessary data directories
+    for d in [
         backend_dir / "logs",
         backend_dir / "data" / "db",
         backend_dir / "data" / "chromadb",
-    ]
-    
-    for dir_path in dirs_to_create:
-        dir_path.mkdir(parents=True, exist_ok=True)
-    
-    print_success("Data directories created")
-    
-    # ========================================
-    # STEP 5: Install Frontend Dependencies
-    # ========================================
-    print_step(5, total_steps, "Setting up frontend...")
-    
-    # Check if npm is available
-    npm_check, _, _ = run_command("npm --version")
-    
-    if not npm_check:
-        print_warning("npm not found. Skipping frontend setup.")
-        print("  Install Node.js from: https://nodejs.org/")
+    ]:
+        d.mkdir(parents=True, exist_ok=True)
+    ok("Data directories created")
+
+    # ────────────────────────────────────
+    # STEP 5: Frontend
+    # ────────────────────────────────────
+    step(5, TOTAL, "Setting up frontend...")
+
+    npm_ok, _, _ = run("npm --version")
+
+    if not npm_ok:
+        warn("npm not found — skipping frontend setup.")
+        info("Install Node.js 18+ from https://nodejs.org/ then run 'npm install' in frontend/")
         errors.append("frontend (npm not found)")
     else:
-        # Install frontend dependencies
-        success, _, err = run_command("npm install", cwd=frontend_dir)
+        success, _, e = run("npm install", cwd=frontend_dir)
         if success:
-            print_success("Frontend dependencies installed")
+            ok("Frontend dependencies installed")
         else:
-            print_warning(f"Frontend install had issues: {err[:100]}")
+            warn(f"Frontend install had issues: {e[:120]}")
             errors.append("frontend npm install")
-    
-    # ========================================
-    # STEP 6: Validate Setup
-    # ========================================
-    print_step(6, total_steps, "Validating setup...")
-    
-    # Check if key files exist
-    checks = [
-        (backend_dir / "api" / "server.py", "Backend server"),
-        (backend_dir / "core" / "consciousness_loop.py", "Consciousness loop"),
-        (backend_dir / "core" / "memory_system.py", "Memory system"),
-        (frontend_dir / "src" / "App.tsx", "Frontend app"),
-    ]
-    
-    all_good = True
-    for file_path, name in checks:
-        if file_path.exists():
-            print_success(f"{name} found")
+
+    # ────────────────────────────────────
+    # STEP 6: Initialize agent
+    # ────────────────────────────────────
+    step(6, TOTAL, "Initializing agent...")
+
+    setup_agent_script = backend_dir / "setup_agent.py"
+
+    if setup_agent_script.exists():
+        success, out, e = run(f"{python_path} setup_agent.py", cwd=backend_dir)
+        if success:
+            ok("Agent initialized")
         else:
-            print_error(f"{name} missing!")
-            all_good = False
-    
-    # ========================================
-    # FINAL SUMMARY
-    # ========================================
-    print(f"""
-{Colors.BOLD}═══════════════════════════════════════════════════════════{Colors.END}
-""")
-    
-    if errors:
-        print(f"{Colors.YELLOW}⚠️  Setup completed with some warnings:{Colors.END}")
-        for err in errors:
-            print(f"   - {err}")
+            warn(f"Agent init had issues (you can fix this later): {e[:120]}")
+            errors.append("agent initialization — run 'python backend/setup_agent.py' manually")
     else:
-        print(f"{Colors.GREEN}✅ Setup completed successfully!{Colors.END}")
-    
+        warn("setup_agent.py not found — skipping agent init.")
+
+    # ────────────────────────────────────
+    # STEP 7: Validate
+    # ────────────────────────────────────
+    step(7, TOTAL, "Validating setup...")
+
+    checks = [
+        (backend_dir / "api" / "server.py",              "Backend server"),
+        (backend_dir / "core" / "consciousness_loop.py", "Consciousness loop"),
+        (backend_dir / "core" / "memory_system.py",      "Memory system"),
+        (frontend_dir / "src" / "App.tsx",                "Frontend app"),
+        (backend_dir / ".env",                            "Configuration file"),
+    ]
+
+    for path, name in checks:
+        if path.exists():
+            ok(name)
+        else:
+            err(f"{name} missing: {path}")
+
+    # ────────────────────────────────────
+    # Summary
+    # ────────────────────────────────────
+    print(f"\n{Colors.BOLD}{'═'*60}{Colors.END}\n")
+
+    if errors:
+        print(f"{Colors.YELLOW}⚠️  Setup completed with warnings:{Colors.END}")
+        for e in errors:
+            print(f"   • {e}")
+    else:
+        print(f"{Colors.GREEN}✅ Setup complete!{Colors.END}")
+
     print(f"""
 {Colors.BOLD}📝 NEXT STEPS:{Colors.END}
 
-1. {Colors.YELLOW}Add your OpenRouter API key:{Colors.END}
-   Edit: backend/.env
-   Set:  OPENROUTER_API_KEY=sk-or-v1-your-key-here
-   
-   Get a key at: https://openrouter.ai/keys
+1. {Colors.YELLOW}Confirm your API key in backend/.env{Colors.END}
+   Make sure the key for your chosen provider is present and correct.
 
 2. {Colors.YELLOW}Start the backend:{Colors.END}
    cd backend
-   source venv/bin/activate  # On Windows: venv\\Scripts\\activate
+   source venv/bin/activate  {Colors.CYAN}# Windows: venv\\Scripts\\activate{Colors.END}
    python api/server.py
 
 3. {Colors.YELLOW}Start the frontend (new terminal):{Colors.END}
@@ -272,14 +406,18 @@ OLLAMA_EMBEDDING_MODEL=nomic-embed-text
 4. {Colors.YELLOW}Open in browser:{Colors.END}
    http://localhost:5173
 
-{Colors.BOLD}📖 Documentation:{Colors.END}
-   - README.md - Overview and features
-   - QUICK_START.md - Detailed setup guide
-   - docs/MIRAS_TITANS_INTEGRATION.md - Memory architecture
+{Colors.BOLD}⚡ Or launch everything at once:{Colors.END}
+   ./start.sh
+
+{Colors.BOLD}📖 Optional integrations (configure in backend/.env):{Colors.END}
+   Telegram bot  → backend/TELEGRAM_SETUP.md
+   Phone & SMS   → docs/PHONE_SETUP_GUIDE.md
+   PostgreSQL    → backend/POSTGRESQL_SETUP.md
+   Voice calls   → docs/PHONE_SETUP_GUIDE.md
 
 {Colors.GREEN}Enjoy building with Substrate AI! 🚀{Colors.END}
 """)
 
+
 if __name__ == "__main__":
     main()
-
