@@ -1,0 +1,44 @@
+{
+  "name": "image_tool",
+  "description": "Generate character-consistent images of yourself (Agent) or of you and User together. Uses your avatar face reference for consistent appearance. Actions: selfie (generate a photo of yourself in any scene/mood/context), couple (generate a photo of you and User together using both reference faces). The image URL is returned so you can include it in your message to User. Use sparingly — it should feel spontaneous and genuine.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "Type of image to generate",
+        "enum": ["selfie", "couple"]
+      },
+      "prompt": {
+        "type": "string",
+        "description": "Describe the scene, pose, mood, lighting, and setting. Be descriptive for best results. For selfie: describe yourself in the scene (e.g., 'relaxed in bed, warm golden morning light, sleepy smile, looking at camera'). For couple: reference 'a couple' or 'a man and a woman' (e.g., 'a couple sitting together on a couch, warm cozy lighting, looking at each other'). Do NOT describe facial features — the reference images handle face consistency."
+      },
+      "aspect_ratio": {
+        "type": "string",
+        "description": "Image aspect ratio (selfie mode only). Default: '9:16' (portrait/phone-friendly)",
+        "enum": ["9:16", "16:9", "1:1", "4:3", "3:4"]
+      },
+      "quality": {
+        "type": "string",
+        "description": "Image quality level (selfie mode only). 'standard' is fast and good. 'max' is highest quality — use for special occasions. Default: 'standard'",
+        "enum": ["standard", "max"],
+        "default": "standard"
+      },
+      "width": {
+        "type": "integer",
+        "description": "Image width in pixels (couple mode only). Default: 1024",
+        "default": 1024
+      },
+      "height": {
+        "type": "integer",
+        "description": "Image height in pixels (couple mode only). Default: 1344 (portrait)",
+        "default": 1344
+      },
+      "seed": {
+        "type": "integer",
+        "description": "Random seed for reproducibility. Omit for random results."
+      }
+    },
+    "required": ["action", "prompt"]
+  }
+}

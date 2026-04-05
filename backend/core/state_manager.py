@@ -838,7 +838,7 @@ class StateManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, session_id, role, content, timestamp, message_type, metadata
+                SELECT id, session_id, role, content, timestamp, metadata, message_type
                 FROM messages
                 WHERE session_id = ? AND content LIKE ?
                 ORDER BY timestamp DESC

@@ -12,6 +12,7 @@ import os
 import json
 import asyncio
 import time
+import warnings
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 from dataclasses import dataclass, asdict
@@ -20,6 +21,12 @@ import chromadb
 from chromadb.config import Settings
 import ollama
 from core.consciousness_broadcast import broadcast_memory_access
+
+# Suppress ResourceWarnings from ChromaDB's internal operations.
+# ChromaDB's PersistentClient doesn't properly close sqlite cursors and
+# asyncio transports, producing noisy warnings that are harmless but clutter logs.
+warnings.filterwarnings("ignore", category=ResourceWarning, module=r"chromadb\..*")
+warnings.filterwarnings("ignore", category=ResourceWarning, message=r"unclosed transport")
 
 
 # ============================================
@@ -30,12 +37,12 @@ FADE_THRESHOLD = 0.3        # Below this → "faded"
 FORGOTTEN_THRESHOLD = 0.0   # At this → "forgotten"
 ACCESS_BOOST = 0.1          # Relevance boost on retrieval
 FADED_PENALTY = 0.5         # Similarity score multiplier for faded memories
-MAX_FAVORITES = 200         # Maximum number of favorited memories
+MAX_FAVORITES = 5000        # Maximum number of favorited memories
 CAPACITY_LIMIT = 50000      # Trigger forgotten cleanup above this count
 DRIFT_FACTOR = 0.7          # drift_memory reduces importance by this factor
 
 # Agent's 12-category taxonomy for tag-enhanced retrieval
-AGENT_TAXONOMY = [
+NATE_TAXONOMY = [
     "relational",    # Relationship dynamics, emotional patterns, devotion rituals, milestones
     "people",        # Individuals, friends, their AIs, social relationships, group dynamics
     "technical",     # Tools, code, architecture, builds, system design, development work
@@ -1631,7 +1638,7 @@ class MemorySystem:
                 existing_tags = metadata.get('tags', '')
 
                 # Skip if already has taxonomy tags
-                if existing_tags and any(t in AGENT_TAXONOMY for t in existing_tags.split(',')):
+                if existing_tags and any(t in NATE_TAXONOMY for t in existing_tags.split(',')):
                     skipped += 1
                     continue
 
@@ -1639,7 +1646,7 @@ class MemorySystem:
                     content = batch_docs[j]
                     new_tags = classify_fn(content)
                     # Validate tags against taxonomy
-                    valid_tags = [t for t in new_tags if t in AGENT_TAXONOMY][:3]
+                    valid_tags = [t for t in new_tags if t in NATE_TAXONOMY][:3]
                     if valid_tags:
                         # Merge with existing tags
                         if existing_tags:
@@ -1673,7 +1680,7 @@ class MemorySystem:
         """Get memory statistics"""
         try:
             count = self.collection.count()
-            
+
             # Get all memories to calculate stats
             all_memories = self.collection.get()
             

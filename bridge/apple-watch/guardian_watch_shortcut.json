@@ -1,0 +1,103 @@
+{
+    "_comment": "This is a reference definition for the iOS Shortcut. Build this manually in the Shortcuts app following README_SHORTCUTS_BRIDGE.md. This file documents the exact structure for reproducibility.",
+    "name": "Guardian Watch Push",
+    "icon": "heart.fill",
+    "color": "red",
+    "actions": [
+        {
+            "step": 1,
+            "action": "Find Health Samples",
+            "config": {
+                "type": "Heart Rate",
+                "starting_date": "is today",
+                "sort_by": "Start Date",
+                "order": "Latest First",
+                "limit": 1
+            },
+            "output_variable": "HeartRate"
+        },
+        {
+            "step": 2,
+            "action": "Find Health Samples",
+            "config": {
+                "type": "Heart Rate Variability",
+                "starting_date": "is today",
+                "sort_by": "Start Date",
+                "order": "Latest First",
+                "limit": 1
+            },
+            "output_variable": "HRV"
+        },
+        {
+            "step": 3,
+            "action": "Find Health Samples",
+            "config": {
+                "type": "Respiratory Rate",
+                "starting_date": "is today",
+                "sort_by": "Start Date",
+                "order": "Latest First",
+                "limit": 1
+            },
+            "output_variable": "RespRate"
+        },
+        {
+            "step": 4,
+            "action": "Find Health Samples",
+            "config": {
+                "type": "Blood Oxygen Saturation",
+                "starting_date": "is today",
+                "sort_by": "Start Date",
+                "order": "Latest First",
+                "limit": 1
+            },
+            "output_variable": "SpO2"
+        },
+        {
+            "step": 5,
+            "action": "If",
+            "config": {
+                "input": "HeartRate",
+                "condition": "has any value"
+            }
+        },
+        {
+            "step": 6,
+            "action": "Dictionary",
+            "config": {
+                "items": {
+                    "heart_rate": {"type": "variable", "value": "HeartRate"},
+                    "heart_rate_variability": {"type": "variable", "value": "HRV"},
+                    "respiratory_rate": {"type": "variable", "value": "RespRate"},
+                    "blood_oxygen": {"type": "variable", "value": "SpO2"},
+                    "timestamp": {"type": "action", "value": "Current Date (ISO 8601)"}
+                }
+            },
+            "output_variable": "BiometricPayload"
+        },
+        {
+            "step": 7,
+            "action": "Get Contents of URL",
+            "config": {
+                "url": "https://YOUR_SUBSTRATE_DOMAIN:8284/api/guardian-watch/ingest",
+                "method": "POST",
+                "headers": {
+                    "Authorization": "Bearer YOUR_TOKEN_HERE",
+                    "Content-Type": "application/json"
+                },
+                "request_body": "JSON",
+                "request_body_value": {"type": "variable", "value": "BiometricPayload"}
+            }
+        },
+        {
+            "step": 8,
+            "action": "End If"
+        }
+    ],
+    "automation_trigger": {
+        "type": "Time of Day",
+        "repeat": "Every 2 minutes",
+        "ask_before_running": false,
+        "notify_when_run": false,
+        "notes": "Set to 1 min for active Guardian Mode, 5 min for passive monitoring"
+    }
+}

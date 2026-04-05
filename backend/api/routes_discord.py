@@ -460,8 +460,13 @@ def send_message_to_agent(agent_id):
         username = data.get('username', 'Unknown User')
         channel_id = data.get('channel_id', 'unknown')
         guild_id = data.get('guild_id', None)
-        # Use unified session ID so Assistant has full conversation context across all interfaces
-        session_id = data.get('session_id') or 'Assistant_conversation'
+        # Use unified session ID so Agent has full conversation context across all interfaces
+        session_id = data.get('session_id') or 'agent_conversation'
+
+        # Auto-route trading channel messages to the trading session
+        from core.config import POLYMARKET_DISCORD_CHANNEL, POLYMARKET_TRADING_SESSION
+        if POLYMARKET_DISCORD_CHANNEL and channel_id == POLYMARKET_DISCORD_CHANNEL:
+            session_id = POLYMARKET_TRADING_SESSION
 
         # ----------------------------------------------------------
         # 🏰 SANCTUM MODE — Focus protection for DM conversations
@@ -472,7 +477,7 @@ def send_message_to_agent(agent_id):
         if _sanctum_manager:
             # Track User's DM activity (auto-sanctum trigger)
             if is_dm and owner_user_id and user_id == owner_user_id:
-                _sanctum_manager.record_User_dm_activity()
+                _sanctum_manager.record_user_dm_activity()
 
             # Detect [SANCTUM ON] / [SANCTUM OFF] commands in message text
             content_upper = content.strip().upper()
@@ -503,9 +508,13 @@ def send_message_to_agent(agent_id):
                 return jsonify({
                     'success': True,
                     'response': SANCTUM_AUTO_REPLY,
+                    'send_message': True,
+                    'message_target': 'channel',
                     'sanctum': True,
                     'queued': True,
                     'queue_size': _sanctum_manager.queue_size(),
+                    'thinking': None,
+                    'tool_calls': [],
                     'metadata': {'sanctum_mode': True}
                 })
 
@@ -545,7 +554,7 @@ def send_message_to_agent(agent_id):
             reply_instructions = f"""Reply Method: This is a private DM. To reply, use:
   discord_tool(action="send_message", target="{user_id}", target_type="user", message="...")"""
         else:
-            # In group channels, Assistant has ONLY TWO options
+            # In group channels, Agent has ONLY TWO options
             if not owner_user_id:
                 # Fallback if owner ID not configured
                 reply_instructions = f"""Reply Method: This is a GROUP CHANNEL.
@@ -587,12 +596,17 @@ Type: {"Private DM" if is_dm else "Group/Public Channel"}
         # Note: consciousness_loop.process_message is async!
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
+        # Use trading model for trading session messages (if configured)
+        from core.config import POLYMARKET_TRADING_MODEL, POLYMARKET_TRADING_SESSION
+        model_override = POLYMARKET_TRADING_MODEL if (session_id == POLYMARKET_TRADING_SESSION and POLYMARKET_TRADING_MODEL) else None
+
         try:
             result = loop.run_until_complete(
                 _consciousness_loop.process_message(
                     user_message=content_with_context,
                     session_id=session_id,
+                    model=model_override,
                     message_type='inbox',  # Discord messages are "inbox" type
                     include_history=True,
                     history_limit=24,  # Increased for roleplay context
@@ -626,6 +640,8 @@ Type: {"Private DM" if is_dm else "Group/Public Channel"}
             'response': response_content,
             'thinking': thinking,
             'tool_calls': tool_calls,
+            'send_message': result.get('send_message', True),
+            'message_target': result.get('message_target', 'channel'),
             'metadata': metadata
         })
     

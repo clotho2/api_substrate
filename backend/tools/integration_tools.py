@@ -40,6 +40,8 @@ from tools.google_places_tool import google_places_tool as _google_places_tool, 
 from tools.phone_tool import phone_tool as _phone_tool
 from tools.sanctum_tool import sanctum_tool as _sanctum_tool
 from tools.browser_tool import browser_tool as _browser_tool
+from tools.image_tool import image_tool as _image_tool
+from tools.polymarket_tool import polymarket_tool as _polymarket_tool
 
 # Import cost tracker for cost tools
 from core.cost_tracker import CostTracker
@@ -144,7 +146,7 @@ class IntegrationTools:
 
     def send_voice_message(self, **kwargs) -> Dict[str, Any]:
         """
-        Send a voice message to user via Discord using Eleven Labs TTS.
+        Send a voice message to User via Discord using Eleven Labs TTS.
 
         Args:
             message: Text to convert to speech and send
@@ -192,12 +194,12 @@ class IntegrationTools:
             }
 
     # ============================================
-    # agent SELF-DEVELOPMENT TOOL
+    # NATE SELF-DEVELOPMENT TOOL
     # ============================================
 
     def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
-        agent's self-development tool for inspecting his own codebase.
+        Agent's self-development tool for inspecting his own codebase.
 
         Level 1: READ-ONLY diagnostics.
 
@@ -217,7 +219,7 @@ class IntegrationTools:
         except Exception as e:
             return {
                 "status": "error",
-                "message": f"agent dev tool error: {str(e)}"
+                "message": f"Agent dev tool error: {str(e)}"
             }
 
     # ============================================
@@ -632,6 +634,48 @@ class IntegrationTools:
             }
 
     # ============================================
+    # IMAGE GENERATION
+    # ============================================
+
+    def image_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Generate character-consistent images via Together.ai FLUX models.
+
+        Actions:
+        - selfie: Generate an image of Agent using his avatar reference
+        - couple: Generate an image of Agent and User together
+
+        Returns:
+            Dict with status, image_url, and message
+        """
+        try:
+            result = _image_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Image tool error: {str(e)}"
+            }
+
+    def polymarket_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Polymarket weather trading tool.
+
+        Actions:
+        - get_markets: List active weather markets
+        - analyze_market: Compare model P vs market P for a specific market
+        - (Phase 2): scan_opportunities, execute_trade, get_positions, etc.
+        """
+        try:
+            result = _polymarket_tool(**kwargs)
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Polymarket tool error: {str(e)}"
+            }
+
+    # ============================================
     # TOOL SCHEMAS
     # ============================================
 
@@ -655,6 +699,8 @@ class IntegrationTools:
             'phone_tool',
             'sanctum_tool',
             'browser_tool',
+            'image_tool',
+            'polymarket_tool',
         ]
         
         for tool_name in tool_names:

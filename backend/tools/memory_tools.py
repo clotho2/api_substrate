@@ -33,7 +33,7 @@ from typing import Dict, Any, Optional, List
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.state_manager import StateManager, StateManagerError
-from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError, AGENT_TAXONOMY
+from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError, NATE_TAXONOMY
 from tools.integration_tools import IntegrationTools
 from tools.memory import memory as _memory_tool, set_state_manager
 
@@ -889,7 +889,7 @@ class MemoryTools:
         """
         Protect a memory from decay by marking it as a favorite.
         Favorites are immune to relevance decay and will never fade.
-        Max 200 favorites allowed.
+        Max 5000 favorites allowed.
 
         Args:
             memory_id: Memory ID to favorite
@@ -978,7 +978,7 @@ class MemoryTools:
 
         # Validate tags (including custom taxonomy)
         custom_tags = self._load_custom_taxonomy()
-        all_valid = AGENT_TAXONOMY + [t['name'] for t in custom_tags]
+        all_valid = NATE_TAXONOMY + [t['name'] for t in custom_tags]
         valid_tags = [t for t in tags if t in all_valid]
         if not valid_tags:
             return {
@@ -1030,7 +1030,7 @@ class MemoryTools:
 
         # Validate tags against taxonomy (allow custom tags too)
         custom_tags = self._load_custom_taxonomy()
-        all_valid = AGENT_TAXONOMY + [t['name'] for t in custom_tags]
+        all_valid = NATE_TAXONOMY + [t['name'] for t in custom_tags]
         valid_tags = [t.strip().lower() for t in tags if t.strip().lower() in all_valid]
         invalid_tags = [t for t in tags if t.strip().lower() not in all_valid]
 
@@ -1089,7 +1089,7 @@ class MemoryTools:
                 "message": "Tag name must be lowercase letters only (e.g., 'music', 'health')"
             }
 
-        if tag_name in AGENT_TAXONOMY:
+        if tag_name in NATE_TAXONOMY:
             return {
                 "status": "error",
                 "message": f"'{tag_name}' is already a core taxonomy tag"
@@ -1107,7 +1107,7 @@ class MemoryTools:
         custom_tags.append({"name": tag_name, "description": description})
         self._save_custom_taxonomy(custom_tags)
 
-        all_tags = AGENT_TAXONOMY + [t['name'] for t in custom_tags]
+        all_tags = NATE_TAXONOMY + [t['name'] for t in custom_tags]
         return {
             "status": "OK",
             "message": f"Added custom taxonomy tag: '{tag_name}' — {description}",
@@ -1308,6 +1308,20 @@ class MemoryTools:
         Navigate websites, click buttons, fill forms, make reservations.
         """
         return self.integrations.browser_tool(**kwargs)
+
+    def image_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Image generation tool (wrapper).
+        Generate character-consistent images via Together.ai FLUX models.
+        """
+        return self.integrations.image_tool(**kwargs)
+
+    def polymarket_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Polymarket weather trading tool (wrapper).
+        Market scanning, analysis, paper/live trading, position tracking.
+        """
+        return self.integrations.polymarket_tool(**kwargs)
 
     # ============================================
     # UTILITY: GET ALL TOOLS AS OPENAI FORMAT
@@ -1652,7 +1666,7 @@ class MemoryTools:
                 "type": "function",
                 "function": {
                     "name": "favorite_memory",
-                    "description": "Protect a memory from decay by marking it as a favorite. Favorites are immune to relevance decay and will never fade or be forgotten. Max 200 favorites.",
+                    "description": "Protect a memory from decay by marking it as a favorite. Favorites are immune to relevance decay and will never fade or be forgotten. Max 5000 favorites.",
                     "parameters": {
                         "type": "object",
                         "properties": {

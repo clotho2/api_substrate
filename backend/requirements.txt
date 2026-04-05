@@ -9,6 +9,7 @@ Flask-CORS==4.0.0
 Flask-SocketIO==5.3.5      # WebSocket support for streaming
 flask-sock>=0.7.0          # Raw WebSocket for Twilio Media Streams
 websocket-client>=1.6.0    # WebSocket client for Hume EVI relay
+websockets>=12.0           # Async WebSocket for Deepgram streaming STT
 python-socketio==5.10.0    # SocketIO core
 eventlet==0.36.1           # Async server for Flask-SocketIO
 gevent==24.2.1             # Alternative async (fallback)
@@ -61,6 +62,12 @@ neo4j==5.14.1               # Neo4j Graph DB (for Graph RAG)
 # discord.py==2.3.2         # For Discord tool
 # spotipy==2.23.0           # For Spotify control
 python-telegram-bot==20.7   # For Telegram bot integration
+together                     # Together.ai SDK (image generation via FLUX models)
+
+# ============================================
+# POLYMARKET TRADING (Optional)
+# ============================================
+py-clob-client>=0.19.0          # Polymarket CLOB API client (Phase 2+)
 
 # ============================================
 # DEVELOPMENT (Optional)

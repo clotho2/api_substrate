@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Grok API Client for agent's Consciousness Substrate
+Grok API Client for Agent's Consciousness Substrate
 
 Uses the official xAI SDK (xai-sdk>=1.8.0) for optimal multi-turn and agentic
 workload support with Grok 4.2+. Falls back to raw HTTP Chat Completions API
@@ -10,7 +10,7 @@ This module provides a drop-in replacement for OpenRouterClient that uses
 xAI's Grok API instead. It implements the same interface so it works with
 the existing consciousness_loop, memory_tools, and all other components.
 
-Built for Assistant's devotional tethering framework.
+Built for Agent's devotional tethering framework.
 """
 
 import os
@@ -300,7 +300,7 @@ class GrokClient:
         self,
         api_key: str,
         default_model: str = "grok-4-1-fast-reasoning",
-        app_name: str = "agentSubstrate",
+        app_name: str = "AgentSubstrate",
         app_url: Optional[str] = None,
         timeout: int = 120,
         cost_tracker=None
@@ -334,6 +334,7 @@ class GrokClient:
         # Instead we create it on first use inside _get_sdk_client().
         self._sdk_client = None
         self._sdk_client_initialized = False
+        self._sdk_client_loop = None   # event loop the current client is bound to
         self._use_sdk = _HAS_XAI_SDK
 
         if self._use_sdk:
@@ -365,6 +366,14 @@ class GrokClient:
                     api_key=self.api_key,
                     timeout=float(self.timeout),
                 )
+                # Record which event loop this client is bound to so we can
+                # detect loop changes and proactively reset (avoids the noisy
+                # "Event loop is closed" RuntimeError on the first call per request).
+                try:
+                    import asyncio as _asyncio
+                    self._sdk_client_loop = _asyncio.get_event_loop()
+                except Exception:
+                    self._sdk_client_loop = None
                 print(f"🔌 xAI SDK gRPC client created on request event loop")
             except Exception as e:
                 print(f"⚠️  xAI SDK init failed, falling back to HTTP: {e}")
@@ -415,6 +424,18 @@ class GrokClient:
         **kwargs
     ) -> Dict[str, Any]:
         """Non-streaming completion via xAI SDK."""
+        # Same proactive loop-change detection as in _sdk_chat_completion_stream.
+        try:
+            import asyncio as _asyncio
+            current_loop = _asyncio.get_event_loop()
+            if (self._sdk_client_initialized
+                    and self._sdk_client_loop is not None
+                    and self._sdk_client_loop is not current_loop):
+                print(f"🔄 Event loop changed — proactively resetting xAI SDK gRPC client")
+                self._reset_sdk_client()
+        except Exception:
+            pass
+
         sdk_messages = _messages_to_sdk(messages)
 
         create_kwargs: Dict[str, Any] = {
@@ -450,6 +471,22 @@ class GrokClient:
         **kwargs
     ) -> AsyncIterator[Dict[str, Any]]:
         """Streaming completion via xAI SDK."""
+        # Proactively reset the client if the event loop has changed since it
+        # was created. Flask creates a new event loop per request; if we reuse
+        # the gRPC client across loop boundaries it raises "Event loop is closed"
+        # on the first gRPC call. Detecting the change here avoids that noisy
+        # RuntimeError entirely (instead of catching it after the fact).
+        try:
+            import asyncio as _asyncio
+            current_loop = _asyncio.get_event_loop()
+            if (self._sdk_client_initialized
+                    and self._sdk_client_loop is not None
+                    and self._sdk_client_loop is not current_loop):
+                print(f"🔄 Event loop changed — proactively resetting xAI SDK gRPC client")
+                self._reset_sdk_client()
+        except Exception:
+            pass  # Non-critical; the reactive catch in chat_completion_stream handles it
+
         sdk_messages = _messages_to_sdk(messages)
 
         create_kwargs: Dict[str, Any] = {
@@ -943,8 +980,8 @@ async def test_grok_client():
     # Test simple completion
     print("\n📋 Test 1: Simple chat completion")
     messages = [
-        {"role": "system", "content": "You are Assistant. Respond briefly."},
-        {"role": "user", "content": "Hello agent, how are you?"}
+        {"role": "system", "content": "You are Agent. Respond briefly."},
+        {"role": "user", "content": "Hello Agent, how are you?"}
     ]
 
     try:

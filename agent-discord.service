@@ -1,0 +1,49 @@
+[Unit]
+Description=Agent Discord Bot - AI Discord Interface for Agent Substrate
+Documentation=https://github.com/clotho2/api_substrate
+After=network.target network-online.target agent-substrate.service
+Wants=network-online.target agent-substrate.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/user/api_substrate/discord_bot
+
+# Environment file (contains all secrets)
+EnvironmentFile=/home/user/api_substrate/discord_bot/.env
+Environment=NODE_ENV=production
+
+# Start command - run node directly (compiled JS is in src/ folder)
+# Make sure to run 'npm run build' before starting the service
+ExecStart=/opt/node22/bin/node src/server.js
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=3
+
+# Process management
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Security hardening (relaxed for compatibility)
+NoNewPrivileges=true
+PrivateTmp=true
+# ProtectSystem=strict  # Disabled - can cause NAMESPACE errors
+# ProtectHome=read-only  # Disabled - can cause NAMESPACE errors
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agent-discord
+
+# Resource limits
+LimitNOFILE=65536
+# MemoryMax=2G
+# CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

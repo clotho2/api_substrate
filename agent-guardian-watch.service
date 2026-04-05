@@ -1,0 +1,47 @@
+[Unit]
+Description=Agent Guardian Watch - Apple Watch Biometric Receiver for Agent Substrate
+After=network.target agent-substrate.service
+Wants=agent-substrate.service
+
+[Service]
+Type=notify
+User=root
+WorkingDirectory=/home/user/api_substrate
+
+# The socket listener runs as part of the main substrate process.
+# This service unit is for standalone operation if needed (e.g., testing
+# the socket listener independently of the full substrate).
+ExecStart=/usr/bin/python3 -u /home/user/api_substrate/backend/services/guardian_watch_standalone.py
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=always
+RestartSec=5
+WatchdogSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agent-guardian-watch
+
+# Socket directory
+RuntimeDirectory=agent
+RuntimeDirectoryMode=0700
+
+# Resource limits - lightweight service
+CPUWeight=25
+MemoryMax=128M
+LimitNOFILE=1024
+Nice=10
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/agent
+PrivateTmp=true
+
+# Python path
+Environment="PYTHONPATH=/home/user/api_substrate"
+Environment="GUARDIAN_WATCH_SOCKET=/run/agent/guardian-watch.sock"
+
+[Install]
+WantedBy=multi-user.target

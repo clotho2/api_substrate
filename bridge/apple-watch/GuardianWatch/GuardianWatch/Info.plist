@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Guardian Watch</string>
+    <key>CFBundleIdentifier</key>
+    <string>ai.aicara.GuardianWatch</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>processing</string>
+    </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>ai.aicara.GuardianWatch.biometricPush</string>
+    </array>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Guardian Watch reads biometric data from your Apple Watch to monitor health metrics and detect anomalies. Data is sent securely to your private substrate server.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Guardian Watch does not write health data.</string>
+</dict>
+</plist>

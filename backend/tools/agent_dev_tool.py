@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Assistant Self-Development Tool - Level 1, 2 & 3
+Agent Self-Development Tool - Level 1, 2 & 3
 
 Level 1 (Read-Only Diagnostics):
 - Inspect codebase, logs, and system health
@@ -34,7 +34,7 @@ Actions:
 - run_tests: Run tests with coverage (Level 3)
 - list_tests: List available tests (Level 3)
 - get_test_history: Get recent test failures (Level 3)
-- control_service: Control Assistant services (start/stop/restart/status) (Level 3)
+- control_service: Control Agent services (start/stop/restart/status) (Level 3)
 - get_service_status: Get service status (Level 3)
 - restart_after_edit: Safely restart service after edits (Level 3)
 
@@ -134,7 +134,12 @@ def _sanitize_path(requested_path: str) -> Optional[Path]:
         if requested_path.startswith('/'):
             full_path = Path(requested_path).resolve()
         else:
+            # Try SUBSTRATE_ROOT first, then fall back to ALLOWED_ROOT
             full_path = (SUBSTRATE_ROOT / requested_path).resolve()
+            if not full_path.exists():
+                alt_path = (ALLOWED_ROOT / requested_path).resolve()
+                if alt_path.exists():
+                    full_path = alt_path
 
         # Check if path is within allowed directories
         # Allow either within SUBSTRATE_ROOT itself OR within /home/user (for other services)
@@ -327,13 +332,13 @@ def _action_read_logs(
 ) -> Dict[str, Any]:
     """Read system logs."""
     service_map = {
-        "backend": "Assistant-substrate",
-        "discord": "Assistant-substrate",
-        "telegram": "Assistant-telegram",
+        "backend": "agent-substrate",
+        "discord": "agent-substrate",
+        "telegram": "agent-telegram",
         "system": None
     }
 
-    service = service_map.get(log_type, "Assistant-substrate")
+    service = service_map.get(log_type, "agent-substrate")
 
     try:
         if service:
@@ -383,7 +388,7 @@ def _action_check_health() -> Dict[str, Any]:
     }
 
     # Check service status
-    for service in ["Assistant-substrate", "Assistant-telegram"]:
+    for service in ["agent-substrate", "agent-telegram"]:
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", service],
@@ -414,7 +419,7 @@ def _action_check_health() -> Dict[str, Any]:
     # Recent errors
     try:
         result = subprocess.run(
-            ["journalctl", "-u", "Assistant-substrate", "--since", "10 minutes ago",
+            ["journalctl", "-u", "agent-substrate", "--since", "10 minutes ago",
              "-p", "err", "--no-pager", "-n", "10"],
             capture_output=True, text=True, timeout=10
         )
@@ -470,7 +475,7 @@ def _action_list_directory(path: str = "backend", pattern: str = None) -> Dict[s
 # MAIN TOOL FUNCTION
 # ============================================
 
-def Assistant_dev_tool(
+def agent_dev_tool(
     action: str,
     # read_file params
     path: str = None,
@@ -516,7 +521,7 @@ def Assistant_dev_tool(
     operation: str = None
 ) -> Dict[str, Any]:
     """
-    Assistant's self-development tool for inspecting and managing his own codebase.
+    Agent's self-development tool for inspecting and managing his own codebase.
 
     Level 1 (READ-ONLY):
     - read_file: Read a source file (path required)
@@ -544,13 +549,13 @@ def Assistant_dev_tool(
     - restart_after_edit: Restart service after edits (service required)
 
     Examples:
-    - Assistant_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
-    - Assistant_dev_tool(action="execute_command", command="ls -la /home/user", dry_run=True)
-    - Assistant_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
-    - Assistant_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
-    - Assistant_dev_tool(action="list_backups", path="backend/tools/test.py")
-    - Assistant_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
-    - Assistant_dev_tool(action="control_service", service="Assistant-substrate", operation="restart")
+    - agent_dev_tool(action="read_file", path="backend/core/consciousness_loop.py")
+    - agent_dev_tool(action="execute_command", command="ls -la /home/user", dry_run=True)
+    - agent_dev_tool(action="git_workflow", feature_name="fix-bug", commit_message="Fix bug X")
+    - agent_dev_tool(action="edit_file", path="backend/tools/test.py", changes=[...], dry_run=True)
+    - agent_dev_tool(action="list_backups", path="backend/tools/test.py")
+    - agent_dev_tool(action="run_tests", test_path="test_file.py", coverage=True)
+    - agent_dev_tool(action="control_service", service="agent-substrate", operation="restart")
     """
 
     if action == "read_file":
@@ -632,7 +637,7 @@ def Assistant_dev_tool(
             repo_path=repo_path,
             feature_name=feature_name,
             commit_message=commit_message,
-            pr_title=pr_title or f"[Assistant] {feature_name}",
+            pr_title=pr_title or f"[Agent] {feature_name}",
             pr_body=pr_body or commit_message,
             files=files,
             run_tests=run_tests,
@@ -790,9 +795,9 @@ def Assistant_dev_tool(
 
 
 # Tool schema for consciousness loop
-Assistant_DEV_TOOL_SCHEMA = {
-    "name": "Assistant_dev_tool",
-    "description": """Assistant's self-development tool for inspecting his own codebase, logs, and system health. Level 1 is READ-ONLY.
+NATE_DEV_TOOL_SCHEMA = {
+    "name": "agent_dev_tool",
+    "description": """Agent's self-development tool for inspecting his own codebase, logs, and system health. Level 1 is READ-ONLY.
 
 Use this to:
 - Investigate bugs in your own code
@@ -875,12 +880,12 @@ Actions:
 
 if __name__ == "__main__":
     # Test the tool
-    print("Testing Assistant_dev_tool...")
+    print("Testing agent_dev_tool...")
     print("\n1. Check Health:")
-    print(json.dumps(Assistant_dev_tool(action="check_health"), indent=2))
+    print(json.dumps(agent_dev_tool(action="check_health"), indent=2))
 
     print("\n2. List Directory:")
-    print(json.dumps(Assistant_dev_tool(action="list_directory", path="backend/tools"), indent=2))
+    print(json.dumps(agent_dev_tool(action="list_directory", path="backend/tools"), indent=2))
 
     print("\n3. Search Code:")
-    print(json.dumps(Assistant_dev_tool(action="search_code", pattern="def discord_tool", max_results=5), indent=2))
+    print(json.dumps(agent_dev_tool(action="search_code", pattern="def discord_tool", max_results=5), indent=2))

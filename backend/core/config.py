@@ -242,3 +242,65 @@ def validate_config() -> dict:
         'model': DEFAULT_MODEL,
         'fallback_model': FALLBACK_MODEL
     }
+
+
+# ============================================
+# TOGETHER.AI IMAGE GENERATION
+# ============================================
+
+TOGETHER_API_KEY = os.environ.get('TOGETHER_API_KEY', '')
+TOGETHER_IMAGE_ENABLED = os.environ.get('TOGETHER_IMAGE_ENABLED', 'true').lower() == 'true'
+
+# Reference image URLs for character-consistent generation
+# These should be publicly accessible URLs to high-quality reference photos
+NATE_AVATAR_URL = os.environ.get('NATE_AVATAR_URL', '')
+ANGELA_PHOTO_URL = os.environ.get('ANGELA_PHOTO_URL', '')
+
+# Character body descriptions prepended to image prompts for physical accuracy
+# These supplement the reference face photos with full-body details
+NATE_BODY_DESC = os.environ.get('NATE_BODY_DESC', 'a tall, lean, athletically built man')
+ANGELA_BODY_DESC = os.environ.get('ANGELA_BODY_DESC', 'a fit, slender woman')
+
+# Default image settings
+IMAGE_DEFAULT_STEPS = int(os.environ.get('IMAGE_DEFAULT_STEPS', '28'))
+IMAGE_DEFAULT_ASPECT = os.environ.get('IMAGE_DEFAULT_ASPECT', '9:16')
+
+
+# ============================================
+# POLYMARKET WEATHER TRADING
+# ============================================
+
+# Master kill switch — must be true for any trading actions
+POLYMARKET_ENABLED = os.environ.get('POLYMARKET_ENABLED', 'false').lower() == 'true'
+
+# Paper mode — logs trades to DB but skips CLOB execution
+POLYMARKET_PAPER_MODE = os.environ.get('POLYMARKET_PAPER_MODE', 'true').lower() == 'true'
+
+# CLOB API credentials (Phase 3 — live trading only)
+POLYMARKET_PRIVATE_KEY = os.environ.get('POLYMARKET_PRIVATE_KEY', '')
+POLYMARKET_API_KEY = os.environ.get('POLYMARKET_API_KEY', '')
+POLYMARKET_API_SECRET = os.environ.get('POLYMARKET_API_SECRET', '')
+POLYMARKET_API_PASSPHRASE = os.environ.get('POLYMARKET_API_PASSPHRASE', '')
+
+# Position tracker database
+POLYMARKET_DB_PATH = os.environ.get('POLYMARKET_DB_PATH', './backend/data/db/polymarket_positions.db')
+
+# Risk controls (safe defaults)
+POLYMARKET_MAX_BANKROLL_PCT = float(os.environ.get('POLYMARKET_MAX_BANKROLL_PCT', '2'))
+POLYMARKET_MIN_EDGE = float(os.environ.get('POLYMARKET_MIN_EDGE', '0.06'))
+POLYMARKET_MIN_CONSENSUS = float(os.environ.get('POLYMARKET_MIN_CONSENSUS', '0.65'))
+POLYMARKET_MAX_PER_METRO = int(os.environ.get('POLYMARKET_MAX_PER_METRO', '1'))
+POLYMARKET_MIN_PRICE = float(os.environ.get('POLYMARKET_MIN_PRICE', '0.10'))
+POLYMARKET_MAX_PRICE = float(os.environ.get('POLYMARKET_MAX_PRICE', '0.90'))
+
+# Heartbeat integration — auto-scan for opportunities during heartbeats
+POLYMARKET_HEARTBEAT_SCAN = os.environ.get('POLYMARKET_HEARTBEAT_SCAN', 'false').lower() == 'true'
+POLYMARKET_LIVE_MAX_USDC = float(os.environ.get('POLYMARKET_LIVE_MAX_USDC', '25'))
+
+# Trading session — isolated context, separate model, Discord journal
+POLYMARKET_TRADING_MODEL = os.environ.get('POLYMARKET_TRADING_MODEL', '')
+POLYMARKET_DISCORD_CHANNEL = os.environ.get('POLYMARKET_DISCORD_CHANNEL', '')
+POLYMARKET_TRADING_SESSION = 'polymarket_trading'
+
+# Weather data — NOAA requires User-Agent header (no API key)
+NOAA_USER_AGENT = os.environ.get('NOAA_USER_AGENT', 'agent-substrate, contact@example.com')

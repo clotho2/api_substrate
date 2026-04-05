@@ -1,4 +1,4 @@
-# Substrate AI - Dependencies
+# Agent's Consciousness Substrate - Dependencies
 # Install with: pip install -r requirements.txt
 
 # Core Framework
@@ -17,7 +17,7 @@ chromadb==0.4.18            # Vector database for archival memory
 numpy<2.0                   # ChromaDB 0.4.18 requires NumPy < 2.0
 
 # Ollama Integration (for local embeddings)
-ollama==0.1.7               # Official Ollama Python client
+ollama>=0.3.0               # Official Ollama Python client (tools support added in 0.3.0)
 
 # Data Processing
 pydantic==2.5.0             # Data validation
@@ -27,6 +27,13 @@ tiktoken==0.5.2             # Token counting for context window management
 
 # MCP Integration (Model Context Protocol) - Optional
 mcp==0.1.0                  # MCP client for tool servers
+
+# Browser Automation (for browser_tool)
+playwright>=1.40.0          # Headless Chromium for web interaction
+                            # After install, run: playwright install chromium
+
+# AWS (Amazon Polly TTS)
+boto3>=1.34.0               # AWS SDK for Polly TTS
 
 # Optional Tool Integrations
 # Uncomment if you want to use these features:

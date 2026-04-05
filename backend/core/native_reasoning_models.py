@@ -32,6 +32,7 @@ NATIVE_REASONING_MODELS = {
     'qwen3-235b-a22b-thinking',
     'qwen/qwen3.5-397b-a17b',
     'qwen3.5:cloud',
+    'qwen/qwen3.6-plus-preview:free',
     'openrouter/hunter-alpha',
     'xiaomi/mimo-v2-flash',
     'x-ai/grok-4.1-fast',

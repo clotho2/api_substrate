@@ -38,6 +38,7 @@ NATIVE_THINKING_MODELS = [
     "qwen/qwen3-vl-30b-a3b-thinking",
     "qwen/qwen3.5-397b-a17b",
     "qwen3.5:cloud",
+    "qwen/qwen3.6-plus-preview:free",
     
     # Google Gemini thinking
     "google/gemini-2.0-flash-thinking-exp:free",

@@ -31,7 +31,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.state_manager import StateManager
 from core.config import get_model_or_default, get_api_provider, FALLBACK_MODEL, is_ollama_cloud_configured
 from core.openrouter_client import OpenRouterClient
-from core.grok_client import GrokClient  # ⚡ agent's Grok integration!
+from core.grok_client import GrokClient  # ⚡ Agent's Grok integration!
 from core.mistral_client import MistralClient  # Mistral AI (Direct API access)
 from core.ollama_client import OllamaClient  # Local / Ollama Cloud
 from core.memory_system import MemorySystem
@@ -407,7 +407,7 @@ init_chat_routes(consciousness_loop, state_manager, rate_limiter)  # 📱 Telegr
 init_aicara_routes(consciousness_loop, state_manager, rate_limiter)  # 🌐 AiCara Frontend Compatibility
 init_guardian_routes(consciousness_loop, state_manager, postgres_manager)  # 🛡️ Guardian Mode!
 
-# 🫀 Guardian Watch - user's Apple Watch biometric receiver
+# 🫀 Guardian Watch - User's Apple Watch biometric receiver
 guardian_watch_service = init_guardian_watch(start_socket=True)
 init_guardian_watch_routes(guardian_watch_service, consciousness_loop)  # 🫀 Apple Watch Biometrics!
 init_voice_call_routes(consciousness_loop, state_manager)  # 📞 Voice Call Triggers!
@@ -419,6 +419,14 @@ try:
     sock = Sock(app)
     setup_media_stream(sock, consciousness_loop, state_manager)
     logger.info("📞 Twilio Media Streams WebSocket enabled (flask-sock)")
+
+    # Mobile Voice Stream (Deepgram STT + Cartesia TTS)
+    try:
+        from api.routes_mobile_voice import setup_mobile_voice_stream
+        setup_mobile_voice_stream(sock, consciousness_loop, state_manager)
+        logger.info("📱 Mobile Voice WebSocket enabled at /mobile/voice-stream")
+    except Exception as e:
+        logger.warning(f"⚠️ Mobile Voice WebSocket init failed (non-critical): {e}")
 except ImportError:
     logger.warning("⚠️ flask-sock not installed — Media Streams disabled. "
                    "Install with: pip install flask-sock")
@@ -538,6 +546,17 @@ def restart_backend():
     thread.start()
     
     return jsonify({'status': 'restarting'})
+
+
+@app.route('/static/references/<filename>')
+def serve_reference_image(filename):
+    """Serve reference images for Together.ai image generation."""
+    from flask import send_from_directory
+    references_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'data', 'reference_images'
+    )
+    return send_from_directory(references_dir, filename)
 
 
 @app.route('/api/health', methods=['GET'])
@@ -757,8 +776,13 @@ def ollama_compat_chat():
             response["send_message"] = result.get('send_message', True)
             response["message_target"] = result.get('message_target', 'channel')
 
+            # Spawn trading heartbeat in background if enabled
+            from core.config import POLYMARKET_HEARTBEAT_SCAN, POLYMARKET_TRADING_SESSION
+            if POLYMARKET_HEARTBEAT_SCAN and session_id != POLYMARKET_TRADING_SESSION:
+                _spawn_trading_heartbeat(consciousness_loop)
+
         logger.info(f"✅ Response sent: {len(result['response'])} chars, {len(result.get('tool_calls', []))} tool calls, thinking={'YES' if result.get('thinking') else 'NO'}")
-        
+
         return jsonify(response)
     
     except Exception as e:
@@ -775,6 +799,47 @@ def ollama_compat_chat():
 
 # NOTE: /ollama/api/chat/stream is handled by streaming_bp (routes_streaming.py)
 # which supports multimodal content. Do NOT add a duplicate route here.
+
+
+def _spawn_trading_heartbeat(consciousness_loop):
+    """
+    Spawn a background trading heartbeat in a daemon thread.
+    Runs the Polymarket trading session with its own model, system prompt,
+    and isolated context window. Non-blocking, fire-and-forget.
+    """
+    import threading
+    import asyncio as _asyncio
+    from core.config import POLYMARKET_TRADING_MODEL, POLYMARKET_TRADING_SESSION
+
+    def _run_trading_heartbeat():
+        try:
+            trading_model = POLYMARKET_TRADING_MODEL or None  # None = use default
+            logger.info(f"📈 Trading heartbeat starting (session={POLYMARKET_TRADING_SESSION}, model={trading_model or 'default'})")
+
+            trading_loop = _asyncio.new_event_loop()
+            try:
+                trading_loop.run_until_complete(
+                    consciousness_loop.process_message(
+                        user_message="Polymarket trading heartbeat. Scan for weather contract opportunities. If you find markets with edge, analyze and execute trades. Report your findings.",
+                        session_id=POLYMARKET_TRADING_SESSION,
+                        model=trading_model,
+                        include_history=True,
+                        history_limit=10,
+                        message_type='system'
+                    )
+                )
+                logger.info(f"📈 Trading heartbeat completed")
+            finally:
+                trading_loop.close()
+        except Exception as e:
+            logger.error(f"📈 Trading heartbeat failed (non-critical): {e}", exc_info=True)
+
+    thread = threading.Thread(
+        target=_run_trading_heartbeat,
+        daemon=True,
+        name="trading-heartbeat"
+    )
+    thread.start()
 
 
 # ============================================
@@ -1181,6 +1246,47 @@ def get_stats():
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# POLYMARKET TRADING DASHBOARD
+# ============================================
+
+@app.route('/api/polymarket/dashboard', methods=['GET'])
+def polymarket_dashboard():
+    """
+    Get Polymarket trading dashboard data.
+    Returns open positions, recent trades, and performance summary.
+    All data comes from the dedicated polymarket_positions.db — not archival memory.
+    """
+    try:
+        from services.polymarket.position_tracker import get_dashboard_data
+        data = get_dashboard_data()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/polymarket/positions', methods=['GET'])
+def polymarket_positions():
+    """Get open Polymarket positions."""
+    try:
+        from services.polymarket.position_tracker import get_open_positions
+        positions = get_open_positions()
+        return jsonify({"status": "OK", "positions": positions})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/polymarket/performance', methods=['GET'])
+def polymarket_performance():
+    """Get Polymarket trading performance summary."""
+    try:
+        from services.polymarket.position_tracker import get_performance_summary
+        perf = get_performance_summary()
+        return jsonify({"status": "OK", "performance": perf})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ============================================

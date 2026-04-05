@@ -1,0 +1,74 @@
+{
+  "name": "polymarket_tool",
+  "description": "Trade weather contracts on Polymarket using NOAA/Open-Meteo data edge. Supports market scanning, analysis, paper/live trading, position tracking, and order management. Trading data is stored in a dedicated database, not in memory. Actions: get_markets, analyze_market, scan_opportunities, execute_trade, get_positions, check_settlements, get_performance, pause_trading, get_balance, cancel_order, get_open_orders.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "get_markets",
+          "analyze_market",
+          "scan_opportunities",
+          "execute_trade",
+          "get_positions",
+          "check_settlements",
+          "get_performance",
+          "pause_trading",
+          "get_balance",
+          "cancel_order",
+          "get_open_orders"
+        ],
+        "description": "Action to perform. Read-only: get_markets, analyze_market, get_positions, get_performance, get_balance, get_open_orders. Trading (requires POLYMARKET_ENABLED=true): scan_opportunities, execute_trade, check_settlements, pause_trading, cancel_order."
+      },
+      "market_id": {
+        "type": "string",
+        "description": "Polymarket market ID (required for analyze_market, execute_trade, check_settlements)"
+      },
+      "side": {
+        "type": "string",
+        "enum": ["YES", "NO"],
+        "description": "Side to trade (for execute_trade)"
+      },
+      "size": {
+        "type": "number",
+        "description": "Trade size in USDC (for execute_trade, overrides Kelly sizing)"
+      },
+      "keyword": {
+        "type": "string",
+        "description": "Search keyword for get_markets (default: 'weather')"
+      },
+      "station_id": {
+        "type": "string",
+        "description": "ICAO airport code override (e.g., KJFK, KORD, KLAX) for analyze_market. If omitted, the tool will try to infer the station from the market question."
+      },
+      "threshold": {
+        "type": "number",
+        "description": "Contract threshold value override (e.g., 70 for 'Will temp exceed 70F?') for analyze_market."
+      },
+      "comparison": {
+        "type": "string",
+        "enum": ["above", "below"],
+        "description": "Whether the contract is for above or below the threshold (default: above)"
+      },
+      "metric": {
+        "type": "string",
+        "enum": ["temperature", "wind_speed", "humidity", "precipitation"],
+        "description": "Weather metric to analyze (default: temperature)"
+      },
+      "bankroll": {
+        "type": "number",
+        "description": "Current bankroll in USDC (required for execute_trade, used for Kelly position sizing)"
+      },
+      "settlement_price": {
+        "type": "number",
+        "description": "Settlement price for check_settlements (0.0 for NO win, 1.0 for YES win)"
+      },
+      "order_id": {
+        "type": "string",
+        "description": "Order ID to cancel (for cancel_order)"
+      }
+    },
+    "required": ["action"]
+  }
+}

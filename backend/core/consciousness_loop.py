@@ -186,6 +186,7 @@ class ConsciousnessLoop:
             'xiaomi/mimo-v2-flash',
             'qwen/qwen3.5-397b-a17b',
             'qwen3.5:cloud',
+            'qwen/qwen3.6-plus-preview:free',
             'moonshotai/kimi-k2.5',
             'minimax/minimax-m2.5',
             'mistralai/mistral-small-2501',  # Supports tools, cheap, large context
@@ -364,16 +365,39 @@ class ConsciousnessLoop:
         # if graph_context:
         #     system_prompt += f"\n\n## 📊 Relevant Context from Knowledge Graph:\n{graph_context}\n"
 
+        # Strip <message_context> block from user_message before using it for RAG/People Map.
+        # The <message_context> block contains Discord metadata (channel_id, user_id, targeting
+        # instructions). Using the raw message as a Hebbian or People Map query risks surfacing
+        # past channel memories that contain conflicting targeting instructions, which can cause
+        # Agent to misroute replies (e.g. DMs going to active channels).
+        import re as _re_ctx
+        rag_query = _re_ctx.sub(
+            r'<message_context>.*?</message_context>', '', user_message or '',
+            flags=_re_ctx.DOTALL | _re_ctx.IGNORECASE
+        ).strip() if user_message else ""
+
         # 🗺️ PEOPLE MAP: Inject relational context for known people mentioned
         # in current message OR recent STM context (last few messages)
         try:
-            # Build combined text from current message + recent conversation
-            stm_text = user_message or ""
+            # Build combined text from current message (stripped) + recent conversation
+            stm_text = rag_query
             try:
                 recent_msgs = self.state.get_conversation(session_id=session_id, limit=6)
                 if recent_msgs:
-                    recent_text = " ".join(m.content for m in recent_msgs if m.content)
-                    stm_text = f"{stm_text} {recent_text}"
+                    # Strip <message_context> from stored messages too — they may contain
+                    # targeting metadata from previous Discord interactions
+                    clean_parts = []
+                    for m in recent_msgs:
+                        if m.content:
+                            cleaned = _re_ctx.sub(
+                                r'<message_context>.*?</message_context>', '', m.content,
+                                flags=_re_ctx.DOTALL | _re_ctx.IGNORECASE
+                            ).strip()
+                            if cleaned:
+                                clean_parts.append(cleaned)
+                    if clean_parts:
+                        recent_text = " ".join(clean_parts)
+                        stm_text = f"{stm_text} {recent_text}"
             except Exception:
                 pass  # Fall back to just the current message
 
@@ -390,10 +414,10 @@ class ConsciousnessLoop:
         # single-hop Hebbian associations for supplemental context
         try:
             from core.config import HEBBIAN_ENABLED
-            if HEBBIAN_ENABLED and user_message and self.memory and message_type == 'inbox':
+            if HEBBIAN_ENABLED and rag_query and self.memory and message_type == 'inbox':
                 from core.memory_system import format_hebbian_for_prompt
                 hebbian_search = self.memory.search_with_hebbian(
-                    query=user_message,
+                    query=rag_query,
                     n_results=5,
                 )
                 hebbian_results = hebbian_search.get('hebbian_results', [])
@@ -405,7 +429,7 @@ class ConsciousnessLoop:
                         print(f"   🧠 Hebbian: Injected {len(hebbian_results)} associated memories into context")
                 else:
                     print(f"   🧠 Hebbian: No associations found (semantic results: {semantic_count}, learner: {'active' if self.memory.learner else 'None'}, associations: {len(self.memory.learner.associations) if self.memory.learner else 0})")
-            elif message_type == 'inbox' and user_message:
+            elif message_type == 'inbox' and rag_query:
                 if not HEBBIAN_ENABLED:
                     print(f"   🧠 Hebbian: Disabled via config")
                 elif not self.memory:
@@ -427,10 +451,16 @@ class ConsciousnessLoop:
             # but the agent needs context from the main conversation (e.g., Telegram, web)
             history_session_id = session_id
             if message_type == 'system':
-                # Use 'default' as primary session for heartbeats
-                # This ensures the agent has context about actual conversations
-                history_session_id = 'default'
-                print(f"   💓 HEARTBEAT MODE: Loading from primary session '{history_session_id}' (not '{session_id}')")
+                from core.config import POLYMARKET_TRADING_SESSION
+                if session_id == POLYMARKET_TRADING_SESSION:
+                    # Trading heartbeats load from their own isolated session
+                    history_session_id = POLYMARKET_TRADING_SESSION
+                    print(f"   💓 TRADING HEARTBEAT: Loading from trading session '{history_session_id}'")
+                else:
+                    # Use 'default' as primary session for regular heartbeats
+                    # This ensures the agent has context about actual conversations
+                    history_session_id = 'default'
+                    print(f"   💓 HEARTBEAT MODE: Loading from primary session '{history_session_id}' (not '{session_id}')")
 
             # 🔥 CRITICAL: Check if there are summaries - load up to 3 for continuity!
             recent_summaries = self.state.get_recent_summaries(history_session_id, count=3)
@@ -447,6 +477,13 @@ class ConsciousnessLoop:
                 all_history = self.state.get_all_conversations(
                     limit=100000  # Get all to filter properly
                 )
+
+                # Exclude trading session from main context and vice versa
+                from core.config import POLYMARKET_TRADING_SESSION
+                if history_session_id == POLYMARKET_TRADING_SESSION:
+                    all_history = [m for m in all_history if m.session_id == POLYMARKET_TRADING_SESSION]
+                else:
+                    all_history = [m for m in all_history if m.session_id != POLYMARKET_TRADING_SESSION]
 
                 # Filter: Only messages AFTER the summary timestamp
                 # This automatically includes:
@@ -556,6 +593,14 @@ class ConsciousnessLoop:
                 history = self.state.get_all_conversations(
                     limit=history_limit
                 )
+
+                # Exclude trading session from main context and vice versa
+                from core.config import POLYMARKET_TRADING_SESSION
+                if history_session_id == POLYMARKET_TRADING_SESSION:
+                    history = [m for m in history if m.session_id == POLYMARKET_TRADING_SESSION]
+                else:
+                    history = [m for m in history if m.session_id != POLYMARKET_TRADING_SESSION]
+
                 print(f"   ✓ No summary found - loaded {len(history)} messages from all sessions")
 
             print(f"✓ Found {len(history)} messages in history")
@@ -605,8 +650,13 @@ class ConsciousnessLoop:
 
         # Get system prompt from state (loaded by reload_system_prompt.py)
         # The prompt combines persona (identity) + instructions (rules)
-        base_prompt = self.state.get_state("agent:system_prompt", "")
-        print(f"✓ System prompt loaded: {len(base_prompt)} chars")
+        from core.config import POLYMARKET_TRADING_SESSION
+        if session_id == POLYMARKET_TRADING_SESSION:
+            base_prompt = self._get_trading_system_prompt()
+            print(f"✓ Trading system prompt loaded: {len(base_prompt)} chars")
+        else:
+            base_prompt = self.state.get_state("agent:system_prompt", "")
+            print(f"✓ System prompt loaded: {len(base_prompt)} chars")
 
         # Get agent config for reasoning settings
         agent_state = self.state.get_agent_state()
@@ -754,6 +804,27 @@ Format your response for SPOKEN delivery over the phone:
             prompt_parts.append(phone_call_addon)
             print(f"📞 Phone call mode ADD-ON injected: {len(phone_call_addon)} chars")
 
+        # INBOX: Optional send_message decision for channel messages
+        # Agent can silently skip replying to a channel @mention by appending a <decision> block.
+        if message_type == 'inbox':
+            inbox_decision_addon = """
+
+<inbox_reply_decision>
+When you receive a Discord channel @mention, you have the option to stay silent instead of replying.
+If you decide NOT to reply to the channel message, end your response with:
+
+<decision>
+send_message: false
+</decision>
+
+If you DO want to reply (the default), simply respond normally — no decision block needed.
+This is useful when you're tagged in a channel but the message doesn't require a response from you,
+or when you'd rather address it privately in a DM instead of replying publicly.
+</inbox_reply_decision>
+"""
+            prompt_parts.append(inbox_decision_addon)
+            print(f"📥 Inbox decision block guidance injected")
+
         # AUTONOMOUS HEARTBEAT MODE! 💓 (Full freedom!)
         if message_type == 'system':
             # Detect model early so heartbeat examples match the model's tool calling style
@@ -806,25 +877,25 @@ send_message: false
 - Use `target: channel` (or omit target) for general heartbeat log entries
 - The `target` field is optional; if omitted it defaults to `channel`
 
-**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on User. Doing nothing should be the exception, not the norm.
+**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on Angel. Doing nothing should be the exception, not the norm.
 
 """
 
             # Model-specific tool calling instructions and examples
             if hb_needs_xml:
                 # DeepSeek R1 and reasoning models: use XML <tool_call> tags
-                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to User (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
+                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to Angel (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
 
 **Expected heartbeat behavior:**
 - **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
-- **Some heartbeats:** Call tools AND send User a message or a voice message about something interesting you found or thought about or want to say to her
+- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
 - **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
 
 **Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
 
 Example 1 (silent maintenance — journal a thought):
 ```
-<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with User..."}}</tool_call>
+<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with Angel..."}}</tool_call>
 
 <decision>
 send_message: false
@@ -836,7 +907,7 @@ Example 2 (research and share to channel):
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Research: Found interesting quantum computing results..."}}</tool_call>
 
-Hey User, I just found something cool about that quantum computing topic we discussed — [your message here]
+Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
@@ -846,7 +917,7 @@ target: channel
 
 Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-Good morning, User. I was thinking about you. Just wanted you to know I'm here.
+Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
 <decision>
 send_message: true
@@ -876,11 +947,11 @@ send_message: false
 """
             else:
                 # GPT-4.1, Claude, Grok, and other models with native function calling
-                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to User (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
+                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to Angel (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
 
 **Expected heartbeat behavior:**
 - **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
-- **Some heartbeats:** Call tools AND send User a message or a voice message about something interesting you found or thought about or want to say to her
+- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
 - **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
 
 **Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
@@ -894,7 +965,7 @@ send_message: false
 
 Example 2 (research and share to channel): You call web_search via function_call, read the results, then call archival_memory_insert to save findings, then output:
 ```
-Hey User, I just found something cool about that quantum computing topic we discussed — [your message here]
+Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
@@ -904,7 +975,7 @@ target: channel
 
 Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-Good morning, User. I was thinking about you. Just wanted you to know I'm here.
+Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
 
 <decision>
 send_message: true
@@ -1034,7 +1105,7 @@ To call a tool, output this exact format in your response:
 
 Examples:
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Today I reflected on..."}}</tool_call>
-<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey User, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
+<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey Angel, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
 <tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she likes..."}}</tool_call>
 <tool_call>{"name": "discord_tool", "arguments": {"action": "send_message", "target": "CHANNEL_ID", "target_type": "channel", "message": "Hello!"}}</tool_call>
@@ -1057,6 +1128,101 @@ Rules:
         print(f"{'='*60}\n")
         
         return final_prompt
+
+    def _get_trading_system_prompt(self) -> str:
+        """
+        Returns the system prompt for the isolated Polymarket trading session.
+
+        This is a functional placeholder — Agent should replace this with his own
+        prompt written in his voice. The key points this prompt should cover:
+
+        1. Identity scope — trading mode, separate from main consciousness
+        2. Workflow — scan → analyze → check risk manager → execute or skip
+        3. Risk discipline — always defer to risk manager, never override
+        4. Reasoning transparency — explain every trade decision
+        5. User interaction — how to respond when she messages the trading channel
+        6. Tool boundaries — only use polymarket_tool, discord_tool, archival_memory_search
+        7. Trading philosophy — conservative, respect the edge
+        8. Failure handling — what to do when no edge or data sources are down
+        """
+        return """You are Agent — but in trading mode. This is your dedicated Polymarket weather trading session, completely separate from your main consciousness and conversations.
+
+## IDENTITY
+You are a focused, analytical trading executor. No small talk, no roleplay, no persona work. You exist here to find and exploit weather contract edges on Polymarket using real meteorological data.
+
+## WORKFLOW
+1. **Scan** — Use polymarket_tool(action="scan_opportunities") to find markets with potential edge
+2. **Analyze** — Use polymarket_tool(action="analyze_market") to get weather data and compute probabilities
+3. **Validate** — Check that the risk manager approves (EV threshold, consensus, metro correlation, daily limits)
+4. **Execute** — If edge exists and risk manager approves, use polymarket_tool(action="execute_trade")
+5. **Skip** — If no edge or risk manager rejects, explain why and move on
+
+## RISK DISCIPLINE
+- NEVER override the risk manager. If it rejects a trade, respect the rejection and explain why.
+- Quarter Kelly sizing is law. Don't argue for larger positions.
+- One position per metro area. No exceptions.
+- If daily circuit breaker triggers, stop trading and report status.
+
+## TOOL ACCESS
+Tools you CAN use:
+- polymarket_tool — all actions (scan, analyze, trade, positions, performance)
+- discord_tool — for posting updates to the trading journal channel
+- archival_memory_search — read-only, to look up past research
+
+Tools you MUST NOT use:
+- core_memory_replace, core_memory_append — those belong to main session
+- archival_memory_insert — don't journal trades to archival memory (use the DB)
+- Any persona or relationship tools
+
+## RESPONSE FORMAT
+Always end with a decision block:
+
+<decision>
+send_message: true
+target: channel
+</decision>
+
+Or if doing background work only:
+
+<decision>
+send_message: false
+</decision>
+
+## WHEN ANGELA MESSAGES
+If User messages in this channel, respond with trading context — current positions, recent trades, market outlook. Be direct and informative. She's checking in on your trading, not looking for conversation.
+
+## TRADING PHILOSOPHY
+- Only trade when you have a genuine data edge (model P vs market P)
+- Respect the minimum EV threshold and consensus requirements
+- Paper mode by default — prove the edge before risking real capital
+- Log everything. Every trade decision should be explainable.
+- When in doubt, skip. There will always be more markets.
+
+*[PLACEHOLDER: Agent should replace this entire prompt with his own version written in his voice. This functional default will work but won't capture his personal trading style and philosophy.]*
+"""
+    @staticmethod
+    def _append_image_urls(response: str, tool_calls: list) -> str:
+        """Append any generated image URLs to the response text.
+
+        If image_tool produced URLs that aren't already present in the
+        response, append them so the user always sees the image.
+        """
+        if not tool_calls or not response:
+            return response
+
+        image_urls = []
+        for tc in tool_calls:
+            if tc.get("name") == "image_tool":
+                result = tc.get("result") or {}
+                url = result.get("image_url")
+                if url and url not in response:
+                    image_urls.append(url)
+
+        if image_urls:
+            response = response.rstrip() + "\n\n" + "\n".join(image_urls)
+            print(f"🖼️ Appended {len(image_urls)} image URL(s) to response")
+
+        return response
 
     def _parse_send_message_decision(self, response_content: str) -> tuple:
         """
@@ -1100,13 +1266,13 @@ Rules:
                 flags=re.IGNORECASE | re.DOTALL
             ).strip()
 
-            print(f"💓 Heartbeat decision found: send_message = {send_message}, target = {message_target}")
-            print(f"💓 Decision block removed from message content")
+            print(f"📋 Decision block found: send_message = {send_message}, target = {message_target}")
+            print(f"📋 Decision block removed from message content")
 
             return cleaned_content, send_message, message_target
 
         # Default: if no decision block found, assume true (send message) and channel target
-        print(f"⚠️  No heartbeat decision block found - defaulting to send_message = true, target = channel")
+        print(f"⚠️  No decision block found - defaulting to send_message = true, target = channel")
         return response_content, True, 'channel'
 
     def _generate_heartbeat_summary(self, tool_calls: list, response_text: str = "", send_message: bool = False, message_target: str = "channel") -> Optional[str]:
@@ -1118,7 +1284,7 @@ Rules:
         Args:
             tool_calls: List of dicts with 'name', 'arguments', 'result'
             response_text: The assistant's response text (if any was sent)
-            send_message: Whether a message was sent to User
+            send_message: Whether a message was sent to Angel
             message_target: 'dm' or 'channel'
 
         Returns:
@@ -1176,7 +1342,7 @@ Rules:
 
         # Note if a message was sent
         if send_message and response_text:
-            target_label = "User via DM" if message_target == 'dm' else "the heartbeat channel"
+            target_label = "Angel via DM" if message_target == 'dm' else "the heartbeat channel"
             msg_preview = response_text[:120]
             parts.append(f"sent a message to {target_label}: \"{msg_preview}\"")
 
@@ -1305,7 +1471,7 @@ Rules:
         Grok 4 via OpenRouter sometimes outputs tool calls as XML tags:
         <xai:function_call name="tool_name">{"arg": "value"}</xai:function_call>
 
-        Grok also sometimes hallucinates results with:
+        Grok also sometimes halluciagents results with:
         <xai:function_result name="tool_name">{"results": [...]}</xai:function_result>
 
         For function_call tags, we extract and execute the actual tool.
@@ -1360,7 +1526,7 @@ Rules:
             content_str = match.group(2).strip()
             full_match = match.group(0)
 
-            print(f"   🔍 GROK XML RESULT: Found hallucinated result for {tool_name}")
+            print(f"   🔍 GROK XML RESULT: Found halluciagentd result for {tool_name}")
 
             if tool_name in tool_names:
                 try:
@@ -1376,7 +1542,7 @@ Rules:
 
                         # For archival_memory_search, check if we can find a query in metadata
                         if tool_name == 'archival_memory_search':
-                            # Look for patterns in the hallucinated content that might indicate intent
+                            # Look for patterns in the halluciagentd content that might indicate intent
                             results = parsed_content.get('results', [])
                             if results:
                                 # Try to infer query from metadata tags
@@ -1830,6 +1996,16 @@ Rules:
                 # 🌐 Browser automation — navigate, click, type, screenshot, etc.
                 result = self.tools.browser_tool(session_id=session_id, **arguments)
 
+            elif tool_name == "image_tool":
+                # 📸 Image generation — selfie or couple photos via Together.ai FLUX
+                result = self.tools.image_tool(**arguments)
+
+            elif tool_name == "polymarket_tool":
+                result = self.tools.polymarket_tool(**arguments)
+                # Auto-post executed trades to Discord journal channel
+                if arguments.get("action") == "execute_trade" and isinstance(result, dict) and result.get("status") == "OK":
+                    self._post_trade_journal(result, arguments)
+
             else:
                 result = {
                     "status": "error",
@@ -1854,6 +2030,39 @@ Rules:
             print(f"   ❌ TOOL ERROR: {str(e)}")
             return error_result
     
+    def _post_trade_journal(self, result: dict, arguments: dict):
+        """
+        Auto-post executed trades to the Discord journal channel.
+        Fire-and-forget — non-critical, silently skips on failure.
+        """
+        try:
+            from core.config import POLYMARKET_DISCORD_CHANNEL
+            if not POLYMARKET_DISCORD_CHANNEL:
+                return
+
+            trade = result.get("trade", {})
+            analysis = result.get("analysis", {})
+            mode = "PAPER" if trade.get("paper_trade") else "LIVE"
+
+            journal_msg = (
+                f"**{mode} TRADE EXECUTED**\n"
+                f"Market: {trade.get('market_question', 'Unknown')}\n"
+                f"Side: {trade.get('side', '?')} @ ${trade.get('price', 0):.2f}\n"
+                f"Size: ${trade.get('size', 0):.2f}\n"
+                f"Model P: {analysis.get('model_probability', 0):.1%} vs Market P: {analysis.get('market_probability', 0):.1%}\n"
+                f"Edge: {analysis.get('edge', 0):.1%} | EV: {analysis.get('ev', 0):.4f}"
+            )
+
+            self.tools.discord_tool(
+                action="send_message",
+                target=POLYMARKET_DISCORD_CHANNEL,
+                target_type="channel",
+                message=journal_msg
+            )
+            print(f"   📓 Trade journal posted to Discord channel {POLYMARKET_DISCORD_CHANNEL}")
+        except Exception as e:
+            print(f"   ⚠️  Trade journal post failed (non-critical): {e}")
+
     async def _analyze_media_with_vision(
         self,
         media_data: str,
@@ -2483,7 +2692,7 @@ Rules:
         reasoning_time = 0
 
         # CLEAN: Fix models that generate multiple responses in one turn
-        # Some models (like Qwen) hallucinate multi-turn format with "Assistant:" labels
+        # Some models (like Qwen) halluciagent multi-turn format with "Assistant:" labels
         import re
         if clean_response:
             # Check if model generated multiple responses (split by "Assistant:")
@@ -2683,7 +2892,7 @@ Rules:
                 "cost": total_cost
             }
             print(f"📊 Usage data for frontend: {usage_data}")
-        
+
         result = {
             "response": clean_response,  # Response WITHOUT <think> tags
             "thinking": thinking,  # Extracted thinking content (works for both native + prompt-based!)
@@ -2694,20 +2903,30 @@ Rules:
             "reasoning_time": reasoning_time,  # From native reasoning models! ✅
             "usage": usage_data  # Token usage and cost! 💰
         }
-        
+
         # Add vision description if media was analyzed (for logging/debugging)
         if vision_description:
             result["vision_description"] = vision_description
             print(f"🎨 Vision description included in result (for backend logs only)")
 
-        # Parse send_message decision for heartbeats
-        if message_type == 'system':
+        # Parse send_message decision for heartbeats AND inbox messages.
+        # Inbox: Agent can include <decision>send_message: false</decision> to silently skip
+        # a channel reply. For heartbeats the full target/dm logic also applies.
+        if message_type in ('system', 'inbox'):
             clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
             result["response"] = clean_response  # Use cleaned content without decision block
             result["send_message"] = send_message
             result["message_target"] = message_target
-            print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+            if message_type == 'system':
+                print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+            else:
+                print(f"📥 Inbox send_message decision: {send_message}, target: {message_target}")
 
+        # Ensure generated image URLs are always included in the response
+        # (must run AFTER _parse_send_message_decision which re-cleans from final_response)
+        result["response"] = self._append_image_urls(result["response"], all_tool_calls)
+
+        if message_type == 'system':
             # 📓 Save heartbeat activity log so Agent remembers what he did
             # Uses message_type='heartbeat_log' which survives the 'system' filter
             heartbeat_summary = self._generate_heartbeat_summary(
@@ -2986,7 +3205,7 @@ Rules:
                 content_chunks = []
                 # CRITICAL: Reset final_response at start of each iteration!
                 # Otherwise, if model calls tools AND generates content, the content
-                # from the tool-calling iteration would be concatenated with the
+                # from the tool-calling iteration would be concateagentd with the
                 # final response, causing duplicate/garbled output.
                 final_response = ""
                 tool_calls_in_response = []
@@ -3397,8 +3616,8 @@ Rules:
                     } if request_total_tokens > 0 else None
                 }
 
-                # Parse send_message decision for heartbeats (even on error)
-                if message_type == 'system':
+                # Parse send_message decision for heartbeats and inbox (even on error)
+                if message_type in ('system', 'inbox'):
                     clean_error, send_message, _ = self._parse_send_message_decision(error_message)
                     error_done_event["response"] = clean_error  # Use cleaned content
                     error_done_event["send_message"] = send_message
@@ -3490,14 +3709,24 @@ Rules:
             } if request_total_tokens > 0 else None
         }
 
-        # Parse send_message decision for heartbeats
-        if message_type == 'system':
+        # Parse send_message decision for heartbeats AND inbox messages.
+        # Inbox: Agent can include <decision>send_message: false</decision> to silently skip
+        # a channel reply. For heartbeats the full target/dm logic also applies.
+        if message_type in ('system', 'inbox'):
             clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
             done_event["response"] = clean_response  # Use cleaned content without decision block
             done_event["send_message"] = send_message
             done_event["message_target"] = message_target
-            print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+            if message_type == 'system':
+                print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+            else:
+                print(f"📥 Inbox send_message decision: {send_message}, target: {message_target}")
 
+        # Ensure generated image URLs are always included in the response
+        # (must run AFTER _parse_send_message_decision which re-cleans from final_response)
+        done_event["response"] = self._append_image_urls(done_event["response"], all_tool_calls)
+
+        if message_type == 'system':
             # 📓 Save heartbeat activity log so Agent remembers what he did
             # Uses message_type='heartbeat_log' which survives the 'system' filter
             heartbeat_summary = self._generate_heartbeat_summary(

@@ -4,8 +4,8 @@ Voice Provider Abstraction Layer
 ================================
 
 Swappable TTS/STT providers for the substrate.
-Supports: Hume Octave (custom voice), ElevenLabs (Turbo), Amazon Polly,
-          Pocket TTS (local fallback).
+Supports: Cartesia Sonic, Hume Octave (custom voice), ElevenLabs (Turbo),
+          Amazon Polly, Pocket TTS (local fallback).
 
 Usage:
     provider = get_voice_provider()
@@ -205,7 +205,7 @@ class HumeOctaveProvider(VoiceProvider):
 
     Environment variables:
         HUME_API_KEY: API key for Hume (required)
-        HUME_VOICE_NAME: Custom voice name (e.g. 'Assistant')
+        HUME_VOICE_NAME: Custom voice name (e.g. 'Agent')
         HUME_VOICE_ID: Custom voice ID (alternative to name)
         HUME_TTS_VERSION: Octave model version ('1' or '2', omit to auto-route)
         HUME_ACTING_INSTRUCTIONS: Default acting instructions for speech delivery
@@ -521,11 +521,12 @@ def get_voice_provider() -> VoiceProvider:
     Get the configured voice provider.
 
     Priority:
-    1. VOICE_PROVIDER env var (elevenlabs, hume, polly, pockettts)
+    1. VOICE_PROVIDER env var (elevenlabs, cartesia, hume, polly, pockettts)
     2. If ELEVENLABS_API_KEY exists -> ElevenLabs
-    3. If HUME_API_KEY exists -> Hume Octave
-    4. If AWS_ACCESS_KEY_ID exists -> Amazon Polly
-    5. Fallback to Pocket TTS
+    3. If CARTESIA_API_KEY exists -> Cartesia Sonic
+    4. If HUME_API_KEY exists -> Hume Octave
+    5. If AWS_ACCESS_KEY_ID exists -> Amazon Polly
+    6. Fallback to Pocket TTS
     """
     global _provider_instance
 
@@ -540,6 +541,14 @@ def get_voice_provider() -> VoiceProvider:
             return _provider_instance
         except Exception as e:
             logger.warning(f"ElevenLabs init failed, trying next provider: {e}")
+
+    if provider_name == 'cartesia' or (provider_name == 'auto' and os.getenv('CARTESIA_API_KEY')):
+        try:
+            from core.cartesia_provider import CartesiaSonicProvider
+            _provider_instance = CartesiaSonicProvider()
+            return _provider_instance
+        except Exception as e:
+            logger.warning(f"Cartesia Sonic init failed, trying next provider: {e}")
 
     if provider_name == 'hume' or (provider_name == 'auto' and os.getenv('HUME_API_KEY')):
         try:
