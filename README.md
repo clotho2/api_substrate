@@ -388,7 +388,7 @@ Document management and semantic search:
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+
-- PostgreSQL 14+ (optional, SQLite fallback available)
+- SQLite and ChromaDB 14+ (optional, PostgreSQL fallback available)
 - An API key for at least one LLM provider
 
 ### Backend Setup
