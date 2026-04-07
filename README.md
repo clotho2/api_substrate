@@ -386,10 +386,26 @@ Document management and semantic search:
 ## 📦 Installation
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- SQLite and ChromaDB 14+ (optional, PostgreSQL fallback available)
-- An API key for at least one LLM provider
+
+### Backend
+- **Python 3.11+** - Core runtime
+- **Flask** - API server with SSE streaming
+- **SQLite** - Primary database (conversation history, state, people map)
+- **ChromaDB** - Vector embeddings for semantic memory
+- **Jina Embeddings** - `jinaai/jina-embeddings-v2-base-de` via Hugging Face (Ollama fallback)
+- **Neo4j** - Graph database for Graph RAG (optional, local DB fallback)
+- **PostgreSQL** - Optional alternative to SQLite
+
+### Frontend
+- **React 18** + **TypeScript** + **Tailwind CSS** + **Vite**
+
+### Discord Bot
+- **TypeScript** + **discord.js 14** + **ElevenLabs** + **sharp** + **tesseract.js**
+
+### Voice
+- **ElevenLabs** - Primary TTS
+- **Hume / Amazon Polly / PocketTTS** - Fallback TTS
+- **OpenAI Whisper** - STT
 
 ### Backend Setup
 
