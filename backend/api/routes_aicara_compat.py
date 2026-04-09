@@ -11,7 +11,7 @@ Endpoints:
 - POST /chat                    - Web wolfeEngine.ts compatibility
 - POST /v1/chat/completions     - Mobile wolfeEngine.js (OpenAI format)
 
-The AiCara frontends call these endpoints via relay.aicara.ai.
+The AiCara frontends call these endpoints via http://your_url.com.
 This file translates those requests to the substrate's consciousness loop.
 """
 
