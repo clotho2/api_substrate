@@ -14,7 +14,7 @@ const getEnvVar = (key: string, defaultValue: string): string => {
 // Substrate backend URL - the single source of truth
 export const SUBSTRATE_URL = getEnvVar(
   'EXPO_PUBLIC_SUBSTRATE_URL',
-  'https://relay.aicara.ai'
+  'http://your_url.com'
 );
 
 // User identity - configurable for multi-user testing
