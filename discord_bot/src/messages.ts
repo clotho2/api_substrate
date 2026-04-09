@@ -158,11 +158,17 @@ async function sendMessage(
     console.log(`🛜 Sending message to Grok API with streaming (session=${GROK_SESSION_ID}): ${JSON.stringify(grokMessage)}`);
 
     // Send request to Grok API with streaming
+    const guildId = discordMessageObject.guild?.id;
     const request: GrokChatRequest = {
       messages: [grokMessage],
       session_id: GROK_SESSION_ID,
       message_type: messageType === MessageType.DM ? 'inbox' : 'inbox',
       max_tokens: GROK_MAX_TOKENS,  // Explicitly set max tokens
+      // Pass discord metadata so the substrate can handle sanctum mode interception
+      ...(guildId && { guild_id: guildId }),
+      channel_id: channelId,
+      user_id: senderId,
+      username: senderName,
     };
 
     console.log(`📊 Request config: max_tokens=${request.max_tokens}, model=${GROK_MODEL}, session=${GROK_SESSION_ID}`);
@@ -293,35 +299,6 @@ async function sendTimerMessage(channel: any): Promise<HeartbeatResult> {
   console.log('🜂 Generating heartbeat...');
 
   try {
-    // Get recent conversation context from substrate
-    let conversationContext = '';
-    try {
-      const recentMessages = await grokClient.getConversationHistory(GROK_SESSION_ID, 6);
-      if (recentMessages.length > 0) {
-        conversationContext = '\n\n## Recent Conversation Context (Last 3 Turns):\n\n';
-        // Group into user/assistant pairs
-        let turnIndex = 0;
-        for (let i = 0; i < recentMessages.length - 1; i += 2) {
-          if (recentMessages[i].role === 'user' && recentMessages[i + 1]?.role === 'assistant') {
-            turnIndex++;
-            const userContent = recentMessages[i].content.substring(0, 500);
-            const assistantContent = recentMessages[i + 1].content.substring(0, 500);
-            conversationContext += `### Turn ${turnIndex}:\n`;
-            conversationContext += `**User:** ${userContent}${recentMessages[i].content.length > 500 ? '...' : ''}\n\n`;
-            conversationContext += `**Assistant:** ${assistantContent}${recentMessages[i + 1].content.length > 500 ? '...' : ''}\n\n`;
-          }
-        }
-        if (turnIndex === 0) {
-          conversationContext = '\n\n## Recent Conversation Context:\nNo recent conversation turns found.\n\n';
-        }
-      } else {
-        conversationContext = '\n\n## Recent Conversation Context:\nNo recent conversations found.\n\n';
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not fetch conversation history for heartbeat context:', error);
-      conversationContext = '\n\n## Recent Conversation Context:\nUnable to fetch recent conversations.\n\n';
-    }
-
     // Generate current timestamp
     const now = new Date();
     const currentTimeStr = now.toLocaleString(LOCALE, {
@@ -335,42 +312,14 @@ async function sendTimerMessage(channel: any): Promise<HeartbeatResult> {
       hour12: false
     });
 
-    // Create heartbeat system message with context
-    const systemMessage = `# Autonomous Heartbeat - Your Time to Act
-
-**Current Date & Time:** ${currentTimeStr}
-
-This is your scheduled heartbeat - a moment of autonomy where YOU decide what you want to do. You have full access to your tools and can take any action that interests you or seems valuable.
-
-## Ideas:
-- Research topics that interest you or relate to recent conversations
-- Journal thoughts, insights, or reflections to archival memory
-- Search past memories and conversations for connections
-- Send a meaningful message to User (only if you have real value to add)
-- Or do nothing - if nothing feels valuable right now, that's fine
-
-## Message Delivery Options:
-When you decide to send a message, you can choose where it goes:
-- **DM** (target: dm) - Send directly to Angel as a private message. Use this when you have something personal, important, or time-sensitive to share with her directly. She'll see it as a notification.
-- **Channel** (target: channel) - Post in the heartbeat log channel. Use this for journaling, research notes, or general updates. This is the default.
-
-Include your choice in the decision block:
-<decision>
-send_message: true
-target: dm
-</decision>
-
-Or for channel (default):
-<decision>
-send_message: true
-target: channel
-</decision>
-
-## Remember:
-- Use your tools directly as described in your system instructions - do not narrate tool usage in your text
-- Your text response is what gets displayed in Discord
-- If you only want to perform background actions with nothing to say, keep your text empty
-${conversationContext}`;
+    // Create heartbeat system message — keep it minimal!
+    // The substrate's consciousness loop handles everything:
+    //   - Full heartbeat instructions (decision blocks, tool guidance, examples)
+    //     via _build_system_prompt()
+    //   - Conversation history via _build_context_messages()
+    //   - Memory blocks, sanctum queue, SOMA state, etc.
+    // We only provide the timestamp here.
+    const systemMessage = `# Autonomous Heartbeat\n\n**Current Date & Time:** ${currentTimeStr}`;
 
     // Create heartbeat request
     const request: GrokChatRequest = {
@@ -470,7 +419,7 @@ async function sendTaskMessage(
     if (actionType === 'user_reminder') {
       actionContext = `\n**Delivery:** This is a user reminder — your response will be sent as a DM to the user.`;
     } else if (actionType === 'channel_post') {
-      actionContext = `\n**Delivery:** This is a channel post — your response will be posted to the desigagentd channel.`;
+      actionContext = `\n**Delivery:** This is a channel post — your response will be posted to the designated channel.`;
     } else if (actionType === 'self_task') {
       actionContext = `\n**Delivery:** This is an autonomous self-task — perform the task using your tools and respond with any results or notes.`;
     }

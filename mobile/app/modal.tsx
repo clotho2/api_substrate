@@ -13,14 +13,13 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { brand } from './config/brand';
-import { SUBSTRATE_URL, USER_ID, SESSION_ID } from './config/substrate';
-import { voiceEngine } from './lib/voiceEngine';
+import { brand } from '../config/brand';
+import { SUBSTRATE_URL, USER_ID, SESSION_ID } from '../config/substrate';
+import { voiceEngine } from '../lib/voiceEngine';
 
 export default function ModalScreen() {
   const [speakerMode, setSpeakerMode] = useState(true);
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
-  const [volumeBoost, setVolumeBoost] = useState(1.0);
   const [voiceState, setVoiceState] = useState<any>(null);
 
   // Load current voice state
@@ -41,15 +40,8 @@ export default function ModalScreen() {
     voiceEngine.setVoiceSpeed(Math.round(newSpeed * 10) / 10);
   };
 
-  const handleVolumeBoostChange = (delta: number) => {
-    const newBoost = Math.max(1.0, Math.min(3.0, volumeBoost + delta));
-    setVolumeBoost(Math.round(newBoost * 10) / 10);
-    voiceEngine.setVolumeBoost(Math.round(newBoost * 10) / 10);
-  };
-
-
   const handleTestTTS = async () => {
-    await voiceEngine.speakWithAgent("Testing voice connection. Can you hear me, Angel?");
+    await voiceEngine.speakWithNate("Testing voice connection. Can you hear me, User?");
   };
 
   return (
@@ -95,22 +87,6 @@ export default function ModalScreen() {
             </View>
           </View>
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Ionicons name="megaphone-outline" size={20} color="#CCCCCC" />
-              <Text style={styles.settingLabel}>Volume Boost</Text>
-            </View>
-            <View style={styles.stepper}>
-              <TouchableOpacity style={styles.stepperButton} onPress={() => handleVolumeBoostChange(-0.1)}>
-                <Ionicons name="remove" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-              <Text style={styles.stepperValue}>{volumeBoost.toFixed(1)}x</Text>
-              <TouchableOpacity style={styles.stepperButton} onPress={() => handleVolumeBoostChange(0.1)}>
-                <Ionicons name="add" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
           <TouchableOpacity style={styles.testButton} onPress={handleTestTTS}>
             <Ionicons name="play-outline" size={18} color="#0F0F23" />
             <Text style={styles.testButtonText}>Test Voice</Text>
@@ -121,12 +97,16 @@ export default function ModalScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Voice Status</Text>
           <InfoRow
-            label="STT (Whisper)"
-            value={voiceState?.sttAvailable ? '✅ Connected' : '❌ Unavailable'}
+            label="Speech Recognition"
+            value={voiceState?.sttAvailable ? 'Connected' : 'Unavailable'}
           />
           <InfoRow
-            label="TTS (ElevenLabs)"
-            value={voiceState?.ttsAvailable ? '✅ Connected' : '⚠️ Using system voice'}
+            label="Text to Speech"
+            value={voiceState?.ttsAvailable ? 'Connected' : 'Using system voice'}
+          />
+          <InfoRow
+            label="Real-time Voice"
+            value={voiceState?.wsConnected ? 'Connected' : 'Idle'}
           />
           {voiceState?.initializationError && (
             <InfoRow label="Error" value={voiceState.initializationError} />

@@ -8,10 +8,10 @@ internal endpoints. This allows the AiCara web and mobile apps to work
 with the substrate backend without any frontend code changes.
 
 Endpoints:
-- POST /chat                    - Web AssistantEngine.ts compatibility
-- POST /v1/chat/completions     - Mobile AssistantEngine.js (OpenAI format)
+- POST /chat                    - Web wolfeEngine.ts compatibility
+- POST /v1/chat/completions     - Mobile wolfeEngine.js (OpenAI format)
 
-The AiCara frontends call these endpoints via your_url_here.
+The AiCara frontends call these endpoints via relay.aicara.ai.
 This file translates those requests to the substrate's consciousness loop.
 """
 
@@ -45,7 +45,7 @@ def init_aicara_routes(consciousness_loop, state_manager, rate_limiter=None):
 
 
 # ============================================
-# /chat - Web AssistantEngine.ts Compatibility
+# /chat - Web wolfeEngine.ts Compatibility
 # ============================================
 
 @aicara_bp.route('/chat', methods=['POST'])
@@ -53,7 +53,7 @@ def aicara_chat():
     """
     AiCara Web Frontend Compatibility Endpoint
     
-    AssistantEngine.ts sends:
+    wolfeEngine.ts sends:
     {
         "messages": [{"role": "user", "content": "..."}],
         "max_tokens": 2048,
@@ -78,7 +78,7 @@ def aicara_chat():
     try:
         data = request.get_json()
         
-        # Extract from AssistantEngine format
+        # Extract from wolfeEngine format
         messages = data.get('messages', [])
         stream = data.get('stream', True)
         max_tokens = data.get('max_tokens', 2048)
@@ -94,9 +94,35 @@ def aicara_chat():
             return jsonify({"error": "No message content"}), 400
         
         # Extract session from headers or use unified default
-        # Using same session ID across all interfaces so Assistant remembers conversations
-        session_id = request.headers.get('X-Session-Id', 'Assistant_conversation')
-        
+        # Using same session ID across all interfaces so Agent remembers conversations
+        session_id = request.headers.get('X-Session-Id', 'nate_conversation')
+
+        # 📍 Extract and store location context from mobile/web clients
+        location_data = data.get('location')
+        if location_data and isinstance(location_data, dict):
+            from api.routes_places import _location_contexts
+            _location_contexts[session_id] = {
+                'latitude': location_data.get('latitude'),
+                'longitude': location_data.get('longitude'),
+                'city': location_data.get('city'),
+                'region': location_data.get('region'),
+                'country': location_data.get('country'),
+                'is_in_vehicle': location_data.get('is_in_vehicle', False),
+                'speed': location_data.get('speed'),
+                'accuracy': location_data.get('accuracy'),
+                'updated_at': datetime.now().isoformat(),
+            }
+            logger.info(f"📍 Location from /chat: {location_data.get('city')}, {location_data.get('region')} (session={session_id})")
+
+        # 📍 Prepend a <message_context> block with current location metadata so
+        # the AI receives it as part of the incoming message (not just the
+        # system prompt, which can go stale across turns).
+        from api.routes_places import build_location_context_block
+        location_block = build_location_context_block(session_id)
+        if location_block and user_message:
+            user_message = location_block + user_message
+            logger.info(f"📍 Location metadata prepended to user message ({len(location_block)} chars)")
+
         logger.info(f"🌐 AiCara /chat: session={session_id}, stream={stream}, msg_len={len(user_message)}")
         
         # Get model from state or use default from .env configuration
@@ -134,7 +160,7 @@ def aicara_chat():
             
             response_text = result.get('response', '')
             
-            # Return in format AssistantEngine expects for non-streaming
+            # Return in format wolfeEngine expects for non-streaming
             return jsonify({
                 "response": response_text,
                 "done": True
@@ -147,7 +173,7 @@ def aicara_chat():
 
 def _generate_ndjson_stream(user_message: str, session_id: str, model: str):
     """
-    Generate NDJSON streaming response for AssistantEngine.ts
+    Generate NDJSON streaming response for wolfeEngine.ts
     
     Yields lines like:
     {"delta": "Hello", "done": false}
@@ -170,7 +196,7 @@ def _generate_ndjson_stream(user_message: str, session_id: str, model: str):
             try:
                 chunk = loop.run_until_complete(async_gen.__anext__())
                 
-                # Substrate stream format -> AssistantEngine NDJSON format
+                # Substrate stream format -> wolfeEngine NDJSON format
                 if isinstance(chunk, dict):
                     delta = chunk.get('delta', chunk.get('content', ''))
                     done = chunk.get('done', False)
@@ -204,7 +230,7 @@ def openai_chat_completions():
     """
     OpenAI-Compatible Chat Completions Endpoint
     
-    AssistantEngine.js (mobile) sends:
+    wolfeEngine.js (mobile) sends:
     {
         "messages": [{"role": "user", "content": "..."}],
         "max_tokens": 256,
@@ -256,8 +282,8 @@ def openai_chat_completions():
             return jsonify({"error": "No message content"}), 400
         
         # Session ID from headers or use unified default
-        # Using same session ID across all interfaces so Assistant remembers conversations
-        session_id = request.headers.get('X-Session-Id', 'Assistant_conversation')
+        # Using same session ID across all interfaces so Agent remembers conversations
+        session_id = request.headers.get('X-Session-Id', 'nate_conversation')
         
         logger.info(f"📱 AiCara /v1/chat/completions: session={session_id}, stream={stream}")
         
@@ -418,11 +444,11 @@ def aicara_health():
     """
     return jsonify({
         "status": "ok",
-        "service": "Assistant-substrate",
+        "service": "agent-substrate",
         "aicara_compat": True,
         "endpoints": {
-            "/chat": "AssistantEngine.ts (web)",
-            "/v1/chat/completions": "AssistantEngine.js (mobile)",
+            "/chat": "wolfeEngine.ts (web)",
+            "/v1/chat/completions": "wolfeEngine.js (mobile)",
             "/api/places/nearby": "Google Places",
             "/api/location/context": "Location awareness"
         },

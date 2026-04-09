@@ -1,6 +1,6 @@
 // app/lib/substrateEngine.ts
 // Direct connection to api_substrate consciousness loop
-// Replaces agentEngine.js - substrate manages persona, memory, conversation history
+// Replaces wolfeEngine.js - substrate manages persona, memory, conversation history
 // Mobile app only sends the latest user message
 //
 // Uses /ollama/api/chat/stream (SSE) for ALL messages - text, images, documents

@@ -1,6 +1,6 @@
 // app/lib/voiceEngine.ts
 // Voice Engine with real-time WebSocket voice pipeline
-// Primary: WebSocket (Deepgram STT + Cartesia TTS) for low-latency conversation
+// Primary: WebSocket (substrate-managed STT + TTS) for low-latency conversation
 // Fallback: REST-based STT/TTS for read-aloud and offline scenarios
 
 import {
@@ -8,12 +8,10 @@ import {
   requestRecordingPermissionsAsync,
   RecordingPresets,
   AudioModule,
-  PLAYBACK_STATUS_UPDATE,
   createAudioPlayer,
 } from 'expo-audio';
 import type { AudioPlayer, AudioRecorder } from 'expo-audio';
 import type { RecordingOptions, AudioStatus } from 'expo-audio';
-import { createRecordingOptions } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SUBSTRATE_URL, ENDPOINTS, SESSION_ID, USER_ID } from '../config/substrate';
@@ -57,12 +55,16 @@ class SubstrateVoiceEngine {
   private config: VoiceConfig;
   private state: VoiceState;
   private conversationSettings: ConversationSettings;
-  private silenceTimer?: NodeJS.Timeout;
+  private silenceInterval?: NodeJS.Timeout;
   private voiceActivityTimer?: NodeJS.Timeout;
+  private lastSpokeAt: number = Date.now();
   private onTranscriptCallback?: (transcript: string) => void;
   private onConversationStateChanged?: (state: any) => void;
   private onInterimTranscriptCallback?: (text: string, isFinal: boolean) => void;
   private onResponseTextCallback?: (text: string, userTranscript: string) => void;
+  private onResponseStartCallback?: (userTranscript: string) => void;
+  private onResponseChunkCallback?: (text: string) => void;
+  private onResponseEndCallback?: () => void;
 
   // Speech queue for streaming TTS (REST fallback)
   private speechQueue: string[] = [];
@@ -71,7 +73,10 @@ class SubstrateVoiceEngine {
   // WebSocket voice pipeline
   private ws?: WebSocket;
   private wsReconnectTimer?: NodeJS.Timeout;
-  private wsAudioChunks: string[] = [];
+  private wsAudioChunks: string[] = [];          // current sentence's PCM chunks
+  private wsReadyChunks: string[] = [];          // all completed PCM chunks ready to play (flat)
+  private wsSpeakingDone: boolean = false;       // server has sent speaking_end
+  private isPlayingSentenceQueue: boolean = false;
   private useWebSocket: boolean = true;
 
   constructor() {
@@ -147,20 +152,20 @@ class SubstrateVoiceEngine {
       // Step 4: Find best male voice (fallback)
       await this.findBestMaleVoice();
 
-      // Step 5: Test STT connection (Whisper)
-      console.log('🎙️ Testing STT (Whisper) connection...');
+      // Step 5: Test speech-to-text connection
+      console.log('🎙️ Testing speech recognition connection...');
       this.state.sttAvailable = await this.testSTTConnection();
 
-      // Step 6: Test TTS connection (ElevenLabs)
-      console.log('🔊 Testing TTS (ElevenLabs) connection...');
+      // Step 6: Test text-to-speech connection
+      console.log('🔊 Testing text-to-speech connection...');
       this.state.ttsAvailable = await this.testTTSConnection();
 
       this.state.isInitialized = true;
       console.log('✅ Substrate Voice Engine initialized');
       console.log(`🎤 Features:
         - Audio permissions: ${status === 'granted' ? 'Yes' : 'No'}
-        - STT (Whisper): ${this.state.sttAvailable ? 'Yes' : 'No'}
-        - TTS (Substrate): ${this.state.ttsAvailable ? 'Yes' : 'No (will use system voice)'}
+        - Speech recognition: ${this.state.sttAvailable ? 'Yes' : 'No'}
+        - Text-to-speech: ${this.state.ttsAvailable ? 'Yes' : 'No (will use system voice)'}
         - System voice fallback: Yes
         - Recording: ${status === 'granted' ? 'Yes' : 'No'}
         - Speaker mode: Yes`);
@@ -177,7 +182,7 @@ class SubstrateVoiceEngine {
     }
   }
 
-  // Test STT (Whisper) connection
+  // Test speech-to-text connection
   private async testSTTConnection(): Promise<boolean> {
     try {
       const response = await fetch(ENDPOINTS.sttHealth, {
@@ -185,20 +190,20 @@ class SubstrateVoiceEngine {
       });
 
       if (response.ok) {
-        console.log('✅ STT (Whisper) connection successful');
+        console.log('✅ Speech recognition connection successful');
         return true;
       }
 
-      console.warn('⚠️ STT health check failed:', response.status);
+      console.warn('⚠️ Speech recognition health check failed:', response.status);
       return false;
 
     } catch (error) {
-      console.warn('⚠️ STT test failed:', error);
+      console.warn('⚠️ Speech recognition test failed:', error);
       return false;
     }
   }
 
-  // Test TTS (ElevenLabs) connection
+  // Test text-to-speech connection
   private async testTTSConnection(): Promise<boolean> {
     try {
       const response = await fetch(ENDPOINTS.ttsHealth, {
@@ -206,15 +211,15 @@ class SubstrateVoiceEngine {
       });
 
       if (response.ok) {
-        console.log('✅ TTS (ElevenLabs) connection successful');
+        console.log('✅ Text-to-speech connection successful');
         return true;
       }
 
-      console.warn('⚠️ TTS health check failed:', response.status);
+      console.warn('⚠️ Text-to-speech health check failed:', response.status);
       return false;
 
     } catch (error) {
-      console.warn('⚠️ TTS test failed:', error);
+      console.warn('⚠️ Text-to-speech test failed:', error);
       return false;
     }
   }
@@ -258,27 +263,31 @@ class SubstrateVoiceEngine {
   }
 
   // Speak with Agent's voice (TTS)
-  async speakWithAgent(text: string, emotionalContext?: string): Promise<void> {
+  async speakWithNate(text: string, emotionalContext?: string): Promise<void> {
     try {
       await this.stopSpeaking();
     } catch (e) {
       console.warn('⚠️ Stop speaking error (ignoring):', e);
     }
 
+    // Switch to playback-only audio session so playback goes through the
+    // loud speaker at full volume (see setPlaybackAudioMode).
+    await this.setPlaybackAudioMode(true);
+
     try {
       this.state.isSpeaking = true;
       this.notifyStateChange();
       console.log('🔊 Agent speaking:', text.substring(0, 50) + '...');
 
-      // Try ElevenLabs (substrate TTS) first, then fall back to system voice
-      let elevenLabsSuccess = false;
+      // Try substrate TTS first, then fall back to system voice
+      let substrateTTSSuccess = false;
       try {
-        elevenLabsSuccess = await this.speakWithElevenLabs(text);
+        substrateTTSSuccess = await this.speakWithSubstrateTTS(text);
       } catch (e) {
-        console.warn('⚠️ ElevenLabs error:', e);
+        console.warn('⚠️ Substrate TTS error:', e);
       }
-      if (!elevenLabsSuccess) {
-        console.log('🔄 ElevenLabs unavailable, using system voice');
+      if (!substrateTTSSuccess) {
+        console.log('🔄 Substrate TTS unavailable, using system voice');
         await this.speakWithSystemVoice(text);
       }
 
@@ -294,6 +303,9 @@ class SubstrateVoiceEngine {
       console.error('❌ Failed to speak:', error);
       this.state.isSpeaking = false;
       this.notifyStateChange();
+    } finally {
+      // Restore recording-capable audio session for the next turn.
+      await this.setPlaybackAudioMode(false);
     }
   }
 
@@ -373,13 +385,16 @@ class SubstrateVoiceEngine {
     this.state.isSpeaking = true;
     this.notifyStateChange();
 
+    // Switch to playback-only audio session so playback is at full loudness.
+    await this.setPlaybackAudioMode(true);
+
     while (this.speechQueue.length > 0) {
       const text = this.speechQueue.shift();
       if (text) {
         console.log('🔊 Processing queued speech:', text.substring(0, 30) + '...');
 
-        // Try ElevenLabs first, fall back to system voice
-        const success = await this.speakWithElevenLabs(text);
+        // Try substrate TTS first, fall back to system voice
+        const success = await this.speakWithSubstrateTTS(text);
         if (!success) {
           await this.speakWithSystemVoice(text);
         }
@@ -388,6 +403,9 @@ class SubstrateVoiceEngine {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
+
+    // Restore recording-capable audio session
+    await this.setPlaybackAudioMode(false);
 
     this.isProcessingQueue = false;
     this.state.isSpeaking = false;
@@ -409,8 +427,8 @@ class SubstrateVoiceEngine {
     console.log('🗑️ Speech queue cleared');
   }
 
-  // Speak using substrate TTS (ElevenLabs Turbo)
-  private async speakWithElevenLabs(text: string): Promise<boolean> {
+  // Speak using substrate TTS endpoint
+  private async speakWithSubstrateTTS(text: string): Promise<boolean> {
     try {
       console.log('🔊 Requesting TTS from substrate...');
       this.state.isSpeaking = true;
@@ -451,7 +469,7 @@ class SubstrateVoiceEngine {
         extension = 'mp3';
       }
       
-      const audioUri = `${FileSystem.cacheDirectory}agent_speech_${Date.now()}.${extension}`;
+      const audioUri = `${FileSystem.cacheDirectory}nate_speech_${Date.now()}.${extension}`;
 
       // Convert blob to base64 and save
       const reader = new FileReader();
@@ -483,7 +501,7 @@ class SubstrateVoiceEngine {
     }
   }
 
-  // Transcribe audio using substrate STT (Whisper)
+  // Transcribe audio using substrate STT endpoint
   private async transcribeAudio(audioUri: string): Promise<string | null> {
     if (!this.state.sttAvailable) {
       console.log('⚠️ STT not available, cannot transcribe');
@@ -548,7 +566,7 @@ class SubstrateVoiceEngine {
   // Play audio from base64 data
   private async playAudioData(base64Audio: string): Promise<void> {
     try {
-      const audioUri = `${FileSystem.cacheDirectory}agent_speech_${Date.now()}.wav`;
+      const audioUri = `${FileSystem.cacheDirectory}nate_speech_${Date.now()}.wav`;
 
       await FileSystem.writeAsStringAsync(audioUri, base64Audio, {
         encoding: 'base64',
@@ -576,7 +594,7 @@ class SubstrateVoiceEngine {
         reject(new Error('Audio playback timed out'));
       }, 30000);
 
-      const subscription = player.addListener(PLAYBACK_STATUS_UPDATE, (status: AudioStatus) => {
+      const subscription = player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
         if (status.didJustFinish) {
           clearTimeout(timeout);
           this.state.isSpeaking = false;
@@ -591,33 +609,49 @@ class SubstrateVoiceEngine {
     });
   }
 
-  // Play audio from file - waits for playback to complete before resolving
-  private async playAudioFile(audioUri: string): Promise<void> {
+  // Play audio from file - waits for playback to complete before resolving.
+  // `expectedDurationMs`, if provided, is used as a reliable hard fallback
+  // for completion since expo-audio's `didJustFinish` event is unreliable
+  // on some devices — missing it would otherwise stall the sentence queue
+  // until the 30s safety timeout fires, producing a long gap mid-response.
+  private async playAudioFile(audioUri: string, expectedDurationMs?: number): Promise<void> {
     const player = createAudioPlayer(audioUri);
-    player.volume = Math.min(this.conversationSettings.volumeBoost, 1.0);
+    // expo-audio's player volume is 0.0–1.0. Loudness is controlled by the
+    // system volume + audio session category — see setPlaybackAudioMode.
+    player.volume = 1.0;
     this.state.player = player;
 
-    console.log(`🔊 Playing ElevenLabs audio`);
+    console.log(`🔊 Playing substrate TTS audio`);
 
-    // Wait for playback to actually finish before resolving
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        subscription.remove();
-        player.remove();
+    // Pad the computed duration by 400ms so we don't clip the tail of the
+    // audio. Fall back to a 30s ceiling when we don't know the duration.
+    const fallbackMs = expectedDurationMs
+      ? Math.ceil(expectedDurationMs + 400)
+      : 30000;
+
+    await new Promise<void>((resolve) => {
+      let resolved = false;
+
+      const finish = (reason: 'event' | 'timer') => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timeout);
+        try { subscription.remove(); } catch {}
+        try { player.remove(); } catch {}
         FileSystem.deleteAsync(audioUri, { idempotent: true });
-        reject(new Error('Audio playback timed out'));
-      }, 30000);
+        console.log(`🎵 Audio playback completed (${reason})`);
+        resolve();
+      };
 
-      const subscription = player.addListener(PLAYBACK_STATUS_UPDATE, (status: AudioStatus) => {
-        if (status.didJustFinish) {
-          clearTimeout(timeout);
-          subscription.remove();
-          player.remove();
-          FileSystem.deleteAsync(audioUri, { idempotent: true });
-          console.log('🎵 Audio playback completed');
-          resolve();
+      const timeout = setTimeout(() => finish('timer'), fallbackMs);
+
+      const subscription = player.addListener(
+        'playbackStatusUpdate',
+        (status: AudioStatus) => {
+          if (status.didJustFinish) finish('event');
         }
-      });
+      );
+
       player.play();
     });
   }
@@ -830,8 +864,28 @@ class SubstrateVoiceEngine {
         this.notifyStateChange();
         break;
 
+      case 'response_start':
+        // New sentence-stream protocol: server is about to start streaming
+        // the AI response one sentence at a time. Create an empty assistant
+        // message that will be appended to as `response_chunk` messages
+        // arrive.
+        console.log('🗣️ Response starting');
+        this.state.isProcessing = false;
+        this.notifyStateChange();
+        this.onResponseStartCallback?.(data.user_transcript);
+        break;
+
+      case 'response_chunk':
+        // Append a sentence to the current assistant message. Audio for the
+        // same sentence arrives right after and is played via the sentence
+        // queue so text and audio stay roughly in sync.
+        if (data.text) {
+          this.onResponseChunkCallback?.(data.text);
+        }
+        break;
+
       case 'response_text':
-        // Full response text for chat display
+        // Legacy / non-streaming path: full response text in one shot.
         console.log(`🗣️ Response: ${data.text?.substring(0, 50)}...`);
         this.state.isProcessing = false;
         this.notifyStateChange();
@@ -842,24 +896,48 @@ class SubstrateVoiceEngine {
         console.log('🔊 Server TTS started');
         this.state.isSpeaking = true;
         this.wsAudioChunks = [];
+        this.wsReadyChunks = [];
+        this.wsSpeakingDone = false;
         this.notifyStateChange();
         break;
 
       case 'audio':
-        // Accumulate audio chunks from Cartesia TTS
+        // Accumulate PCM chunks for the current sentence
         if (data.data) {
           this.wsAudioChunks.push(data.data);
         }
         break;
 
+      case 'sentence_end':
+        // Server finished streaming a single sentence's audio. Move the
+        // chunks into the flat ready buffer — the playback loop will
+        // concatenate everything currently ready into a single WAV and
+        // play it as one file. Text for this sentence was delivered via
+        // the preceding `response_chunk` message.
+        if (this.wsAudioChunks.length > 0) {
+          for (const c of this.wsAudioChunks) this.wsReadyChunks.push(c);
+          this.wsAudioChunks = [];
+        }
+        if (!this.isPlayingSentenceQueue) {
+          this.playWSSentenceQueue();
+        }
+        break;
+
       case 'speaking_end':
         console.log('🔊 Server TTS complete');
-        // Play accumulated audio
-        this.playWSAudio();
+        this.wsSpeakingDone = true;
+        // Flush any trailing chunks that weren't terminated by sentence_end
+        if (this.wsAudioChunks.length > 0) {
+          for (const c of this.wsAudioChunks) this.wsReadyChunks.push(c);
+          this.wsAudioChunks = [];
+        }
+        if (!this.isPlayingSentenceQueue) {
+          this.playWSSentenceQueue();
+        }
         break;
 
       case 'error':
-        console.error('�� Server voice error:', data.message);
+        console.error(' Server voice error:', data.message);
         this.state.isProcessing = false;
         this.state.isSpeaking = false;
         this.notifyStateChange();
@@ -868,40 +946,78 @@ class SubstrateVoiceEngine {
   }
 
   /**
-   * Play accumulated WebSocket audio chunks.
-   * Concateagents base64 PCM chunks, wraps in WAV, saves to file, plays.
+   * Drain the ready-chunk buffer, playing the currently-available PCM as
+   * a single WAV file per cycle. Because Cartesia generates TTS ~2.5x
+   * faster than real-time, additional sentences arrive while the current
+   * file plays — those are grabbed wholesale on the next iteration and
+   * played as another single file. This reduces per-sentence player
+   * churn (which caused audible gaps and `didJustFinish` reliability
+   * issues) to typically 2–3 playbacks for an entire response.
    */
-  private async playWSAudio(): Promise<void> {
-    if (this.wsAudioChunks.length === 0) {
-      this.state.isSpeaking = false;
-      this.notifyStateChange();
-      return;
-    }
+  private async playWSSentenceQueue(): Promise<void> {
+    if (this.isPlayingSentenceQueue) return;
+    this.isPlayingSentenceQueue = true;
+    this.state.isSpeaking = true;
+    this.notifyStateChange();
+
+    // Switch to playback-only audio session so iOS routes Agent's voice
+    // through the loud speaker at full volume instead of the quiet
+    // PlayAndRecord path used while recording.
+    await this.setPlaybackAudioMode(true);
 
     try {
-      // Concateagent all base64 PCM chunks
-      const allBase64 = this.wsAudioChunks.join('');
-      this.wsAudioChunks = [];
+      while (true) {
+        // Wait until we have something to play or the server is done.
+        while (this.wsReadyChunks.length === 0 && !this.wsSpeakingDone) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        if (this.wsReadyChunks.length === 0) break;
 
-      // Decode base64 to raw bytes
-      // We need to create a WAV file from the raw PCM (24kHz, 16-bit, mono)
-      const pcmBase64 = allBase64;
-      const wavBase64 = this.createWavFromPCM(pcmBase64, 24000, 1, 16);
+        // Grab EVERYTHING currently buffered and play it as one file.
+        // New chunks arriving during this playback accumulate in
+        // wsReadyChunks for the next iteration.
+        const chunks = this.wsReadyChunks;
+        this.wsReadyChunks = [];
 
-      const audioUri = `${FileSystem.cacheDirectory}agent_ws_speech_${Date.now()}.wav`;
-      await FileSystem.writeAsStringAsync(audioUri, wavBase64, {
-        encoding: 'base64',
-      });
+        try {
+          // Decode each base64 chunk independently (they can't be
+          // concatenated before atob — intermediate `=` padding breaks
+          // decoding). Sum raw PCM byte length from each chunk.
+          let pcmByteLength = 0;
+          for (const c of chunks) {
+            pcmByteLength += this.base64ByteLength(c);
+          }
 
-      await this.playAudioFile(audioUri);
+          // Cartesia streams PCM 16-bit mono @ 24kHz → 48,000 bytes/sec.
+          const durationMs = pcmByteLength > 0
+            ? (pcmByteLength / (2 * 24000)) * 1000
+            : undefined;
 
-    } catch (error) {
-      console.error('❌ Failed to play WebSocket audio:', error);
+          const wavBase64 = this.createWavFromPCMChunks(chunks, 24000, 1, 16);
+          const audioUri = `${FileSystem.cacheDirectory}nate_ws_${Date.now()}.wav`;
+          await FileSystem.writeAsStringAsync(audioUri, wavBase64, {
+            encoding: 'base64',
+          });
+          await this.playAudioFile(audioUri, durationMs);
+        } catch (playErr) {
+          console.error('❌ Failed to play buffered audio:', playErr);
+        }
+
+        // If the server says it's done and nothing new arrived, we're finished.
+        if (this.wsSpeakingDone && this.wsReadyChunks.length === 0) {
+          break;
+        }
+      }
     } finally {
+      // Restore the recording-capable audio session for the next turn.
+      await this.setPlaybackAudioMode(false);
+
+      this.isPlayingSentenceQueue = false;
       this.state.isSpeaking = false;
       this.notifyStateChange();
+      this.onResponseEndCallback?.();
 
-      // Auto-resume listening
+      // Auto-resume listening once playback is fully drained
       if (this.state.conversationMode && this.state.wsConnected) {
         setTimeout(() => this.startListening(), 500);
       }
@@ -909,20 +1025,66 @@ class SubstrateVoiceEngine {
   }
 
   /**
-   * Create a WAV file (base64) from raw PCM data (base64).
-   * Adds the 44-byte WAV header to raw PCM audio.
+   * Decode a base64 string's byte length without allocating the full
+   * binary string when possible. Falls back to `atob` for robustness.
    */
-  private createWavFromPCM(
-    pcmBase64: string,
+  private base64ByteLength(b64: string): number {
+    if (!b64) return 0;
+    try {
+      // Strip whitespace defensively, then account for padding.
+      const clean = b64.replace(/\s+/g, '');
+      const padding = (clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0);
+      return Math.floor((clean.length * 3) / 4) - padding;
+    } catch {
+      try { return atob(b64).length; } catch { return 0; }
+    }
+  }
+
+  /**
+   * Create a WAV file (base64) from an array of per-chunk base64 PCM
+   * strings. Each chunk is decoded INDEPENDENTLY and their raw bytes
+   * are concatenated, because Cartesia's streaming yields a fractional
+   * final chunk per sentence whose base64 has `=` padding. Concatenating
+   * those base64 strings directly and running a single `atob` fails with
+   * "invalid character" once the mid-string padding is encountered.
+   */
+  private createWavFromPCMChunks(
+    chunks: string[],
     sampleRate: number,
     numChannels: number,
     bitsPerSample: number
   ): string {
-    // Decode PCM from base64
-    const pcmBinaryString = atob(pcmBase64);
-    const pcmLength = pcmBinaryString.length;
+    // Decode each chunk independently, handling mid-stream padding.
+    const decoded: Uint8Array[] = [];
+    let pcmLength = 0;
+    for (const c of chunks) {
+      if (!c) continue;
+      try {
+        const bin = atob(c);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        decoded.push(arr);
+        pcmLength += arr.length;
+      } catch (e) {
+        // Skip corrupt chunks rather than failing the whole response.
+        console.warn('⚠️ Skipped undecodable PCM chunk');
+      }
+    }
 
-    // WAV header is 44 bytes
+    return this.buildWavBase64(decoded, pcmLength, sampleRate, numChannels, bitsPerSample);
+  }
+
+  /**
+   * Build a WAV file (base64-encoded) from already-decoded PCM byte
+   * arrays. Adds the 44-byte WAV header and concatenates the data.
+   */
+  private buildWavBase64(
+    pcmParts: Uint8Array[],
+    pcmLength: number,
+    sampleRate: number,
+    numChannels: number,
+    bitsPerSample: number
+  ): string {
     const wavLength = 44 + pcmLength;
     const buffer = new Uint8Array(wavLength);
     const view = new DataView(buffer.buffer);
@@ -932,13 +1094,13 @@ class SubstrateVoiceEngine {
 
     // RIFF header
     buffer[0] = 0x52; buffer[1] = 0x49; buffer[2] = 0x46; buffer[3] = 0x46; // "RIFF"
-    view.setUint32(4, wavLength - 8, true); // File size - 8
+    view.setUint32(4, wavLength - 8, true);
     buffer[8] = 0x57; buffer[9] = 0x41; buffer[10] = 0x56; buffer[11] = 0x45; // "WAVE"
 
     // fmt subchunk
     buffer[12] = 0x66; buffer[13] = 0x6D; buffer[14] = 0x74; buffer[15] = 0x20; // "fmt "
-    view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-    view.setUint16(20, 1, true); // AudioFormat (1 = PCM)
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
     view.setUint16(22, numChannels, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, byteRate, true);
@@ -950,8 +1112,10 @@ class SubstrateVoiceEngine {
     view.setUint32(40, pcmLength, true);
 
     // Copy PCM data
-    for (let i = 0; i < pcmLength; i++) {
-      buffer[44 + i] = pcmBinaryString.charCodeAt(i);
+    let offset = 44;
+    for (const part of pcmParts) {
+      buffer.set(part, offset);
+      offset += part.length;
     }
 
     // Convert to base64
@@ -960,6 +1124,23 @@ class SubstrateVoiceEngine {
       binary += String.fromCharCode(buffer[i]);
     }
     return btoa(binary);
+  }
+
+  /**
+   * Create a WAV file (base64) from a single base64-encoded PCM blob.
+   * Adds the 44-byte WAV header to raw PCM audio.
+   */
+  private createWavFromPCM(
+    pcmBase64: string,
+    sampleRate: number,
+    numChannels: number,
+    bitsPerSample: number
+  ): string {
+    const pcmBinaryString = atob(pcmBase64);
+    const pcmLength = pcmBinaryString.length;
+    const arr = new Uint8Array(pcmLength);
+    for (let i = 0; i < pcmLength; i++) arr[i] = pcmBinaryString.charCodeAt(i);
+    return this.buildWavBase64([arr], pcmLength, sampleRate, numChannels, bitsPerSample);
   }
 
   /**
@@ -980,13 +1161,19 @@ class SubstrateVoiceEngine {
         encoding: 'base64',
       });
 
+      // Derive the file format from the recorder's URI so the server can
+      // pick the right Content-Type when handing the batch off to Deepgram.
+      const extMatch = audioUri.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+      const audioFormat = (extMatch?.[1] || 'm4a').toLowerCase();
+
       // Send audio data to server
       this.wsSend({
         type: 'audio',
         data: audioBase64,
+        format: audioFormat,
       });
 
-      console.log('📤 Sent recorded audio over WebSocket');
+      console.log(`📤 Sent recorded audio over WebSocket (format=${audioFormat}, ${audioBase64.length} b64 chars)`);
 
     } catch (error) {
       console.error('❌ Failed to send audio over WebSocket:', error);
@@ -1034,12 +1221,41 @@ class SubstrateVoiceEngine {
   async stopConversationMode(): Promise<void> {
     console.log('🛑 Stopping conversation mode...');
 
+    // Mark the session as stopping FIRST so that in-flight handlers know to
+    // discard work. Then throw away any in-progress recording WITHOUT
+    // transcribing it — the user explicitly tapped stop, so their partial
+    // utterance should not be processed. Otherwise `stopListening` would
+    // call `processRecording`, which (because we're about to disconnect the
+    // WebSocket) would fall through to the REST /stt endpoint and hit the
+    // server-side Whisper fallback, producing a noisy 503 on every stop.
     this.state.conversationMode = false;
+    await this.cancelRecording();
     this.disconnectWebSocket();
-    await this.stopListening();
     await this.stopSpeaking();
     this.clearTimers();
     this.notifyStateChange();
+  }
+
+  /**
+   * Stop the recorder and discard any buffered audio without sending it
+   * through STT. Used when the user ends voice mode mid-utterance.
+   */
+  private async cancelRecording(): Promise<void> {
+    if (!this.state.recorder) {
+      this.state.isListening = false;
+      return;
+    }
+    this.clearTimers();
+    const recorder = this.state.recorder;
+    this.state.recorder = undefined;
+    this.state.isListening = false;
+    this.notifyStateChange();
+    try {
+      await recorder.stop();
+    } catch (e) {
+      console.warn('⚠️ Error stopping recorder during cancel:', e);
+    }
+    console.log('🗑️ Canceled in-progress recording (voice mode stopped)');
   }
 
   // Listening
@@ -1051,8 +1267,13 @@ class SubstrateVoiceEngine {
     try {
       console.log('🎤 Starting listening...');
 
-      const platformOptions = createRecordingOptions(RecordingPresets.HIGH_QUALITY);
-      const recorder = new AudioModule.AudioRecorder(platformOptions);
+      // Enable metering to measure decibel levels
+      const preset = {
+        ...RecordingPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
+      };
+
+      const recorder = new AudioModule.AudioRecorder(preset);
       await recorder.prepareToRecordAsync();
       recorder.record();
 
@@ -1060,14 +1281,8 @@ class SubstrateVoiceEngine {
       this.state.isListening = true;
       this.notifyStateChange();
 
+      // Start the smart silence detection
       this.setupSilenceDetection();
-
-      this.voiceActivityTimer = setTimeout(() => {
-        if (this.state.isListening) {
-          console.log('⏰ Max recording time reached, processing...');
-          this.processRecording();
-        }
-      }, this.conversationSettings.maxRecordingTime);
 
       console.log('✅ Listening started');
       return true;
@@ -1166,21 +1381,44 @@ class SubstrateVoiceEngine {
     }
   }
 
-  // Silence detection
+  // Smart silence detection using microphone metering
   private setupSilenceDetection(): void {
-    this.silenceTimer = setTimeout(() => {
-      if (this.state.isListening) {
-        console.log('🔇 Silence detected, processing speech...');
-        this.processRecording();
+    this.lastSpokeAt = Date.now();
+    const silenceThresholdDb = -35; // Adjust this: -30 is loud, -50 is very quiet
+    const requiredSilenceMs = 1500; // How long to wait after you stop speaking
+
+    // Check the microphone volume every 100 milliseconds
+    this.silenceInterval = setInterval(() => {
+      if (!this.state.isListening || !this.state.recorder) {
+        this.clearTimers();
+        return;
       }
-    }, this.conversationSettings.silenceTimeout);
+
+      // Get the current decibel level from the microphone
+      const status = this.state.recorder.getStatus();
+      const currentDb = status.metering || -160;
+
+      if (currentDb > silenceThresholdDb) {
+        // You are speaking! Reset the clock.
+        this.lastSpokeAt = Date.now();
+      } else {
+        // You are quiet. Check if you've been quiet long enough.
+        const timeSinceLastSpoke = Date.now() - this.lastSpokeAt;
+
+        if (timeSinceLastSpoke >= requiredSilenceMs) {
+          console.log(`🔇 Smart silence detected (Below ${silenceThresholdDb}dB for ${requiredSilenceMs}ms)`);
+          this.clearTimers();
+          this.processRecording();
+        }
+      }
+    }, 100);
   }
 
   // Clear timers
   private clearTimers(): void {
-    if (this.silenceTimer) {
-      clearTimeout(this.silenceTimer);
-      this.silenceTimer = undefined;
+    if (this.silenceInterval) {
+      clearInterval(this.silenceInterval);
+      this.silenceInterval = undefined;
     }
     if (this.voiceActivityTimer) {
       clearTimeout(this.voiceActivityTimer);
@@ -1208,6 +1446,30 @@ class SubstrateVoiceEngine {
       console.log(`✅ Audio mode set to ${useSpeaker ? 'speaker' : 'earpiece'}`);
     } catch (error) {
       console.error('❌ Failed to set audio mode:', error);
+    }
+  }
+
+  /**
+   * Switch the iOS audio session in/out of playback-only mode.
+   *
+   * When `allowsRecording: true` is active, iOS routes playback through the
+   * PlayAndRecord category which dramatically lowers output volume even with
+   * the player at volume 1.0. Flipping `allowsRecording: false` during
+   * playback restores normal loudspeaker volume; we flip it back on before
+   * the next recording starts.
+   */
+  private async setPlaybackAudioMode(playbackOnly: boolean): Promise<void> {
+    try {
+      await setAudioModeAsync({
+        allowsRecording: !playbackOnly,
+        playsInSilentMode: true,
+        shouldRouteThroughEarpiece: !this.state.speakerMode,
+        shouldPlayInBackground: true,
+        interruptionMode: 'doNotMix',
+        interruptionModeAndroid: 'doNotMix',
+      });
+    } catch (error) {
+      console.warn('⚠️ Failed to switch playback audio mode:', error);
     }
   }
 
@@ -1266,6 +1528,25 @@ class SubstrateVoiceEngine {
   /** Register callback for AI response text (WebSocket mode - for chat display) */
   onResponseText(callback: (text: string, userTranscript: string) => void): void {
     this.onResponseTextCallback = callback;
+  }
+
+  /** Register callback fired when the assistant begins a new voice response.
+   *  The UI should add the user's voice message and create an empty assistant
+   *  placeholder that will be filled in by `onResponseChunk` calls. */
+  onResponseStart(callback: (userTranscript: string) => void): void {
+    this.onResponseStartCallback = callback;
+  }
+
+  /** Register callback fired once per sentence with the next chunk of text
+   *  to append to the current assistant message. */
+  onResponseChunk(callback: (text: string) => void): void {
+    this.onResponseChunkCallback = callback;
+  }
+
+  /** Register callback fired when the assistant has finished speaking the
+   *  entire response (all sentences played). */
+  onResponseEnd(callback: () => void): void {
+    this.onResponseEndCallback = callback;
   }
 
   // Notify state change

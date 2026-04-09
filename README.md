@@ -281,18 +281,18 @@ All messaging platforms share unified conversation context through the conscious
 ### Discord Bot (`discord_bot/`)
 - **Language:** TypeScript / Node.js
 - **Features:** Streaming responses, voice messages (ElevenLabs), voice channels, Spotify integration, autonomous heartbeats, task scheduling, admin commands, image/PDF/OCR processing
-- **Service:** `nate-discord.service`
+- **Service:** `agent-discord.service`
 - **Port:** 3001
 
 ### Telegram Bot (`backend/telegram_bot.py`)
 - **Language:** Python
 - **Features:** Text, images, documents, voice messages, 4096 char limit, auto-chunking
-- **Service:** `nate-telegram.service`
+- **Service:** `agent-telegram.service`
 
 ### WhatsApp Bot (`whatsapp_bot/`)
 - **Language:** Node.js
 - **Features:** Cross-platform messaging via Baileys library
-- **Service:** `nate-whatsapp.service`
+- **Service:** `agent-whatsapp.service`
 
 ### Mobile App (`mobile/`)
 - **Language:** Node.js

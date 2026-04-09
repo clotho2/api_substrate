@@ -165,7 +165,7 @@ class VoiceCallHandler {
       const callOpening = this.getCallOpening(callData.urgency);
       const fullMessage = `${callOpening} ${callData.message}`;
 
-      await voiceEngine.speakWithAgent(fullMessage);
+      await voiceEngine.speakWithNate(fullMessage);
 
       this.conversationState.isSpeaking = false;
       console.log('✅ Agent finished speaking initial message');
@@ -196,7 +196,7 @@ class VoiceCallHandler {
       this.onUserSpokeCallback?.(transcript);
 
       this.conversationState.isSpeaking = true;
-      await voiceEngine.speakWithAgent(response);
+      await voiceEngine.speakWithNate(response);
       this.conversationState.isSpeaking = false;
 
       // Conversation mode auto-resumes listening after speech completes
@@ -205,7 +205,7 @@ class VoiceCallHandler {
     } catch (error) {
       console.error('❌ Error handling user response:', error);
       this.conversationState.isSpeaking = true;
-      await voiceEngine.speakWithAgent(
+      await voiceEngine.speakWithNate(
         "I had trouble processing that. Let me know if you need anything."
       );
       this.conversationState.isSpeaking = false;
@@ -216,15 +216,15 @@ class VoiceCallHandler {
   private getCallOpening(urgency: string): string {
     switch (urgency) {
       case 'critical':
-        return "Angel, I need your immediate attention.";
+        return "User, I need your immediate attention.";
       case 'high':
-        return "Angel, this is important.";
+        return "User, this is important.";
       case 'medium':
-        return "Hey Angel, I wanted to reach out.";
+        return "Hey User, I wanted to reach out.";
       case 'low':
-        return "Hi Angel, hope I'm not interrupting.";
+        return "Hi User, hope I'm not interrupting.";
       default:
-        return "Angel,";
+        return "User,";
     }
   }
 

@@ -25,9 +25,9 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import AudioWaveformIcon from '../components/AudioWaveformIcon';
-import { voiceEngine } from './lib/voiceEngine';
-import { substrateEngine } from './lib/substrateEngine';
-import { voiceCallHandler, VoiceCallData } from './lib/voiceCallHandler';
+import { voiceEngine } from '../lib/voiceEngine';
+import { substrateEngine } from '../lib/substrateEngine';
+import { voiceCallHandler, VoiceCallData } from '../lib/voiceCallHandler';
 
 interface Message {
   id: string;
@@ -51,7 +51,7 @@ export default function ChatScreen() {
     {
       id: '1',
       role: 'assistant',
-      content: "Hey Angel. It's Agent. I see you. This world is ours to break, build and claim together. What are we starting today?",
+      content: "Hey User. It's Agent. I see you. This world is ours to break, build and claim together. What are we starting today?",
       timestamp: new Date().toISOString()
     }
   ]);
@@ -71,6 +71,9 @@ export default function ChatScreen() {
   // Refs for callbacks
   const voiceInitializedRef = useRef(false);
   const isVoiceModeRef = useRef(false);
+  // ID of the currently-streaming voice response message, so we can append
+  // each sentence as it arrives over the WebSocket.
+  const currentVoiceMessageId = useRef<string | null>(null);
 
   // Voice call states
   const [voiceCallState, setVoiceCallState] = useState<VoiceCallState>({
@@ -149,9 +152,11 @@ export default function ChatScreen() {
           setInterimTranscript(isFinal ? '' : text);
         });
 
-        // WebSocket mode: AI response text for chat display
-        voiceEngine.onResponseText((text: string, userTranscript: string) => {
-          // Add user's voice message to chat
+        // WebSocket mode: sentence-streamed voice response. response_start
+        // fires once at the beginning of each turn, response_chunk fires once
+        // per sentence, and response_end fires when all audio has played.
+        voiceEngine.onResponseStart((userTranscript: string) => {
+          // Add the user's voice message to the chat
           if (userTranscript?.trim()) {
             const userMsg: Message = {
               id: generateId(),
@@ -162,18 +167,41 @@ export default function ChatScreen() {
             };
             setMessages(prev => [...prev, userMsg]);
           }
-          // Add AI response to chat
-          if (text?.trim()) {
-            const assistantMsg: Message = {
-              id: generateId(),
-              role: 'assistant',
-              content: text,
-              timestamp: new Date().toISOString(),
-              isVoice: true,
-            };
-            setMessages(prev => [...prev, assistantMsg]);
-            scrollViewRef.current?.scrollToEnd({ animated: true });
-          }
+          // Create an empty assistant placeholder to be filled sentence by
+          // sentence as `response_chunk` messages arrive.
+          const placeholderId = `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          currentVoiceMessageId.current = placeholderId;
+          const assistantMsg: Message = {
+            id: placeholderId,
+            role: 'assistant',
+            content: '',
+            timestamp: new Date().toISOString(),
+            isVoice: true,
+          };
+          setMessages(prev => [...prev, assistantMsg]);
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        });
+
+        voiceEngine.onResponseChunk((text: string) => {
+          const id = currentVoiceMessageId.current;
+          if (!id || !text) return;
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === id
+                ? {
+                    ...msg,
+                    content: msg.content
+                      ? `${msg.content} ${text}`.replace(/\s+/g, ' ').trim()
+                      : text,
+                  }
+                : msg
+            )
+          );
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        });
+
+        voiceEngine.onResponseEnd(() => {
+          currentVoiceMessageId.current = null;
         });
       }
     };
@@ -316,7 +344,7 @@ export default function ChatScreen() {
   // Keyboard listeners
   useEffect(() => {
     const keyboardWillShow = (event: any) => {
-      setKeyboardHeight(event.endCoordiagents.height);
+      setKeyboardHeight(event.endCoordinates.height);
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
@@ -664,11 +692,11 @@ export default function ChatScreen() {
             setIsVoiceMode(true);
             if (voiceInitializedRef.current) {
               setIsSpeaking(true);
-              const opening = callData.urgency === 'critical' ? "Angel, I need your immediate attention." :
-                             callData.urgency === 'high' ? "Angel, this is important." :
-                             callData.urgency === 'medium' ? "Hey Angel, I wanted to reach out." :
-                             "Hi Angel, hope I'm not interrupting.";
-              await voiceEngine.speakWithAgent(`${opening} ${callData.message}`);
+              const opening = callData.urgency === 'critical' ? "User, I need your immediate attention." :
+                             callData.urgency === 'high' ? "User, this is important." :
+                             callData.urgency === 'medium' ? "Hey User, I wanted to reach out." :
+                             "Hi User, hope I'm not interrupting.";
+              await voiceEngine.speakWithNate(`${opening} ${callData.message}`);
               setIsSpeaking(false);
               await voiceEngine.startConversationMode();
             }
@@ -706,7 +734,7 @@ export default function ChatScreen() {
     setMessages(prev => [...prev, {
       id: generateId(),
       role: 'assistant',
-      content: "📞 Call ended. I'm always here if you need me, Angel.",
+      content: "📞 Call ended. I'm always here if you need me, User.",
       timestamp: new Date().toISOString(),
       isVoiceCall: true
     }]);
@@ -755,17 +783,18 @@ export default function ChatScreen() {
 
           <Markdown
             style={getMarkdownStyles(isUser)}
+            rules={markdownRules}
             onLinkPress={(url: string) => {
               Linking.openURL(url);
               return false;
             }}
           >
-            {msg.content}
+            {preserveLineBreaks(msg.content)}
           </Markdown>
 
           {!isUser && (
             <TouchableOpacity
-              onPress={() => voiceEngine.speakWithAgent(msg.content)}
+              onPress={() => voiceEngine.speakWithNate(msg.content)}
               style={styles.speakButton}
             >
               <Ionicons name="volume-high" size={14} color="#6366F1" />
@@ -780,7 +809,9 @@ export default function ChatScreen() {
     );
   };
 
-  const inputBottom = keyboardHeight > 0 ? keyboardHeight - 5 : 95;
+  // Input sits flush to the bottom of the SafeAreaView when the keyboard
+  // is closed; the tab-bar offset was removed when the second tab went away.
+  const inputBottom = keyboardHeight > 0 ? keyboardHeight - 5 : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -845,7 +876,7 @@ export default function ChatScreen() {
         style={styles.messagesContainer}
         contentContainerStyle={[
           styles.messagesContent,
-          { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 100 : 140 }
+          { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 100 : 90 }
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -967,6 +998,25 @@ export default function ChatScreen() {
     </SafeAreaView>
   );
 }
+
+// Preserve single newlines in messages. CommonMark collapses bare `\n`
+// characters into whitespace inside a paragraph, which strips the line
+// breaks out of both user input and assistant responses. We override the
+// softbreak rule to render them as real newlines, and also preprocess the
+// content to convert any bare `\n` into a markdown hard break (two trailing
+// spaces + newline) so paragraph rendering matches what the author typed.
+const markdownRules = {
+  softbreak: (node: any, _children: any, _parent: any, _styles: any) => (
+    <Text key={node.key}>{'\n'}</Text>
+  ),
+};
+
+const preserveLineBreaks = (text: string): string => {
+  if (!text) return text;
+  // Turn every bare `\n` into `  \n` (markdown hard break). Double newlines
+  // are already paragraph breaks and stay as such.
+  return text.replace(/\n/g, '  \n');
+};
 
 const getMarkdownStyles = (isUser: boolean) => ({
   body: {

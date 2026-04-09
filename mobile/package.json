@@ -50,6 +50,6 @@
   },
   "private": true,
   "overrides": {
-    "@tootallagent/once": "3.0.1"
+    "@tootallnate/once": "3.0.1"
   }
 }

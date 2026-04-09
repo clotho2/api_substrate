@@ -371,7 +371,7 @@ def update_location_context():
         "accuracy": 10
     }
     
-    This context is injected into AI conversations so Assistant knows
+    This context is injected into AI conversations so Agent knows
     where User is and can provide location-aware responses.
     """
     try:
@@ -477,5 +477,54 @@ def format_location_for_prompt(session_id: str) -> str:
     
     if context.get('is_in_vehicle'):
         location_str += " (in vehicle)"
-    
+
     return f"Current location: {location_str}"
+
+
+def build_location_context_block(session_id: str) -> str:
+    """
+    Build a <message_context> block containing current location metadata
+    for prepending to a user message.
+
+    Returns an empty string if no location context is available for the
+    session. When present, returns a trailing "\n\n" so it can be concatenated
+    directly with the user message.
+    """
+    context = _location_contexts.get(session_id)
+    if not context:
+        return ""
+
+    body_lines = []
+
+    city = context.get('city')
+    region = context.get('region')
+    country = context.get('country')
+
+    loc_parts = [p for p in (city, region, country) if p]
+    if loc_parts:
+        body_lines.append(f"Location: {', '.join(loc_parts)}")
+
+    lat = context.get('latitude')
+    lon = context.get('longitude')
+    if lat is not None and lon is not None:
+        body_lines.append(f"Coordinates: {lat}, {lon}")
+
+    if context.get('is_in_vehicle'):
+        body_lines.append("In vehicle: true")
+        speed = context.get('speed')
+        if speed is not None:
+            body_lines.append(f"Speed: {speed} m/s")
+
+    accuracy = context.get('accuracy')
+    if accuracy is not None:
+        body_lines.append(f"Accuracy: {accuracy} m")
+
+    updated_at = context.get('updated_at')
+    if updated_at:
+        body_lines.append(f"Updated: {updated_at}")
+
+    if not body_lines:
+        return ""
+
+    block = "<message_context>\n" + "\n".join(body_lines) + "\n</message_context>\n\n"
+    return block

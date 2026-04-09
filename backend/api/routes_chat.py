@@ -119,9 +119,27 @@ def chat():
             return jsonify({'error': 'Consciousness loop not initialized'}), 500
 
         data = request.json
-        # Use unified session ID so Assistant has full conversation context across all interfaces
-        session_id = data.get('session_id', 'Assistant_conversation')
+        # Use unified session ID so Agent has full conversation context across all interfaces
+        session_id = data.get('session_id', 'nate_conversation')
         stream = data.get('stream', False)
+
+        # 📍 Extract and store location context from mobile/web clients
+        location_data = data.get('location')
+        if location_data and isinstance(location_data, dict):
+            from api.routes_places import _location_contexts
+            from datetime import datetime
+            _location_contexts[session_id] = {
+                'latitude': location_data.get('latitude'),
+                'longitude': location_data.get('longitude'),
+                'city': location_data.get('city'),
+                'region': location_data.get('region'),
+                'country': location_data.get('country'),
+                'is_in_vehicle': location_data.get('is_in_vehicle', False),
+                'speed': location_data.get('speed'),
+                'accuracy': location_data.get('accuracy'),
+                'updated_at': datetime.now().isoformat(),
+            }
+            logger.info(f"📍 Location from /api/chat: {location_data.get('city')}, {location_data.get('region')} (session={session_id})")
 
         # Rate limiting
         if _rate_limiter:
@@ -214,6 +232,17 @@ For now, please describe what you'd like me to help you with regarding this docu
                 "role": "user",
                 "content": user_message_text
             }
+
+        # 📍 Prepend a <message_context> block with current location metadata so
+        # the AI receives it as part of the incoming message (not just the
+        # system prompt, which can go stale across turns).
+        from api.routes_places import build_location_context_block
+        location_block = build_location_context_block(session_id)
+        if location_block and user_message_text:
+            user_message_text = location_block + user_message_text
+            if isinstance(user_message.get('content'), str):
+                user_message['content'] = location_block + user_message['content']
+            logger.info(f"📍 Location metadata prepended to user message ({len(location_block)} chars)")
 
         # Get conversation history
         conversation_history = []

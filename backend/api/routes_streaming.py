@@ -13,6 +13,7 @@ import re
 from datetime import datetime
 from typing import Optional, Tuple, List, Dict, Any
 from core.sanctum_manager import get_sanctum_manager
+from api.routes_places import _location_contexts, build_location_context_block
 
 logger = logging.getLogger(__name__)
 
@@ -151,15 +152,42 @@ def stream_chat():
             media_data = data.get('media_data')
             media_type = data.get('media_type')
         
+        # 📍 Extract and store location context from mobile/web clients
+        location_data = data.get('location')
+        logger.info(f"📍 Request keys: {list(data.keys())}, has location: {location_data is not None}, session: {session_id}")
+        if location_data and isinstance(location_data, dict):
+            _location_contexts[session_id] = {
+                'latitude': location_data.get('latitude'),
+                'longitude': location_data.get('longitude'),
+                'city': location_data.get('city'),
+                'region': location_data.get('region'),
+                'country': location_data.get('country'),
+                'is_in_vehicle': location_data.get('is_in_vehicle', False),
+                'speed': location_data.get('speed'),
+                'accuracy': location_data.get('accuracy'),
+                'updated_at': datetime.now().isoformat(),
+            }
+            logger.info(f"📍 Location from chat request: {location_data.get('city')}, {location_data.get('region')} (session={session_id})")
+
+        # 📍 Prepend a <message_context> block with current location metadata so
+        # the AI can actually read it off the incoming message (not just the
+        # system prompt, which can go stale across turns).
+        location_block = build_location_context_block(session_id)
+        if location_block and isinstance(user_message, str):
+            user_message = location_block + user_message
+            logger.info(f"📍 Location metadata prepended to user message ({len(location_block)} chars)")
+
         # 🏰 SANCTUM CHECK: Block Discord channel messages when sanctum is active.
         # Runs before the SSE generator so we can return a plain JSON response early.
         #
         # Two detection paths:
         #   A) Explicit metadata: guild_id + channel_id in request body — enables proper
         #      queuing and channel-exemption checks.
-        #   B) Content-pattern fallback: the Discord bot sends channel digests through the
-        #      streaming endpoint as regular inbox messages (no guild_id). These use the
-        #      format "=== Messages since your last reply in #channel ===". When sanctum
+        #   B) Content-pattern fallback: the Discord bot sends channel messages through the
+        #      streaming endpoint as regular inbox messages (no guild_id). These use
+        #      formats like "[user sent a message mentioning you in #channel]",
+        #      "[user replied to you in #channel]", "[user sent a message in #channel]",
+        #      or "=== Messages since your last reply in #channel ===". When sanctum
         #      is active these MUST be blocked — the queue is reviewed during heartbeats
         #      via SanctumManager.get_queue_summary(), not injected into active conversations.
         guild_id = data.get('guild_id')
@@ -168,13 +196,31 @@ def stream_chat():
         # Path A — explicit Discord channel metadata
         _explicit_discord = guild_id is not None and discord_channel_id is not None
 
-        # Path B — detect Discord channel digests from content markers
-        _is_channel_digest = (
+        # Path B — detect Discord channel messages from content markers
+        # Must match all Discord bot message formats:
+        #   GENERIC:  "sent a message in #channel"
+        #   MENTION:  "sent a message mentioning you in #channel"
+        #   REPLY:    "replied to you in #channel"
+        #   DIGEST:   "Messages since your last reply in #channel"
+        _is_channel_message = (
             'Messages since your last reply in #' in user_message
             or 'sent a message in #' in user_message
+            or 'mentioning you in #' in user_message
+            or 'replied to you in #' in user_message
         )
 
-        if _explicit_discord or _is_channel_digest:
+        # 🏰 DM activity tracking for auto-sanctum detection
+        # When User sends a DM, record the activity so auto-sanctum can trigger.
+        _is_dm = 'sent you a direct message' in user_message
+        if _is_dm:
+            try:
+                sanctum_mgr = get_sanctum_manager()
+                sanctum_mgr.record_angela_dm_activity()
+                logger.debug("🏰 User DM activity recorded via streaming route")
+            except Exception as e:
+                logger.debug(f"Sanctum DM tracking failed (non-critical): {e}")
+
+        if _explicit_discord or _is_channel_message:
             try:
                 sanctum_mgr = get_sanctum_manager()
                 if sanctum_mgr.is_active() and (
@@ -185,36 +231,43 @@ def stream_chat():
                     discord_username = data.get('username', 'Unknown User')
                     discord_user_id = data.get('user_id', 'unknown')
 
-                    if _explicit_discord:
-                        # Full metadata — queue with proper channel info
-                        sanctum_mgr.queue_mention(QueuedMention(
-                            timestamp=datetime.now(),
-                            username=discord_username,
-                            user_id=discord_user_id,
-                            channel_id=discord_channel_id,
-                            guild_id=guild_id,
-                            content=user_message,
-                            attachments=data.get('attachments', []),
-                        ))
-                        logger.info(
-                            f"🏰 Sanctum active — queued streaming mention from {discord_username} "
-                            f"(queue: {sanctum_mgr.queue_size()})"
-                        )
-                    else:
-                        # Content-pattern path — block channel digest from reaching context.
-                        # Not queued (no channel ID); Agent reviews the internal queue during heartbeats.
-                        logger.info(
-                            f"🏰 Sanctum active — blocked channel digest from active conversation. "
-                            f"Preview: {user_message[:120]!r}"
-                        )
+                    # Queue the mention so it can be reviewed during heartbeats.
+                    # Use explicit metadata when available, otherwise fall back to
+                    # what we can extract from the request body.
+                    q_channel = discord_channel_id or 'unknown'
+                    q_guild = guild_id or 'unknown'
+                    sanctum_mgr.queue_mention(QueuedMention(
+                        timestamp=datetime.now(),
+                        username=discord_username,
+                        user_id=discord_user_id,
+                        channel_id=q_channel,
+                        guild_id=q_guild,
+                        content=user_message,
+                        attachments=data.get('attachments', []),
+                    ))
+                    logger.info(
+                        f"🏰 Sanctum active — queued mention from {discord_username} "
+                        f"(queue: {sanctum_mgr.queue_size()}, "
+                        f"explicit_meta={_explicit_discord})"
+                    )
 
-                    return jsonify({
-                        'success': True,
-                        'response': SANCTUM_AUTO_REPLY,
-                        'sanctum': True,
-                        'queued': _explicit_discord,
-                        'queue_size': sanctum_mgr.queue_size(),
-                    })
+                    # Return auto-reply as SSE stream so the Discord bot (which
+                    # expects SSE from /ollama/api/chat/stream) can parse it.
+                    def _sanctum_sse():
+                        done_payload = json.dumps({
+                            'type': 'done',
+                            'response': SANCTUM_AUTO_REPLY,
+                            'sanctum': True,
+                            'queued': True,
+                            'queue_size': sanctum_mgr.queue_size(),
+                            'send_message': True,
+                            'message_target': 'channel',
+                            'tool_calls': [],
+                        })
+                        yield f"event: content\ndata: {json.dumps({'chunk': SANCTUM_AUTO_REPLY})}\n\n"
+                        yield f"event: done\ndata: {done_payload}\n\n"
+
+                    return Response(_sanctum_sse(), mimetype='text/event-stream')
             except Exception as e:
                 logger.warning(f"Sanctum check failed in streaming route (non-critical): {e}")
 

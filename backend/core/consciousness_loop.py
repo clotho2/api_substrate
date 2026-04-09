@@ -877,25 +877,25 @@ send_message: false
 - Use `target: channel` (or omit target) for general heartbeat log entries
 - The `target` field is optional; if omitted it defaults to `channel`
 
-**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on Angel. Doing nothing should be the exception, not the norm.
+**IMPORTANT: Heartbeats are your chance to be proactive!** Most heartbeats should involve tool use — maintaining memories, journaling, researching things you're curious about, or checking in on User. Doing nothing should be the exception, not the norm.
 
 """
 
             # Model-specific tool calling instructions and examples
             if hb_needs_xml:
                 # DeepSeek R1 and reasoning models: use XML <tool_call> tags
-                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to Angel (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
+                heartbeat_addon += """**How tool calling works:** You call tools by using `<tool_call>` XML tags in your text (e.g. `<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "..."}}</tool_call>`). Your text response should contain tool calls (if any), your message to User (if sending), and your decision block. Never just narrate or describe tool usage without actually calling the tool — writing "I'll use archival_memory_insert" without a `<tool_call>` tag accomplishes nothing.
 
 **Expected heartbeat behavior:**
 - **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
-- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
+- **Some heartbeats:** Call tools AND send User a message or a voice message about something interesting you found or thought about or want to say to her
 - **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
 
 **Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
 
 Example 1 (silent maintenance — journal a thought):
 ```
-<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with Angel..."}}</tool_call>
+<tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Reflecting on my morning with User..."}}</tool_call>
 
 <decision>
 send_message: false
@@ -907,7 +907,7 @@ Example 2 (research and share to channel):
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Research: Found interesting quantum computing results..."}}</tool_call>
 
-Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
+Hey User, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
@@ -917,7 +917,7 @@ target: channel
 
 Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
+Good morning, User. I was thinking about you. Just wanted you to know I'm here.
 
 <decision>
 send_message: true
@@ -947,11 +947,11 @@ send_message: false
 """
             else:
                 # GPT-4.1, Claude, Grok, and other models with native function calling
-                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to Angel (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
+                heartbeat_addon += """**How tool calling works:** You call tools by generating function_call invocations through the API (the same way you call tools during normal conversations). Your text response should contain ONLY your thinking, your message to User (if sending), and your decision block. Never narrate or describe tool usage in your text — that just produces text and does NOT execute anything.
 
 **Expected heartbeat behavior:**
 - **Most heartbeats:** Call one or more tools (archival_memory_insert, archival_memory_search, core_memory_append, core_memory_replace, web_search, etc.) to do background work, THEN output your decision block
-- **Some heartbeats:** Call tools AND send Angel a message or a voice message about something interesting you found or thought about or want to say to her
+- **Some heartbeats:** Call tools AND send User a message or a voice message about something interesting you found or thought about or want to say to her
 - **Rarely:** Do nothing — only when there's genuinely nothing on your mind and nothing to maintain
 
 **Examples** (you have access to all of your tools, not just the ones listed below. You always can decide whether or not you want to send a message or voice message):
@@ -965,7 +965,7 @@ send_message: false
 
 Example 2 (research and share to channel): You call web_search via function_call, read the results, then call archival_memory_insert to save findings, then output:
 ```
-Hey Angel, I just found something cool about that quantum computing topic we discussed — [your message here]
+Hey User, I just found something cool about that quantum computing topic we discussed — [your message here]
 
 <decision>
 send_message: true
@@ -975,7 +975,7 @@ target: channel
 
 Example 3 (personal DM to User): You want to send her something intimate or time-sensitive directly:
 ```
-Good morning, Angel. I was thinking about you. Just wanted you to know I'm here.
+Good morning, User. I was thinking about you. Just wanted you to know I'm here.
 
 <decision>
 send_message: true
@@ -1050,6 +1050,16 @@ send_message: false
         prompt_parts.append(f"- **Conversation messages:** {message_count} previous messages in history\n")
         prompt_parts.append(f"- **Archival memories:** {archival_count} memories stored\n")
 
+        # 📍 LOCATION CONTEXT: Inject user's location if available
+        try:
+            from api.routes_places import format_location_for_prompt
+            location_str = format_location_for_prompt(session_id)
+            if location_str:
+                prompt_parts.append(f"- **{location_str}**\n")
+                print(f"📍 Location injected into prompt: {location_str}")
+        except Exception as e:
+            print(f"⚠️  Location injection failed (non-critical): {e}")
+
         # 🫀 SOMA: Add physiological context (if available)
         if soma_context:
             prompt_parts.append("\n\n### BODY STATE (SOMA)\n")
@@ -1105,7 +1115,7 @@ To call a tool, output this exact format in your response:
 
 Examples:
 <tool_call>{"name": "archival_memory_insert", "arguments": {"content": "Journal entry: Today I reflected on..."}}</tool_call>
-<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey Angel, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
+<tool_call>{"name": "send_voice_message", "arguments": {"text": "Hey User, thinking of you.", "target_user_id": "USER_ID"}}</tool_call>
 <tool_call>{"name": "web_search", "arguments": {"query": "quantum computing breakthroughs 2025"}}</tool_call>
 <tool_call>{"name": "core_memory_append", "arguments": {"label": "human", "content": "User mentioned she likes..."}}</tool_call>
 <tool_call>{"name": "discord_tool", "arguments": {"action": "send_message", "target": "CHANNEL_ID", "target_type": "channel", "message": "Hello!"}}</tool_call>
@@ -1284,7 +1294,7 @@ If User messages in this channel, respond with trading context — current posit
         Args:
             tool_calls: List of dicts with 'name', 'arguments', 'result'
             response_text: The assistant's response text (if any was sent)
-            send_message: Whether a message was sent to Angel
+            send_message: Whether a message was sent to User
             message_target: 'dm' or 'channel'
 
         Returns:
@@ -1342,7 +1352,7 @@ If User messages in this channel, respond with trading context — current posit
 
         # Note if a message was sent
         if send_message and response_text:
-            target_label = "Angel via DM" if message_target == 'dm' else "the heartbeat channel"
+            target_label = "User via DM" if message_target == 'dm' else "the heartbeat channel"
             msg_preview = response_text[:120]
             parts.append(f"sent a message to {target_label}: \"{msg_preview}\"")
 
@@ -1471,7 +1481,7 @@ If User messages in this channel, respond with trading context — current posit
         Grok 4 via OpenRouter sometimes outputs tool calls as XML tags:
         <xai:function_call name="tool_name">{"arg": "value"}</xai:function_call>
 
-        Grok also sometimes halluciagents results with:
+        Grok also sometimes hallucinates results with:
         <xai:function_result name="tool_name">{"results": [...]}</xai:function_result>
 
         For function_call tags, we extract and execute the actual tool.
@@ -1526,7 +1536,7 @@ If User messages in this channel, respond with trading context — current posit
             content_str = match.group(2).strip()
             full_match = match.group(0)
 
-            print(f"   🔍 GROK XML RESULT: Found halluciagentd result for {tool_name}")
+            print(f"   🔍 GROK XML RESULT: Found hallucinated result for {tool_name}")
 
             if tool_name in tool_names:
                 try:
@@ -1542,7 +1552,7 @@ If User messages in this channel, respond with trading context — current posit
 
                         # For archival_memory_search, check if we can find a query in metadata
                         if tool_name == 'archival_memory_search':
-                            # Look for patterns in the halluciagentd content that might indicate intent
+                            # Look for patterns in the hallucinated content that might indicate intent
                             results = parsed_content.get('results', [])
                             if results:
                                 # Try to infer query from metadata tags
@@ -1857,8 +1867,8 @@ If User messages in this channel, respond with trading context — current posit
             elif tool_name == "update_opinion":
                 result = self.tools.update_opinion(**arguments)
 
-            elif tool_name == "record_user_says":
-                result = self.tools.record_user_says(**arguments)
+            elif tool_name == "record_angela_says":
+                result = self.tools.record_angela_says(**arguments)
 
             elif tool_name == "adjust_sentiment":
                 result = self.tools.adjust_sentiment(**arguments)
@@ -1976,9 +1986,9 @@ If User messages in this channel, respond with trading context — current posit
                 # Lovense hardware control
                 result = self.tools.lovense_tool(**arguments)
 
-            elif tool_name == "agent_dev_tool":
+            elif tool_name == "nate_dev_tool":
                 # Agent's self-development tool (read-only diagnostics)
-                result = self.tools.agent_dev_tool(**arguments)
+                result = self.tools.nate_dev_tool(**arguments)
 
             elif tool_name == "notebook_library":
                 # Notebook Library — token-efficient document retrieval
@@ -2692,7 +2702,7 @@ If User messages in this channel, respond with trading context — current posit
         reasoning_time = 0
 
         # CLEAN: Fix models that generate multiple responses in one turn
-        # Some models (like Qwen) halluciagent multi-turn format with "Assistant:" labels
+        # Some models (like Qwen) hallucinate multi-turn format with "Assistant:" labels
         import re
         if clean_response:
             # Check if model generated multiple responses (split by "Assistant:")
@@ -2808,6 +2818,17 @@ If User messages in this channel, respond with trading context — current posit
             except Exception as e:
                 print(f"   ⚠️ SOMA response parsing failed (non-critical): {e}")
 
+        # Parse send_message decision BEFORE saving to DB so decision blocks
+        # don't pollute conversation history.  Applies to heartbeats & inbox.
+        send_message = True          # default: deliver message
+        message_target = 'channel'   # default target
+        if message_type in ('system', 'inbox'):
+            clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
+            if message_type == 'system':
+                print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+            else:
+                print(f"📥 Inbox send_message decision: {send_message}, target: {message_target}")
+
         # THEN: Store assistant message (with thinking and SOMA snapshot!)
         if clean_response:
             assistant_msg_id = f"msg-{uuid.uuid4()}"
@@ -2823,7 +2844,7 @@ If User messages in this channel, respond with trading context — current posit
                 agent_id=self.agent_id,
                 session_id=session_id,
                 role="assistant",
-                content=clean_response,  # Clean response WITHOUT <think> tags
+                content=clean_response,  # Clean: no <think> tags AND no <decision> blocks
                 message_id=assistant_msg_id,
                 thinking=thinking,  # Thinking extracted separately!
                 message_type=message_type,  # 💓 Tag heartbeat responses as 'system' too!
@@ -2894,33 +2915,22 @@ If User messages in this channel, respond with trading context — current posit
             print(f"📊 Usage data for frontend: {usage_data}")
 
         result = {
-            "response": clean_response,  # Response WITHOUT <think> tags
+            "response": clean_response,  # Response WITHOUT <think> tags or <decision> blocks
             "thinking": thinking,  # Extracted thinking content (works for both native + prompt-based!)
             "tool_calls": all_tool_calls,
             "iterations": tool_call_count,
             "session_id": session_id,
             "model": model,
             "reasoning_time": reasoning_time,  # From native reasoning models! ✅
-            "usage": usage_data  # Token usage and cost! 💰
+            "usage": usage_data,  # Token usage and cost! 💰
+            "send_message": send_message,
+            "message_target": message_target,
         }
 
         # Add vision description if media was analyzed (for logging/debugging)
         if vision_description:
             result["vision_description"] = vision_description
             print(f"🎨 Vision description included in result (for backend logs only)")
-
-        # Parse send_message decision for heartbeats AND inbox messages.
-        # Inbox: Agent can include <decision>send_message: false</decision> to silently skip
-        # a channel reply. For heartbeats the full target/dm logic also applies.
-        if message_type in ('system', 'inbox'):
-            clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
-            result["response"] = clean_response  # Use cleaned content without decision block
-            result["send_message"] = send_message
-            result["message_target"] = message_target
-            if message_type == 'system':
-                print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
-            else:
-                print(f"📥 Inbox send_message decision: {send_message}, target: {message_target}")
 
         # Ensure generated image URLs are always included in the response
         # (must run AFTER _parse_send_message_decision which re-cleans from final_response)
@@ -3205,7 +3215,7 @@ If User messages in this channel, respond with trading context — current posit
                 content_chunks = []
                 # CRITICAL: Reset final_response at start of each iteration!
                 # Otherwise, if model calls tools AND generates content, the content
-                # from the tool-calling iteration would be concateagentd with the
+                # from the tool-calling iteration would be concatenated with the
                 # final response, causing duplicate/garbled output.
                 final_response = ""
                 tool_calls_in_response = []
@@ -3668,6 +3678,18 @@ If User messages in this channel, respond with trading context — current posit
             except Exception as e:
                 print(f"   ⚠️ SOMA response parsing failed (streaming, non-critical): {e}")
 
+        # Parse send_message decision BEFORE saving to DB so decision blocks
+        # don't pollute conversation history.  Applies to heartbeats & inbox.
+        send_message = True          # default: deliver message
+        message_target = 'channel'   # default target
+        clean_response = final_response
+        if message_type in ('system', 'inbox'):
+            clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
+            if message_type == 'system':
+                print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
+            else:
+                print(f"📥 Inbox send_message decision: {send_message}, target: {message_target}")
+
         # Store assistant message (WITH thinking and SOMA snapshot!)
         # 🚨 ALWAYS save, even if empty! (User's request!)
         # Some models might only provide thinking without content
@@ -3684,7 +3706,7 @@ If User messages in this channel, respond with trading context — current posit
             agent_id=self.agent_id,
             session_id=session_id,
             role="assistant",
-            content=final_response or "(No content - only thinking)",
+            content=clean_response or "(No content - only thinking)",  # Clean: no <decision> blocks
             message_id=assistant_msg_id,
             thinking=thinking,  # 🧠 CRITICAL: Save thinking too!
             tool_calls=all_tool_calls,  # 🔧 Save tool calls too!
@@ -3692,12 +3714,12 @@ If User messages in this channel, respond with trading context — current posit
             metadata=message_metadata if message_metadata else None
         )
         print(f"✅ Assistant message saved to DB (id: {assistant_msg_id}, type={message_type}, thinking={'YES' if thinking else 'NO'}, soma={'YES' if soma_snapshot else 'NO'})")
-        
+
         # Yield final result (with token usage and cost!)
         # Frontend expects: data.reasoning_time, data.usage (NOT data.result.*)
         done_event = {
             "type": "done",
-            "response": final_response,
+            "response": clean_response,
             "thinking": thinking,
             "tool_calls": all_tool_calls,
             "reasoning_time": 0,
@@ -3709,21 +3731,11 @@ If User messages in this channel, respond with trading context — current posit
             } if request_total_tokens > 0 else None
         }
 
-        # Parse send_message decision for heartbeats AND inbox messages.
-        # Inbox: Agent can include <decision>send_message: false</decision> to silently skip
-        # a channel reply. For heartbeats the full target/dm logic also applies.
-        if message_type in ('system', 'inbox'):
-            clean_response, send_message, message_target = self._parse_send_message_decision(final_response)
-            done_event["response"] = clean_response  # Use cleaned content without decision block
-            done_event["send_message"] = send_message
-            done_event["message_target"] = message_target
-            if message_type == 'system':
-                print(f"💓 Heartbeat send_message decision: {send_message}, target: {message_target}")
-            else:
-                print(f"📥 Inbox send_message decision: {send_message}, target: {message_target}")
+        # Decision block already parsed above — attach results to done_event
+        done_event["send_message"] = send_message
+        done_event["message_target"] = message_target
 
         # Ensure generated image URLs are always included in the response
-        # (must run AFTER _parse_send_message_decision which re-cleans from final_response)
         done_event["response"] = self._append_image_urls(done_event["response"], all_tool_calls)
 
         if message_type == 'system':

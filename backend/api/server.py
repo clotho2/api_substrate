@@ -622,10 +622,28 @@ def ollama_compat_chat():
         
         # Extract message_type (for Discord heartbeats, etc.)
         message_type = data.get('message_type', 'inbox')  # 'inbox' or 'system'
-        
+
         # Get session ID (from body, header, or default)
         session_id = data.get('session_id') or request.headers.get('X-Session-Id', 'default')
-        
+
+        # 📍 Extract and store location context from mobile/web clients
+        location_data = data.get('location')
+        if location_data and isinstance(location_data, dict):
+            from api.routes_places import _location_contexts
+            from datetime import datetime as dt
+            _location_contexts[session_id] = {
+                'latitude': location_data.get('latitude'),
+                'longitude': location_data.get('longitude'),
+                'city': location_data.get('city'),
+                'region': location_data.get('region'),
+                'country': location_data.get('country'),
+                'is_in_vehicle': location_data.get('is_in_vehicle', False),
+                'speed': location_data.get('speed'),
+                'accuracy': location_data.get('accuracy'),
+                'updated_at': dt.now().isoformat(),
+            }
+            logger.info(f"📍 Location from chat request: {location_data.get('city')}, {location_data.get('region')} (session={session_id})")
+
         # Rate limiting check
         allowed, reason = rate_limiter.is_allowed(session_id)
         if not allowed:
@@ -639,10 +657,24 @@ def ollama_compat_chat():
         last_message = messages[-1]
         user_message = last_message.get('content', '')
         message_role = last_message.get('role', 'user')  # Could be 'system' for heartbeats!
-        
+
         # If it's a system message (e.g., Discord heartbeat), force message_type='system'
         if message_role == 'system':
             message_type = 'system'
+
+        # 📍 Prepend a <message_context> block with current location metadata so
+        # the AI receives it as part of the incoming message (not just the
+        # system prompt, which can go stale across turns). Skip for system
+        # messages (heartbeats) since they don't represent a user turn.
+        if message_role != 'system':
+            try:
+                from api.routes_places import build_location_context_block
+                location_block = build_location_context_block(session_id)
+                if location_block and isinstance(user_message, str):
+                    user_message = location_block + user_message
+                    logger.info(f"📍 Location metadata prepended to user message ({len(location_block)} chars)")
+            except Exception as e:
+                logger.warning(f"Location metadata prepend failed (non-critical): {e}")
         
         logger.info(f"📨 Chat request: model={model}, session={session_id}, role={message_role}, message_len={len(user_message)}, type={message_type}, has_media={'YES ✨' if media_data else 'No'}")
         if media_data:

@@ -3,41 +3,44 @@
 Mobile Voice Stream - Bidirectional WebSocket for Real-Time Voice
 =================================================================
 
-Real-time bidirectional audio streaming for the mobile app's voice mode.
-Modeled after routes_telephony.py (Twilio Media Streams) but adapted for
-direct mobile WebSocket connections.
+Bidirectional audio transport for the mobile app's voice mode.
 
-Pipeline:
-  Mobile streams PCM audio → WebSocket →
-  → Deepgram Streaming STT (real-time transcription) →
-  → Consciousness Loop (AI response) →
-  → Cartesia Sonic TTS (low-latency streaming) →
-  → PCM audio → WebSocket → Mobile plays audio
+The mobile client uses expo-audio to record a complete utterance locally
+(metering-based VAD determines when the user stops speaking), then sends
+the finished audio file as a single base64 payload. The server transcribes
+the full batch via Deepgram's prerecorded REST API, runs the text through
+the consciousness loop, and streams the Cartesia TTS response back.
+
+This differs from the telephony flow (which uses Deepgram streaming STT
+for continuous PCM chunks). Expo-audio records to a container (M4A on
+iOS/Android with the HIGH_QUALITY preset), not raw PCM, so streaming STT
+would both time-out on silence and be unable to decode the payload.
 
 Protocol (JSON messages):
   Client → Server:
     { "type": "start", "session_id": "...", "user_id": "..." }
-    { "type": "audio", "data": "<base64 PCM 16-bit 16kHz>" }
+    { "type": "audio", "data": "<base64 recorded audio>", "format": "m4a" }
     { "type": "interrupt" }    // Barge-in: stop current TTS
     { "type": "stop" }         // End voice session
 
   Server → Client:
     { "type": "ready" }
-    { "type": "transcript", "text": "...", "is_final": false }
     { "type": "listening" }
     { "type": "processing" }
+    { "type": "transcript", "text": "...", "is_final": true }
+    { "type": "response_text", "text": "...", "user_transcript": "..." }
     { "type": "speaking_start" }
     { "type": "audio", "data": "<base64 PCM 16-bit 24kHz>" }
-    { "type": "response_text", "text": "..." }
     { "type": "speaking_end" }
     { "type": "error", "message": "..." }
 
 Requires:
-    pip install flask-sock websockets
+    pip install flask-sock
     DEEPGRAM_API_KEY, CARTESIA_API_KEY environment variables
 
 Audio formats:
-    Input:  PCM 16-bit signed LE, 16kHz, mono (from mobile mic)
+    Input:  Whatever the mobile recorder produced (default audio/m4a).
+            Deepgram's batch API auto-detects the container.
     Output: PCM 16-bit signed LE, 24kHz, mono (Cartesia Sonic output)
 """
 
@@ -161,46 +164,57 @@ def _process_through_consciousness(message: str, session_id: str,
 # TTS STREAMING (Cartesia Sonic)
 # ============================================
 
+def _split_into_sentences(text: str) -> list:
+    """Split text into sentences for progressive TTS streaming.
+
+    Preserves sentence terminators and handles abbreviations reasonably.
+    """
+    if not text:
+        return []
+
+    # Split on ., !, ? followed by whitespace, keeping the terminator.
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    sentences = [p.strip() for p in parts if p.strip()]
+
+    # Merge very short fragments (< 4 chars) into the previous sentence
+    # so we don't waste TTS calls on things like "Hi." "Yes."
+    merged = []
+    for s in sentences:
+        if merged and len(s) < 4:
+            merged[-1] = merged[-1] + " " + s
+        else:
+            merged.append(s)
+    return merged
+
+
 def _stream_tts_to_client(ws, text: str, interrupted: threading.Event) -> bool:
-    """Generate TTS via Cartesia Sonic and stream audio chunks to the client.
+    """Stream TTS audio for a SINGLE sentence to the client.
+
+    The caller is responsible for sending speaking_start/speaking_end
+    around the whole utterance. This helper only emits audio chunks
+    followed by a sentence_end marker so the client can play each
+    sentence progressively while subsequent sentences stream in.
 
     Args:
         ws: WebSocket connection
-        text: Text to synthesize
+        text: Text to synthesize (a single sentence)
         interrupted: Event flag set if client sends interrupt
 
     Returns:
-        True if completed, False if interrupted
+        True if completed, False if interrupted or failed
     """
     try:
         from core.cartesia_provider import CartesiaSonicProvider
         provider = CartesiaSonicProvider()
     except Exception as e:
         logger.error(f"Cartesia TTS init failed: {e}")
-        # Fallback: try to use any available provider for full synthesis
         try:
-            from core.voice_providers import get_voice_provider
-            provider = get_voice_provider()
-            loop = asyncio.new_event_loop()
-            try:
-                wav_data = loop.run_until_complete(provider.text_to_speech(text))
-            finally:
-                loop.close()
-            # Send full audio as single chunk
-            ws.send(json.dumps({
-                "type": "audio",
-                "data": base64.b64encode(wav_data).decode("ascii"),
-                "format": "wav"
-            }))
-            return True
-        except Exception as fallback_err:
-            logger.error(f"TTS fallback also failed: {fallback_err}")
             ws.send(json.dumps({"type": "error", "message": "TTS unavailable"}))
-            return False
+        except Exception:
+            pass
+        return False
 
     try:
-        ws.send(json.dumps({"type": "speaking_start"}))
-
         total_bytes = 0
         for chunk in provider.stream_speech_sync(text):
             if interrupted.is_set():
@@ -213,12 +227,18 @@ def _stream_tts_to_client(ws, text: str, interrupted: threading.Event) -> bool:
                 "data": base64.b64encode(chunk).decode("ascii"),
             }))
 
-        logger.info(f"🔊 Streamed {total_bytes} bytes of Cartesia audio to mobile")
+        # Mark the end of this sentence's audio so the client can play it
+        # while subsequent sentences continue to stream in.
+        ws.send(json.dumps({"type": "sentence_end"}))
+        logger.info(f"🔊 Streamed {total_bytes} bytes for sentence ({len(text)} chars)")
         return True
 
     except Exception as e:
         logger.error(f"TTS streaming error: {e}")
-        ws.send(json.dumps({"type": "error", "message": f"TTS error: {e}"}))
+        try:
+            ws.send(json.dumps({"type": "error", "message": f"TTS error: {e}"}))
+        except Exception:
+            pass
         return False
 
 
@@ -241,34 +261,43 @@ def setup_mobile_voice_stream(sock, consciousness_loop=None, state_manager=None)
 
     @sock.route('/mobile/voice-stream')
     def mobile_voice_stream(ws):
-        """Bidirectional audio stream handler for mobile voice mode.
+        """WebSocket handler for mobile voice mode.
 
-        Receives real-time PCM audio from the mobile app, transcribes via
-        Deepgram streaming STT, processes through consciousness loop,
-        generates TTS via Cartesia Sonic, and streams audio back.
+        Receives a complete recorded utterance as a single base64 payload,
+        transcribes it via Deepgram's batch REST API, runs the text through
+        the consciousness loop, and streams the Cartesia TTS response back.
         """
-        session_id = "agent_conversation"
-        user_id = "user_agent"
+        session_id = "nate_conversation"
+        user_id = "angela_wolfe"
 
         # State
-        deepgram_client = None
         interrupted = threading.Event()
         is_processing = False
-        tts_thread: Optional[threading.Thread] = None
 
         logger.info("📱 Mobile Voice WebSocket opened")
 
-        def handle_utterance_end(transcript: str):
-            """Called when Deepgram detects end of utterance."""
+        def handle_utterance(transcript: str):
+            """Process a completed user utterance end-to-end."""
             nonlocal is_processing
 
             if not transcript.strip():
+                try:
+                    ws.send(json.dumps({"type": "listening"}))
+                except Exception:
+                    pass
                 return
 
             is_processing = True
             logger.info(f"🎤 Mobile voice transcript: '{transcript}'")
 
             try:
+                # Let the client display the final transcript
+                ws.send(json.dumps({
+                    "type": "transcript",
+                    "text": transcript,
+                    "is_final": True,
+                }))
+
                 # Notify client we're processing
                 ws.send(json.dumps({"type": "processing"}))
 
@@ -278,26 +307,45 @@ def setup_mobile_voice_stream(sock, consciousness_loop=None, state_manager=None)
                 )
 
                 if not response_text:
-                    is_processing = False
                     ws.send(json.dumps({"type": "listening"}))
                     return
 
                 logger.info(f"🗣️ Response: '{response_text[:100]}...'")
 
-                # Send response text for chat display
+                # Tell the client the turn is starting. This creates the user
+                # voice message + an empty assistant placeholder so the UI can
+                # append text as each sentence arrives.
                 ws.send(json.dumps({
-                    "type": "response_text",
-                    "text": response_text,
+                    "type": "response_start",
                     "user_transcript": transcript,
                 }))
 
-                # Stream TTS audio to client
+                # Start the TTS phase: the client will build up the assistant
+                # message and play audio sentence-by-sentence as each one
+                # finishes synthesizing.
+                ws.send(json.dumps({"type": "speaking_start"}))
                 interrupted.clear()
-                completed = _stream_tts_to_client(ws, response_text, interrupted)
+
+                sentences = _split_into_sentences(response_text)
+                for sentence in sentences:
+                    if interrupted.is_set():
+                        break
+
+                    # Send text for this sentence — client appends it to
+                    # the current assistant message so display and audio
+                    # stay roughly in sync.
+                    ws.send(json.dumps({
+                        "type": "response_chunk",
+                        "text": sentence,
+                    }))
+
+                    # Stream the sentence's TTS audio and emit sentence_end
+                    if not _stream_tts_to_client(ws, sentence, interrupted):
+                        break
 
                 ws.send(json.dumps({"type": "speaking_end"}))
 
-                # Resume listening
+                # Resume listening for the next turn
                 ws.send(json.dumps({"type": "listening"}))
 
             except Exception as e:
@@ -310,16 +358,28 @@ def setup_mobile_voice_stream(sock, consciousness_loop=None, state_manager=None)
             finally:
                 is_processing = False
 
-        def handle_transcript(text: str, is_final: bool):
-            """Called for each Deepgram transcript (interim and final)."""
+        def transcribe_batch(audio_bytes: bytes, audio_format: str) -> Optional[str]:
+            """Transcribe a complete audio payload via Deepgram's batch REST API."""
             try:
-                ws.send(json.dumps({
-                    "type": "transcript",
-                    "text": text,
-                    "is_final": is_final,
-                }))
-            except Exception:
-                pass
+                from api.routes_stt import _transcribe_deepgram
+            except Exception as e:
+                logger.error(f"Failed to import batch STT helper: {e}")
+                return None
+
+            content_type = _FORMAT_CONTENT_TYPES.get(
+                (audio_format or "m4a").lower(), "audio/m4a"
+            )
+
+            logger.info(
+                f"🎙️ Transcribing mobile voice batch "
+                f"({len(audio_bytes)} bytes, {content_type})"
+            )
+
+            text, error = _transcribe_deepgram(audio_bytes, content_type, language="en")
+            if error:
+                logger.error(f"Deepgram batch transcription failed: {error}")
+                return None
+            return text
 
         try:
             while True:
@@ -344,37 +404,42 @@ def setup_mobile_voice_stream(sock, consciousness_loop=None, state_manager=None)
                         f"(user={user_id}, session={session_id})"
                     )
 
-                    # Initialize Deepgram streaming STT
+                    # Nothing to init up-front — batch STT runs per utterance.
+                    ws.send(json.dumps({"type": "ready"}))
+                    ws.send(json.dumps({"type": "listening"}))
+
+                # ----- AUDIO DATA (complete utterance) -----
+                elif msg_type == "audio":
+                    if is_processing:
+                        logger.info("⏭️ Ignoring audio while previous turn is still processing")
+                        continue
+
+                    audio_b64 = data.get("data", "")
+                    audio_format = data.get("format", "m4a")
+                    if not audio_b64:
+                        continue
+
                     try:
-                        from core.deepgram_streaming import DeepgramStreamingClient
-
-                        deepgram_client = DeepgramStreamingClient(
-                            language="en",
-                            model="nova-3",
-                            endpointing_ms=500,
-                            sample_rate=16000,
-                        )
-                        deepgram_client.on_transcript(handle_transcript)
-                        deepgram_client.on_utterance_end(handle_utterance_end)
-                        deepgram_client.connect()
-
-                        ws.send(json.dumps({"type": "ready"}))
-                        ws.send(json.dumps({"type": "listening"}))
-
+                        audio_bytes = base64.b64decode(audio_b64)
                     except Exception as e:
-                        logger.error(f"Deepgram init failed: {e}")
+                        logger.error(f"Failed to decode audio payload: {e}")
                         ws.send(json.dumps({
                             "type": "error",
-                            "message": f"STT initialization failed: {e}"
+                            "message": "Invalid audio payload"
                         }))
+                        ws.send(json.dumps({"type": "listening"}))
+                        continue
 
-                # ----- AUDIO DATA -----
-                elif msg_type == "audio":
-                    if deepgram_client and deepgram_client.is_connected:
-                        audio_b64 = data.get("data", "")
-                        if audio_b64:
-                            audio_bytes = base64.b64decode(audio_b64)
-                            deepgram_client.send_audio(audio_bytes)
+                    transcript = transcribe_batch(audio_bytes, audio_format)
+                    if transcript is None:
+                        ws.send(json.dumps({
+                            "type": "error",
+                            "message": "Transcription failed"
+                        }))
+                        ws.send(json.dumps({"type": "listening"}))
+                        continue
+
+                    handle_utterance(transcript)
 
                 # ----- INTERRUPT (barge-in) -----
                 elif msg_type == "interrupt":
@@ -389,13 +454,23 @@ def setup_mobile_voice_stream(sock, consciousness_loop=None, state_manager=None)
         except Exception as e:
             logger.error(f"Mobile Voice WebSocket error: {e}", exc_info=True)
         finally:
-            # Clean up Deepgram
-            if deepgram_client:
-                try:
-                    deepgram_client.close()
-                except Exception:
-                    pass
-
             logger.info(f"📱 Mobile Voice WebSocket closed (user={user_id})")
 
     logger.info("📱 Mobile Voice WebSocket route registered at /mobile/voice-stream")
+
+
+# Map the mobile-supplied format hint to a Content-Type the Deepgram
+# batch REST API understands. Defaults to audio/m4a since that's what
+# expo-audio's HIGH_QUALITY preset produces on both iOS and Android.
+_FORMAT_CONTENT_TYPES = {
+    "m4a": "audio/m4a",
+    "mp4": "audio/mp4",
+    "aac": "audio/aac",
+    "wav": "audio/wav",
+    "mp3": "audio/mpeg",
+    "webm": "audio/webm",
+    "ogg": "audio/ogg",
+    "3gp": "audio/3gpp",
+    "3gpp": "audio/3gpp",
+    "flac": "audio/flac",
+}

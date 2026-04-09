@@ -1,14 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withSequence,
-  withTiming,
-  withDelay,
-  Easing,
-} from 'react-native-reanimated';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
 
 interface AudioWaveformIconProps {
   active?: boolean;
@@ -28,7 +19,9 @@ export default function AudioWaveformIcon({
   const barWidth = Math.max(2, size / (BAR_COUNT * 2));
   const gap = Math.max(1, barWidth * 0.6);
 
-  const animations = Array.from({ length: BAR_COUNT }, () => useSharedValue(BASE_HEIGHT_RATIO));
+  const animations = useRef(
+    Array.from({ length: BAR_COUNT }, () => new Animated.Value(BASE_HEIGHT_RATIO))
+  ).current;
 
   useEffect(() => {
     if (active) {
@@ -36,41 +29,44 @@ export default function AudioWaveformIcon({
       const peaks = [0.9, 1.0, 0.75, 0.85];
       const delays = [0, 100, 50, 150];
 
-      animations.forEach((anim, i) => {
-        anim.value = withDelay(
-          delays[i],
-          withRepeat(
-            withSequence(
-              withTiming(peaks[i] * MAX_HEIGHT_RATIO, {
+      const loops = animations.map((anim, i) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(delays[i]),
+            Animated.sequence([
+              Animated.timing(anim, {
+                toValue: peaks[i] * MAX_HEIGHT_RATIO,
                 duration: durations[i],
                 easing: Easing.inOut(Easing.sin),
+                useNativeDriver: false,
               }),
-              withTiming(BASE_HEIGHT_RATIO, {
+              Animated.timing(anim, {
+                toValue: BASE_HEIGHT_RATIO,
                 duration: durations[i],
                 easing: Easing.inOut(Easing.sin),
-              })
-            ),
-            -1,
-            true
-          )
-        );
-      });
+                useNativeDriver: false,
+              }),
+            ]),
+          ])
+        )
+      );
+
+      loops.forEach((loop) => loop.start());
+      return () => loops.forEach((loop) => loop.stop());
     } else {
       animations.forEach((anim) => {
-        anim.value = withTiming(BASE_HEIGHT_RATIO, { duration: 200 });
+        Animated.timing(anim, {
+          toValue: BASE_HEIGHT_RATIO,
+          duration: 200,
+          useNativeDriver: false,
+        }).start();
       });
     }
   }, [active]);
 
-  const barStyles = animations.map((anim) =>
-    useAnimatedStyle(() => ({
-      height: anim.value * size,
-    }))
-  );
-
   return (
     <View style={[styles.container, { width: size, height: size }]}>
-      {barStyles.map((style, i) => (
+      {animations.map((anim, i) => (
         <Animated.View
           key={i}
           style={[
@@ -79,8 +75,11 @@ export default function AudioWaveformIcon({
               borderRadius: barWidth / 2,
               backgroundColor: color,
               marginHorizontal: gap / 2,
+              height: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, size],
+              }),
             },
-            style,
           ]}
         />
       ))}

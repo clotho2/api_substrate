@@ -22,6 +22,11 @@ export interface GrokChatRequest {
   media_type?: string;
   max_tokens?: number;
   temperature?: number;
+  // Discord metadata for sanctum mode interception
+  guild_id?: string;
+  channel_id?: string;
+  user_id?: string;
+  username?: string;
 }
 
 export interface GrokToolCall {
@@ -128,6 +133,11 @@ export class GrokClient {
       temperature: request.temperature || this.config.temperature,
       ...(request.media_data && { media_data: request.media_data }),
       ...(request.media_type && { media_type: request.media_type }),
+      // Discord metadata for sanctum mode interception
+      ...(request.guild_id && { guild_id: request.guild_id }),
+      ...(request.channel_id && { channel_id: request.channel_id }),
+      ...(request.user_id && { user_id: request.user_id }),
+      ...(request.username && { username: request.username }),
     };
 
     console.log(`🔧 [GrokClient] Sending streaming request: max_tokens=${payload.max_tokens}, model=${model || '(substrate default)'}, session=${payload.session_id}`);
