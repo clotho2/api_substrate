@@ -13,7 +13,7 @@ Apple Watch → HealthKit → HKObserverQuery (background delivery)
                                 ↓
                      Anchored query → fetch new samples
                                 ↓
-                     HTTPS POST → relay.aicara.ai
+                     HTTPS POST → http://your_url.com
                                 ↓
                      Substrate /api/guardian-watch/ingest
 ```
