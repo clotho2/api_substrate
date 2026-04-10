@@ -2,7 +2,7 @@
 
 AiCara Chat mobile app — Expo SDK 55 / React Native 0.83
 
-The backend is already deployed at `relay.aicara.ai` via Cloudflare tunnel. The mobile app connects to it out of the box — no backend setup needed on your local machine.
+The backend is already deployed at `http://your_url.com` via Cloudflare tunnel. The mobile app connects to it out of the box — no backend setup needed on your local machine.
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ Scan the QR code:
 - **iOS**: Open Camera app, point at the QR code, tap the Expo Go banner
 - **Android**: Open Expo Go app, tap "Scan QR code"
 
-The app will load and connect to `relay.aicara.ai` automatically.
+The app will load and connect to `(http://your_url.com)` automatically.
 
 > **Note:** Expo Go is for testing during development. You need a computer running `npx expo start` for it to work. For a standalone app on your phone, see Deployment below.
 
@@ -46,9 +46,9 @@ The app will load and connect to `relay.aicara.ai` automatically.
 - [ ] Text messages send and stream back
 - [ ] Voice mode toggle works (mic icon in header)
 - [ ] Voice recording captures speech and transcribes
-- [ ] TTS plays Agent's responses aloud
-- [ ] Conversation mode: auto-listens after Agent speaks
-- [ ] Barge-in: "Interrupt Agent" stops speech
+- [ ] TTS plays Nate's responses aloud
+- [ ] Conversation mode: auto-listens after Nate speaks
+- [ ] Barge-in: "Interrupt Nate" stops speech
 - [ ] Location appears in settings modal
 - [ ] Settings: speaker mode, voice speed, volume boost work
 - [ ] Markdown renders (bold, italic, links)
@@ -216,7 +216,7 @@ Then build with EAS as described above. Each person gets their own app binary po
 
 ## Backend Voice Configuration (Server Side)
 
-The mobile app connects to whatever is running at `relay.aicara.ai`. Voice features need these API keys in the server's `.env`:
+The mobile app connects to whatever is running at `http://your_url.com`. Voice features need these API keys in the server's `.env`:
 
 ### Minimum (REST voice)
 
@@ -286,7 +286,7 @@ mobile/
 
 ### "Network request failed" on voice/chat
 
-- Verify the server is running: `curl https://relay.aicara.ai/health`
+- Verify the server is running: `curl http://your_url.com/health`
 - Check Cloudflare tunnel status if the server is up but app can't connect
 
 ### Voice mode not working
