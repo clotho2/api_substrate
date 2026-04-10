@@ -14,6 +14,8 @@ See [LICENSE](LICENSE) file for full terms.
 
 Built on modern LLM infrastructure with support for **Grok (xAI)**, **OpenRouter** (100+ models), **Mistral AI**, **Venice AI**, and **Ollama**, PostgreSQL persistence, and an extensible tool architecture. This is the technical substrate powering a configurable AI agent for research, operations, voice interaction, and product work.
 
+
+###NOTE: URLs have been changed in the code to placeholders like "http://your_url.com". Please replace these placeholders with your actual IP address.
 ---
 
 ## 🚀 Quick Start

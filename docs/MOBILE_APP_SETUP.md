@@ -36,7 +36,7 @@ Scan the QR code:
 - **iOS**: Open Camera app, point at the QR code, tap the Expo Go banner
 - **Android**: Open Expo Go app, tap "Scan QR code"
 
-The app will load and connect to `(http://your_url.com)` automatically.
+The app will load and connect to `http://your_url.com` automatically.
 
 > **Note:** Expo Go is for testing during development. You need a computer running `npx expo start` for it to work. For a standalone app on your phone, see Deployment below.
 
@@ -46,9 +46,9 @@ The app will load and connect to `(http://your_url.com)` automatically.
 - [ ] Text messages send and stream back
 - [ ] Voice mode toggle works (mic icon in header)
 - [ ] Voice recording captures speech and transcribes
-- [ ] TTS plays Nate's responses aloud
-- [ ] Conversation mode: auto-listens after Nate speaks
-- [ ] Barge-in: "Interrupt Nate" stops speech
+- [ ] TTS plays Agent's responses aloud
+- [ ] Conversation mode: auto-listens after Agent speaks
+- [ ] Barge-in: "Interrupt Agent" stops speech
 - [ ] Location appears in settings modal
 - [ ] Settings: speaker mode, voice speed, volume boost work
 - [ ] Markdown renders (bold, italic, links)
@@ -286,7 +286,7 @@ mobile/
 
 ### "Network request failed" on voice/chat
 
-- Verify the server is running: `curl http://your_url.com/health`
+- Verify the server is running: `curl https://http://your_url.com/health`
 - Check Cloudflare tunnel status if the server is up but app can't connect
 
 ### Voice mode not working

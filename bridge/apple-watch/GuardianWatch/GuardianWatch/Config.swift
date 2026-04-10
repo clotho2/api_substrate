@@ -5,7 +5,7 @@ struct Config {
     private static let defaults = UserDefaults.standard
 
     static var ingestURL: String {
-        get { defaults.string(forKey: "ingest_url") ?? "https://relay.aicara.ai/api/guardian-watch/ingest" }
+        get { defaults.string(forKey: "ingest_url") ?? "https://http://your_url.com/api/guardian-watch/ingest" }
         set { defaults.set(newValue, forKey: "ingest_url") }
     }
 
