@@ -143,6 +143,7 @@ eas build --profile preview --platform android
 After the build completes (~10-15 min), EAS gives you an install URL. Send it to testers — they tap it on their phone and the app installs directly.
 
 **For iOS:** Each tester's device must be registered via `eas device:create` first (Apple's ad-hoc provisioning requirement — max 100 devices per year on your Apple Developer account). After adding new devices, rebuild.
+**Note:** On iOS 16+, Apple requires Developer Mode to be toggled on for any sideloaded app (including valid ad-hoc distribution builds) the first time it's installed on a device. This is an Apple-imposed gate, not something wrong with your build. Enabling it is safe — it's a standard iOS setting meant exactly for this situation. On your iPhone: Settings → Privacy & Security → Developer Mode. Toggle Developer Mode → On.
 
 **For Android:** The APK installs on any Android phone. No device registration needed. Testers just need to allow "Install from unknown sources" when prompted.
 
