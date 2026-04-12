@@ -1,6 +1,6 @@
 // app/index.tsx
 // Chat with Voice Integration + Agent-Initiated Voice Calls
-// Connected to api_substrate via substrateEngine
+// Connected to nate_api_substrate via substrateEngine
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
@@ -28,6 +28,7 @@ import AudioWaveformIcon from '../components/AudioWaveformIcon';
 import { voiceEngine } from '../lib/voiceEngine';
 import { substrateEngine } from '../lib/substrateEngine';
 import { voiceCallHandler, VoiceCallData } from '../lib/voiceCallHandler';
+import { textMessageHandler, TextMessageData } from '../lib/textMessageHandler';
 
 interface Message {
   id: string;
@@ -36,7 +37,16 @@ interface Message {
   timestamp: string;
   isVoice?: boolean;
   isVoiceCall?: boolean;
-  attachments?: any[];
+  attachments?: PendingAttachment[];
+}
+
+interface PendingAttachment {
+  kind: 'image' | 'document';
+  uri: string;
+  base64: string;
+  filename: string;
+  mimeType: string;
+  displayLabel: string;
 }
 
 interface VoiceCallState {
@@ -56,6 +66,7 @@ export default function ChatScreen() {
     }
   ]);
   const [message, setMessage] = useState('');
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
@@ -341,6 +352,37 @@ export default function ChatScreen() {
     };
   }, []);
 
+  // Subscribe to incoming text messages from Agent (sent via mobile_tool)
+  useEffect(() => {
+    const appendIncoming = (data: TextMessageData) => {
+      setMessages((prev) => {
+        // Dedupe in case both received and tap listeners fire for the same notification
+        if (prev.some((m) => m.id === `agent-text-${data.timestamp}`)) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: `agent-text-${data.timestamp}`,
+            role: 'assistant',
+            content: data.content,
+            timestamp: new Date(data.timestamp).toISOString(),
+          },
+        ];
+      });
+    };
+
+    const unsubscribe = textMessageHandler.onIncomingTextMessage(appendIncoming);
+
+    // Handle cold start: if the app was launched by tapping a text-message
+    // notification, surface it now that the chat screen is mounted.
+    textMessageHandler.getInitialTextMessage().then((initial) => {
+      if (initial) appendIncoming(initial);
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Keyboard listeners
   useEffect(() => {
     const keyboardWillShow = (event: any) => {
@@ -371,18 +413,25 @@ export default function ChatScreen() {
 
   // STREAMING: Real-time response from substrate
   const handleSendMessage = async (content: string, fromVoice: boolean = false) => {
-    if (!content.trim() || isLoading) return;
+    const trimmed = content.trim();
+    const attachment = pendingAttachment;
+
+    // Must have either text or an attachment to send
+    if (!trimmed && !attachment) return;
+    if (isLoading) return;
 
     const userMessage: Message = {
       id: generateId(),
       role: 'user',
-      content: content.trim(),
+      content: trimmed,
       timestamp: new Date().toISOString(),
-      isVoice: fromVoice
+      isVoice: fromVoice,
+      attachments: attachment ? [attachment] : undefined,
     };
 
     setMessages(prev => [...prev, userMessage]);
     setMessage('');
+    setPendingAttachment(null);
     setIsLoading(true);
 
     const assistantMessageId = generateId();
@@ -397,17 +446,57 @@ export default function ChatScreen() {
         role: 'assistant',
         content: '',
         timestamp: new Date().toISOString(),
-        isVoice: fromVoice
+        isVoice: fromVoice,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
 
+      // BRANCH: image attachment → multimodal/vision path
+      if (attachment && attachment.kind === 'image') {
+        await substrateEngine.streamMultimodalMessage(
+          trimmed,
+          attachment.base64,
+          attachment.mimeType,
+          (_chunk: string, accumulated: string) => {
+            setMessages(prevMessages =>
+              prevMessages.map(msg =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: accumulated }
+                  : msg
+              )
+            );
+          }
+        );
+        return;
+      }
+
+      // BRANCH: document attachment → /api/chat with attachment payload
+      if (attachment && attachment.kind === 'document') {
+        const response = await substrateEngine.sendAttachmentMessage(
+          trimmed,
+          {
+            filename: attachment.filename,
+            content: attachment.base64,
+            mime_type: attachment.mimeType,
+          }
+        );
+        setMessages(prevMessages =>
+          prevMessages.map(msg =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: response }
+              : msg
+          )
+        );
+        return;
+      }
+
+      // BRANCH: text only → existing streaming path
       let sentenceBuffer = '';
       let spokenSentences: string[] = [];
       const shouldSpeakStreaming = fromVoice && voiceInitializedRef.current;
 
       await substrateEngine.streamMessage(
-        content.trim(),
+        trimmed,
         (chunk: string, accumulated: string) => {
           setMessages(prevMessages =>
             prevMessages.map(msg =>
@@ -487,7 +576,7 @@ export default function ChatScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        await sendImageToSubstrate(result.assets[0]);
+        stagePickedImage(result.assets[0]);
       }
     } catch (error: any) {
       Alert.alert('Error', 'Failed to capture photo.');
@@ -510,72 +599,29 @@ export default function ChatScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        await sendImageToSubstrate(result.assets[0]);
+        stagePickedImage(result.assets[0]);
       }
     } catch (error: any) {
       Alert.alert('Error', 'Failed to pick photo.');
     }
   };
 
-  const sendImageToSubstrate = async (asset: ImagePicker.ImagePickerAsset) => {
+  // Stage a picked image as a pending attachment — does NOT send.
+  // The user can now type a caption (or not) and tap send to actually deliver.
+  const stagePickedImage = (asset: ImagePicker.ImagePickerAsset) => {
     if (!asset.base64) {
       Alert.alert('Error', 'Could not read image data.');
       return;
     }
-
-    const userMessage: Message = {
-      id: generateId(),
-      role: 'user',
-      content: '📷 [Image shared]',
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-
-    const assistantMessageId = generateId();
-
-    try {
-      if (!substrateEngine.isInitialized) {
-        await substrateEngine.initialize();
-      }
-
-      setMessages(prev => [...prev, {
-        id: assistantMessageId,
-        role: 'assistant',
-        content: '',
-        timestamp: new Date().toISOString(),
-      }]);
-
-      const mimeType = asset.mimeType || 'image/jpeg';
-
-      await substrateEngine.streamMultimodalMessage(
-        'What do you see in this image?',
-        asset.base64,
-        mimeType,
-        (_chunk: string, accumulated: string) => {
-          setMessages(prevMessages =>
-            prevMessages.map(msg =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: accumulated }
-                : msg
-            )
-          );
-        }
-      );
-    } catch (error: any) {
-      setMessages(prevMessages =>
-        prevMessages.filter(msg => msg.id !== assistantMessageId)
-      );
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'assistant',
-        content: `Failed to process image: ${error.message}`,
-        timestamp: new Date().toISOString(),
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
+    const filename = asset.fileName || `image-${Date.now()}.jpg`;
+    setPendingAttachment({
+      kind: 'image',
+      uri: asset.uri,
+      base64: asset.base64,
+      filename,
+      mimeType: asset.mimeType || 'image/jpeg',
+      displayLabel: filename,
+    });
   };
 
   const handleDocumentPick = async () => {
@@ -592,44 +638,21 @@ export default function ChatScreen() {
         encoding: 'base64',
       });
 
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'user',
-        content: `📎 [Document: ${doc.name}]`,
-        timestamp: new Date().toISOString(),
-      }]);
-      setIsLoading(true);
-
-      if (!substrateEngine.isInitialized) {
-        await substrateEngine.initialize();
-      }
-
-      const response = await substrateEngine.sendAttachmentMessage(
-        `Please review this document: ${doc.name}`,
-        {
-          filename: doc.name,
-          content: fileContent,
-          mime_type: doc.mimeType || 'application/octet-stream',
-        }
-      );
-
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'assistant',
-        content: response,
-        timestamp: new Date().toISOString(),
-      }]);
+      // Stage the document as a pending attachment — does NOT send yet.
+      setPendingAttachment({
+        kind: 'document',
+        uri: doc.uri,
+        base64: fileContent,
+        filename: doc.name,
+        mimeType: doc.mimeType || 'application/octet-stream',
+        displayLabel: doc.name,
+      });
     } catch (error: any) {
-      setMessages(prev => [...prev, {
-        id: generateId(),
-        role: 'assistant',
-        content: `Failed to process document: ${error.message}`,
-        timestamp: new Date().toISOString(),
-      }]);
-    } finally {
-      setIsLoading(false);
+      Alert.alert('Error', `Failed to read document: ${error.message}`);
     }
   };
+
+  const clearPendingAttachment = () => setPendingAttachment(null);
 
   const toggleVoiceMode = async () => {
     if (!voiceInitialized) {
@@ -781,16 +804,44 @@ export default function ChatScreen() {
             </View>
           )}
 
-          <Markdown
-            style={getMarkdownStyles(isUser)}
-            rules={markdownRules}
-            onLinkPress={(url: string) => {
-              Linking.openURL(url);
-              return false;
-            }}
-          >
-            {preserveLineBreaks(msg.content)}
-          </Markdown>
+          {msg.attachments && msg.attachments.length > 0 && (
+            <View style={styles.attachmentChipsContainer}>
+              {msg.attachments.map((att, idx) => (
+                <View key={`${msg.id}-att-${idx}`} style={[
+                  styles.attachmentChip,
+                  { backgroundColor: isUser ? 'rgba(255,255,255,0.18)' : '#EEF2FF' }
+                ]}>
+                  <Ionicons
+                    name={att.kind === 'image' ? 'image' : 'document-text'}
+                    size={14}
+                    color={isUser ? '#FFFFFF' : '#6366F1'}
+                  />
+                  <Text
+                    style={[
+                      styles.attachmentChipText,
+                      { color: isUser ? '#FFFFFF' : '#374151' }
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {att.displayLabel}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {msg.content ? (
+            <Markdown
+              style={getMarkdownStyles(isUser)}
+              rules={markdownRules}
+              onLinkPress={(url: string) => {
+                Linking.openURL(url);
+                return false;
+              }}
+            >
+              {preserveLineBreaks(msg.content)}
+            </Markdown>
+          ) : null}
 
           {!isUser && (
             <TouchableOpacity
@@ -967,6 +1018,27 @@ export default function ChatScreen() {
         </View>
       ) : (
         <View style={[styles.inputContainer, { bottom: inputBottom }]}>
+          {pendingAttachment && (
+            <View style={styles.pendingAttachmentRow}>
+              <View style={styles.pendingAttachmentChip}>
+                <Ionicons
+                  name={pendingAttachment.kind === 'image' ? 'image' : 'document-text'}
+                  size={16}
+                  color="#6366F1"
+                />
+                <Text style={styles.pendingAttachmentLabel} numberOfLines={1}>
+                  {pendingAttachment.displayLabel}
+                </Text>
+                <TouchableOpacity
+                  onPress={clearPendingAttachment}
+                  style={styles.pendingAttachmentClear}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           <View style={styles.inputRow}>
             <TouchableOpacity style={styles.attachButton} onPress={handleFileAttachment} activeOpacity={0.7}>
               <Ionicons name="attach" size={24} color="#6B7280" />
@@ -984,14 +1056,19 @@ export default function ChatScreen() {
               textAlignVertical="top"
               blurOnSubmit={false}
             />
-            <TouchableOpacity
-              onPress={() => handleSendMessage(message)}
-              disabled={!message.trim() || isLoading}
-              style={[styles.sendButton, { backgroundColor: (message.trim() && !isLoading) ? '#6366F1' : '#E5E7EB' }]}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="send" size={20} color={(message.trim() && !isLoading) ? '#FFFFFF' : '#9CA3AF'} />
-            </TouchableOpacity>
+            {(() => {
+              const canSend = (message.trim().length > 0 || pendingAttachment !== null) && !isLoading;
+              return (
+                <TouchableOpacity
+                  onPress={() => handleSendMessage(message)}
+                  disabled={!canSend}
+                  style={[styles.sendButton, { backgroundColor: canSend ? '#6366F1' : '#E5E7EB' }]}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="send" size={20} color={canSend ? '#FFFFFF' : '#9CA3AF'} />
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         </View>
       )}
@@ -1039,11 +1116,49 @@ const getMarkdownStyles = (isUser: boolean) => ({
     marginBottom: 4,
   },
   code_inline: {
-    backgroundColor: isUser ? 'rgba(255,255,255,0.15)' : '#F3F4F6',
+    backgroundColor: isUser ? 'rgba(0,0,0,0.25)' : '#F3F4F6',
+    color: isUser ? '#FFFFFF' : '#1F2937',
     fontFamily: 'SpaceMono',
     fontSize: 14,
     paddingHorizontal: 4,
     borderRadius: 4,
+  },
+  code_block: {
+    backgroundColor: isUser ? 'rgba(0,0,0,0.25)' : '#F3F4F6',
+    color: isUser ? '#FFFFFF' : '#1F2937',
+    fontFamily: 'SpaceMono',
+    fontSize: 14,
+    padding: 8,
+    borderRadius: 6,
+    marginVertical: 4,
+  },
+  fence: {
+    backgroundColor: isUser ? 'rgba(0,0,0,0.25)' : '#F3F4F6',
+    color: isUser ? '#FFFFFF' : '#1F2937',
+    fontFamily: 'SpaceMono',
+    fontSize: 14,
+    padding: 8,
+    borderRadius: 6,
+    marginVertical: 4,
+    borderWidth: 0,
+  },
+  blockquote: {
+    backgroundColor: isUser ? 'rgba(255,255,255,0.10)' : '#F3F4F6',
+    borderLeftWidth: 3,
+    borderLeftColor: isUser ? 'rgba(255,255,255,0.5)' : '#6366F1',
+    paddingLeft: 8,
+    paddingVertical: 4,
+    marginVertical: 4,
+  },
+  bullet_list: {
+    marginVertical: 4,
+  },
+  ordered_list: {
+    marginVertical: 4,
+  },
+  list_item: {
+    color: isUser ? '#FFFFFF' : '#1F2937',
+    marginVertical: 2,
   },
 });
 
@@ -1093,6 +1208,22 @@ const styles = StyleSheet.create({
     borderRadius: 22, paddingHorizontal: 16, paddingVertical: 12, color: '#1F2937', fontSize: 16, maxHeight: 100, minHeight: 44,
   },
   sendButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  pendingAttachmentRow: { flexDirection: 'row', marginBottom: 8 },
+  pendingAttachmentChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#EEF2FF', borderWidth: 1, borderColor: '#C7D2FE',
+    borderRadius: 16, paddingLeft: 12, paddingRight: 6, paddingVertical: 6, gap: 6,
+    maxWidth: '100%',
+  },
+  pendingAttachmentLabel: { color: '#374151', fontSize: 13, maxWidth: 220 },
+  pendingAttachmentClear: { marginLeft: 4, padding: 2 },
+  attachmentChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  attachmentChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10,
+    maxWidth: '100%',
+  },
+  attachmentChipText: { fontSize: 12, maxWidth: 200 },
   voiceInputContainer: { alignItems: 'center', paddingVertical: 16 },
   voiceStatusIndicator: {
     width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center',

@@ -5,6 +5,8 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import { registerForPushNotificationsAsync } from '../lib/pushRegistration';
+import { USER_ID } from '../config/substrate';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -35,6 +37,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  // Register for push notifications on app startup so Agent can reach the
+  // phone with text messages and voice calls.
+  useEffect(() => {
+    registerForPushNotificationsAsync(USER_ID).catch((err) => {
+      console.warn('Push registration failed (non-fatal):', err);
+    });
+  }, []);
 
   if (!loaded) {
     return null;

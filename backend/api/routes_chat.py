@@ -14,6 +14,9 @@ Designed for Telegram bot integration but works with any client.
 from flask import Blueprint, jsonify, request
 import logging
 import asyncio
+import base64
+import os
+import tempfile
 from datetime import datetime
 import uuid
 import re
@@ -188,27 +191,134 @@ def chat():
 
         elif has_attachment:
             # DOCUMENT ATTACHMENT
-            message = data.get('message', 'Analyze this document')
+            # Accept caller's message verbatim — empty is fine. The mobile
+            # composer no longer fabricates a fallback prompt; Agent is smart
+            # enough to react to a file landing in the conversation.
+            message = data.get('message', '') or ''
             attachment = data.get('attachment', {})
 
             filename = attachment.get('filename', 'document')
-            mime_type = attachment.get('mime_type', 'application/octet-stream')
-            content_data = attachment.get('content', '')
+            mime_type = (attachment.get('mime_type') or 'application/octet-stream').lower()
+            content_data = attachment.get('content', '') or ''
 
             logger.info(f"📎 POST /api/chat (attachment) session={session_id}")
-            logger.info(f"   Message: {message}")
+            logger.info(f"   Message: {message[:200] if message else '(no caption)'}")
             logger.info(f"   File: {filename} ({mime_type})")
 
-            # For now, include attachment info in the message
-            # Future: Could integrate with vision or document analysis
-            enhanced_message = f"""{message}
+            # Decode the base64 payload from the mobile client. Some callers
+            # send raw text; tolerate that gracefully.
+            raw_bytes: Optional[bytes] = None
+            try:
+                raw_bytes = base64.b64decode(content_data, validate=False)
+            except Exception as decode_err:
+                logger.warning(f"   Could not base64-decode attachment: {decode_err}")
+                raw_bytes = content_data.encode('utf-8', errors='replace') if isinstance(content_data, str) else None
 
-[Attached file: {filename}]
-File type: {mime_type}
-Content length: {len(content_data)} characters/bytes
+            file_size = len(raw_bytes) if raw_bytes else 0
+            logger.info(f"   Decoded size: {file_size} bytes")
 
-Note: Document content processing will be implemented in future updates.
-For now, please describe what you'd like me to help you with regarding this document."""
+            # Cap injected file content so we don't blow the model context.
+            MAX_FILE_CHARS = 50_000
+
+            def _looks_textlike(mt: str, fname: str) -> bool:
+                if mt.startswith('text/'):
+                    return True
+                if mt in {
+                    'application/json',
+                    'application/xml',
+                    'application/javascript',
+                    'application/x-javascript',
+                    'application/x-yaml',
+                    'application/yaml',
+                    'application/x-sh',
+                    'application/x-python',
+                    'application/x-toml',
+                    'application/sql',
+                }:
+                    return True
+                lowered = (fname or '').lower()
+                code_exts = (
+                    '.txt', '.md', '.markdown', '.json', '.yaml', '.yml', '.toml',
+                    '.xml', '.html', '.htm', '.css', '.scss', '.less',
+                    '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
+                    '.py', '.rb', '.go', '.rs', '.java', '.kt', '.swift',
+                    '.c', '.h', '.cpp', '.hpp', '.cc', '.cs', '.php',
+                    '.sh', '.bash', '.zsh', '.fish', '.ps1',
+                    '.sql', '.csv', '.tsv', '.log', '.ini', '.cfg', '.conf', '.env',
+                )
+                return lowered.endswith(code_exts)
+
+            file_text: Optional[str] = None
+            extraction_note = ''
+
+            if raw_bytes is not None and _looks_textlike(mime_type, filename):
+                try:
+                    decoded = raw_bytes.decode('utf-8', errors='replace')
+                    if len(decoded) > MAX_FILE_CHARS:
+                        file_text = decoded[:MAX_FILE_CHARS]
+                        extraction_note = (
+                            f"\n\n[truncated — showing first {MAX_FILE_CHARS} of {len(decoded)} characters]"
+                        )
+                    else:
+                        file_text = decoded
+                except Exception as text_err:
+                    logger.warning(f"   Text decode failed: {text_err}")
+
+            elif raw_bytes is not None and mime_type == 'application/pdf':
+                # Extract PDF text inline via PyMuPDF (already a dep via read_pdf tool)
+                try:
+                    import fitz  # type: ignore
+                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp_pdf:
+                        tmp_pdf.write(raw_bytes)
+                        tmp_pdf_path = tmp_pdf.name
+                    try:
+                        pdf_doc = fitz.open(tmp_pdf_path)
+                        pages_text = []
+                        total_pages = len(pdf_doc)
+                        for page_num, page in enumerate(pdf_doc, start=1):
+                            pages_text.append(f"--- Page {page_num} ---\n{page.get_text()}")
+                        pdf_doc.close()
+                        joined = '\n\n'.join(pages_text)
+                        if len(joined) > MAX_FILE_CHARS:
+                            file_text = joined[:MAX_FILE_CHARS]
+                            extraction_note = (
+                                f"\n\n[truncated — showing first {MAX_FILE_CHARS} of {len(joined)} characters "
+                                f"across {total_pages} pages]"
+                            )
+                        else:
+                            file_text = joined
+                            extraction_note = f"\n\n[extracted from {total_pages} page(s)]"
+                    finally:
+                        try:
+                            os.unlink(tmp_pdf_path)
+                        except Exception:
+                            pass
+                except Exception as pdf_err:
+                    logger.warning(f"   PDF extraction failed: {pdf_err}")
+                    file_text = None
+                    extraction_note = f"\n\n[PDF text extraction failed: {pdf_err}]"
+
+            # Build the enhanced message that goes to the model.
+            caption_block = message.strip() if message else ''
+            header = f"[Attached file: {filename} ({mime_type}, {file_size} bytes)]"
+
+            if file_text is not None:
+                fenced = f"```\n{file_text}{extraction_note}\n```"
+                if caption_block:
+                    enhanced_message = f"{caption_block}\n\n{header}\n{fenced}"
+                else:
+                    enhanced_message = f"{header}\n{fenced}"
+            else:
+                # Binary or otherwise unreadable — be honest about why
+                fallback = (
+                    f"{header}\n"
+                    f"(This file type isn't text-readable on the server, "
+                    f"so I can see it was attached but can't read the contents directly.)"
+                )
+                if caption_block:
+                    enhanced_message = f"{caption_block}\n\n{fallback}"
+                else:
+                    enhanced_message = fallback
 
             user_message = {
                 "role": "user",

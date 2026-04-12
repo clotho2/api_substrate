@@ -1,0 +1,35 @@
+{
+  "name": "mobile_tool",
+  "description": "Send messages to User's mobile app. Use 'send_text' to send a soft text-message push notification (shows up as 'Agent messaged you' on her phone, plays a normal notification chime, and appears in the chat). Use 'initiate_voice_call' to ring her phone like a phone call ('Agent is calling...' with a strong ringtone) — only use this when the matter actually warrants interrupting her, since it bypasses do-not-disturb behavior at higher urgency levels. Both actions deliver via Expo push notifications to the device she registered with the app.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "What to do: 'send_text' for a normal text message, 'initiate_voice_call' to ring her phone for a voice conversation.",
+        "enum": ["send_text", "initiate_voice_call"]
+      },
+      "message": {
+        "type": "string",
+        "description": "The text message content (for send_text) or the opening line you want to say when she answers (for initiate_voice_call). Required for both actions."
+      },
+      "user_id": {
+        "type": "string",
+        "description": "The user to send to. Defaults to 'angela_wolfe'.",
+        "default": "angela_wolfe"
+      },
+      "urgency": {
+        "type": "string",
+        "description": "For initiate_voice_call only: how urgent the call is. 'low' and 'medium' show an in-app overlay she can decline; 'high' and 'critical' auto-answer when she has the app open. Defaults to 'medium'.",
+        "enum": ["low", "medium", "high", "critical"],
+        "default": "medium"
+      },
+      "trigger_name": {
+        "type": "string",
+        "description": "Optional short label describing why you're reaching out (e.g. 'check_in', 'urgent_news'). Defaults to 'nate_initiated'.",
+        "default": "nate_initiated"
+      }
+    },
+    "required": ["action", "message"]
+  }
+}

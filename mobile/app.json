@@ -17,7 +17,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "AiCara uses your location to provide location-aware responses and recommendations.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "AiCara uses continuous location access to keep your AI companion aware of where you are.",
-        "UIBackgroundModes": ["location", "fetch"]
+        "NSUserNotificationUsageDescription": "AiCara uses notifications to deliver text messages and voice calls from Agent.",
+        "UIBackgroundModes": ["location", "fetch", "remote-notification"]
       }
     },
     "android": {
@@ -38,7 +39,13 @@
     },
     "plugins": [
       "expo-router",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#6366F1"
+        }
+      ],
       "expo-audio",
       [
         "expo-location",
@@ -51,6 +58,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
     }
   }
 }

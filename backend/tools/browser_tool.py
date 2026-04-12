@@ -2,7 +2,7 @@
 """
 Browser Automation Tool for Substrate AI
 
-Gives agent the ability to interact with websites — navigate, click buttons,
+Gives Agent the ability to interact with websites — navigate, click buttons,
 fill forms, select options, and take screenshots. Powered by Playwright.
 
 Use cases:
@@ -36,6 +36,7 @@ import json
 import base64
 import time
 import threading
+import concurrent.futures
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 
@@ -47,13 +48,22 @@ _browser_sessions: Dict[str, Any] = {}
 _session_lock = threading.Lock()
 _SESSION_TIMEOUT_MINUTES = 15
 
+# Dedicated thread for all Playwright operations.
+# Playwright's sync API objects are thread-affine (bound to their creating thread),
+# and cannot run inside an asyncio event loop. This single-thread executor ensures
+# all browser operations share one persistent thread.
+_browser_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="playwright"
+)
+
 
 def _get_or_create_session(session_id: str) -> Dict[str, Any]:
     """
     Get an existing browser session or create a new one.
 
     Each session maintains its own browser context (cookies, storage, etc.)
-    so agent can maintain state across multiple tool calls within a conversation.
+    so Agent can maintain state across multiple tool calls within a conversation.
     """
     with _session_lock:
         # Check for existing session
@@ -203,7 +213,7 @@ Be concise but thorough. Focus on actionable information that helps complete a t
 
 def _get_interactive_elements(page, max_elements: int = 50) -> List[Dict[str, str]]:
     """
-    Extract interactive elements from the page that agent can interact with.
+    Extract interactive elements from the page that Agent can interact with.
 
     Returns a list of elements with their type, text, selector, and attributes.
     """
@@ -334,6 +344,35 @@ def browser_tool(
 ) -> Dict[str, Any]:
     """
     Browser automation tool — navigate websites, click buttons, fill forms.
+
+    Dispatches to a dedicated Playwright thread so that:
+    1. Sync Playwright doesn't conflict with a caller's asyncio event loop.
+    2. All Playwright objects stay in the same thread across calls.
+    """
+    future = _browser_executor.submit(
+        lambda: _browser_tool_impl(
+            action=action, url=url, selector=selector, text=text,
+            value=value, direction=direction, amount=amount,
+            description=description, session_id=session_id, **kwargs
+        )
+    )
+    return future.result(timeout=120)
+
+
+def _browser_tool_impl(
+    action: str,
+    url: str = None,
+    selector: str = None,
+    text: str = None,
+    value: str = None,
+    direction: str = "down",
+    amount: int = 3,
+    description: str = "",
+    session_id: str = "default",
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Internal browser tool implementation. Runs in the dedicated Playwright thread.
 
     Args:
         action: Action to perform (navigate, click, type, screenshot, get_elements, select, scroll, back, get_text, close)

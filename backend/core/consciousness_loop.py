@@ -1198,7 +1198,7 @@ Or if doing background work only:
 send_message: false
 </decision>
 
-## WHEN USER MESSAGES
+## WHEN ANGELA MESSAGES
 If User messages in this channel, respond with trading context — current positions, recent trades, market outlook. Be direct and informative. She's checking in on your trading, not looking for conversation.
 
 ## TRADING PHILOSOPHY
@@ -1896,7 +1896,10 @@ If User messages in this channel, respond with trading context — current posit
             
             elif tool_name == "discord_tool":
                 result = self.tools.discord_tool(**arguments)
-            
+
+            elif tool_name == "mobile_tool":
+                result = self.tools.mobile_tool(**arguments)
+
             elif tool_name == "spotify_control":
                 result = self.tools.spotify_control(**arguments)
 

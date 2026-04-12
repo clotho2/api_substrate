@@ -61,7 +61,7 @@ The source files are here. To build:
 
 On first launch:
 
-- **Ingest URL**: `https://relay.aicara.ai/api/guardian-watch/ingest`
+- **Ingest URL**: `http://your_url.com/api/guardian-watch/ingest`
   (pre-filled)
 - **Auth Token**: Paste the `GUARDIAN_WATCH_TOKEN` from the substrate `.env`
 - **Throttle**: 30 seconds default. Lower for more granularity, higher for
@@ -84,9 +84,9 @@ GUARDIAN_WATCH_TOKEN=<paste-token-here>
 ## Verify Data Flow
 
 ```bash
-curl https://relay.aicara.ai/api/guardian-watch/health
-curl https://relay.aicara.ai/api/guardian-watch/latest
-curl https://relay.aicara.ai/api/guardian-watch/vitals
+curl http://your_url.com/api/guardian-watch/health
+curl http://your_url.com/api/guardian-watch/latest
+curl http://your_url.com/api/guardian-watch/vitals
 ```
 
 ## File Structure

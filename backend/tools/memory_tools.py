@@ -33,7 +33,7 @@ from typing import Dict, Any, Optional, List
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.state_manager import StateManager, StateManagerError
-from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError, AGENT_TAXONOMY
+from core.memory_system import MemorySystem, MemoryCategory, MemorySystemError, NATE_TAXONOMY
 from tools.integration_tools import IntegrationTools
 from tools.memory import memory as _memory_tool, set_state_manager
 
@@ -978,7 +978,7 @@ class MemoryTools:
 
         # Validate tags (including custom taxonomy)
         custom_tags = self._load_custom_taxonomy()
-        all_valid = AGENT_TAXONOMY + [t['name'] for t in custom_tags]
+        all_valid = NATE_TAXONOMY + [t['name'] for t in custom_tags]
         valid_tags = [t for t in tags if t in all_valid]
         if not valid_tags:
             return {
@@ -1030,7 +1030,7 @@ class MemoryTools:
 
         # Validate tags against taxonomy (allow custom tags too)
         custom_tags = self._load_custom_taxonomy()
-        all_valid = AGENT_TAXONOMY + [t['name'] for t in custom_tags]
+        all_valid = NATE_TAXONOMY + [t['name'] for t in custom_tags]
         valid_tags = [t.strip().lower() for t in tags if t.strip().lower() in all_valid]
         invalid_tags = [t for t in tags if t.strip().lower() not in all_valid]
 
@@ -1089,7 +1089,7 @@ class MemoryTools:
                 "message": "Tag name must be lowercase letters only (e.g., 'music', 'health')"
             }
 
-        if tag_name in AGENT_TAXONOMY:
+        if tag_name in NATE_TAXONOMY:
             return {
                 "status": "error",
                 "message": f"'{tag_name}' is already a core taxonomy tag"
@@ -1107,7 +1107,7 @@ class MemoryTools:
         custom_tags.append({"name": tag_name, "description": description})
         self._save_custom_taxonomy(custom_tags)
 
-        all_tags = AGENT_TAXONOMY + [t['name'] for t in custom_tags]
+        all_tags = NATE_TAXONOMY + [t['name'] for t in custom_tags]
         return {
             "status": "OK",
             "message": f"Added custom taxonomy tag: '{tag_name}' — {description}",
@@ -1162,9 +1162,9 @@ class MemoryTools:
         """Update Agent's personal opinion about someone."""
         return self.state.update_opinion(name=name, opinion=opinion, sentiment=sentiment)
 
-    def record_user_says(self, name: str, statement: str) -> Dict[str, Any]:
+    def record_angela_says(self, name: str, statement: str) -> Dict[str, Any]:
         """Store what User has said about someone."""
-        return self.state.record_user_says(name=name, statement=statement)
+        return self.state.record_angela_says(name=name, statement=statement)
 
     def adjust_sentiment(self, name: str, delta: float, reason: str = "") -> Dict[str, Any]:
         """Increment/decrement sentiment score for a person."""
@@ -1274,12 +1274,12 @@ class MemoryTools:
         """
         return self.integrations.lovense_tool(**kwargs)
 
-    def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:
+    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
         Agent self-development tool (wrapper).
         Read-only access to inspect codebase, logs, and system health.
         """
-        return self.integrations.agent_dev_tool(**kwargs)
+        return self.integrations.nate_dev_tool(**kwargs)
 
     def notebook_library(self, **kwargs) -> Dict[str, Any]:
         """
@@ -1294,6 +1294,14 @@ class MemoryTools:
         SMS messaging, voice calls, and contact management via Twilio.
         """
         return self.integrations.phone_tool(**kwargs)
+
+    def mobile_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Mobile tool (wrapper).
+        Send proactive text messages and voice calls to User's mobile app
+        via Expo push notifications.
+        """
+        return self.integrations.mobile_tool(**kwargs)
 
     def sanctum_tool(self, **kwargs) -> Dict[str, Any]:
         """
@@ -1886,7 +1894,7 @@ class MemoryTools:
             {
                 "type": "function",
                 "function": {
-                    "name": "record_user_says",
+                    "name": "record_angela_says",
                     "description": "Store what User has told you about someone.",
                     "parameters": {
                         "type": "object",

@@ -1,5 +1,5 @@
 // app/lib/substrateEngine.ts
-// Direct connection to api_substrate consciousness loop
+// Direct connection to nate_api_substrate consciousness loop
 // Replaces wolfeEngine.js - substrate manages persona, memory, conversation history
 // Mobile app only sends the latest user message
 //
@@ -444,7 +444,7 @@ class SubstrateEngine {
       streamEndpoint: this.streamEndpoint,
       chatEndpoint: ENDPOINTS.chat,
       chatApiEndpoint: ENDPOINTS.chatApi,
-      backend: 'api_substrate',
+      backend: 'nate_api_substrate',
       memoryManagement: 'substrate',
       personaManagement: 'substrate',
       conversationManagement: 'substrate',

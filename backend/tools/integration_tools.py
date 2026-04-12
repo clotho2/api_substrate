@@ -24,7 +24,7 @@ from tools.discord_tool import discord_tool as _discord_tool
 from tools.spotify_control import spotify_control as _spotify_control
 from tools.send_voice_message import send_voice_message as _send_voice_message
 from tools.lovense_tool import lovense_tool as _lovense_tool
-from tools.agent_dev_tool import agent_dev_tool as _agent_dev_tool
+from tools.nate_dev_tool import nate_dev_tool as _nate_dev_tool
 from tools.notebook_library_tool import notebook_library_tool as _notebook_library_tool
 from tools.web_search import web_search as _web_search
 from tools.fetch_webpage import fetch_webpage as _fetch_webpage
@@ -38,6 +38,7 @@ from tools.pdf_reader import get_pdf_reader, read_arxiv_paper as _read_arxiv
 from tools.places_search import get_places_search, search_places as _search_places
 from tools.google_places_tool import google_places_tool as _google_places_tool, get_google_places_schema
 from tools.phone_tool import phone_tool as _phone_tool
+from tools.mobile_tool import mobile_tool as _mobile_tool
 from tools.sanctum_tool import sanctum_tool as _sanctum_tool
 from tools.browser_tool import browser_tool as _browser_tool
 from tools.image_tool import image_tool as _image_tool
@@ -197,7 +198,7 @@ class IntegrationTools:
     # AGENT SELF-DEVELOPMENT TOOL
     # ============================================
 
-    def agent_dev_tool(self, **kwargs) -> Dict[str, Any]:
+    def nate_dev_tool(self, **kwargs) -> Dict[str, Any]:
         """
         Agent's self-development tool for inspecting his own codebase.
 
@@ -214,7 +215,7 @@ class IntegrationTools:
             Dict with status and result
         """
         try:
-            result = _agent_dev_tool(**kwargs)
+            result = _nate_dev_tool(**kwargs)
             return result
         except Exception as e:
             return {
@@ -542,6 +543,31 @@ class IntegrationTools:
             }
 
     # ============================================
+    # MOBILE TOOL (Push Messages + Voice Calls to Mobile App)
+    # ============================================
+
+    def mobile_tool(self, **kwargs) -> Dict[str, Any]:
+        """
+        Send proactive messages to User's mobile app.
+
+        Actions:
+        - send_text: Soft text message ("Agent messaged you" notification)
+        - initiate_voice_call: Ring her phone like a real call ("Agent is calling...")
+
+        Both actions deliver via Expo push notifications to the registered device.
+
+        Returns:
+            Dict with status and message
+        """
+        try:
+            return _mobile_tool(**kwargs)
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Mobile tool error: {str(e)}"
+            }
+
+    # ============================================
     # GOOGLE PLACES (Requires API Key)
     # ============================================
 
@@ -694,9 +720,10 @@ class IntegrationTools:
             'spotify_control',
             'send_voice_message',
             'lovense_tool',
-            'agent_dev_tool',
+            'nate_dev_tool',
             'notebook_library_tool',
             'phone_tool',
+            'mobile_tool',
             'sanctum_tool',
             'browser_tool',
             'image_tool',
@@ -858,7 +885,7 @@ class IntegrationTools:
                 "type": "function",
                 "function": {
                     "name": "search_places",
-                    "description": "Search for places, restaurants, shops, POIs using OpenStreetMap (FREE!). Great for finding nearby businesses, attractions, addresses. Returns location details, coordiagents, opening hours (if available). ⚠️ Use sparingly - max 10 results recommended.",
+                    "description": "Search for places, restaurants, shops, POIs using OpenStreetMap (FREE!). Great for finding nearby businesses, attractions, addresses. Returns location details, coordinates, opening hours (if available). ⚠️ Use sparingly - max 10 results recommended.",
                     "parameters": {
                         "type": "object",
                         "properties": {
