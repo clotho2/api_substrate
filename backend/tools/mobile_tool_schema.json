@@ -15,8 +15,8 @@
       },
       "user_id": {
         "type": "string",
-        "description": "The user to send to. Defaults to 'angela_wolfe'.",
-        "default": "angela_wolfe"
+        "description": "The user to send to. Defaults to 'user_name'.",
+        "default": "user_name"
       },
       "urgency": {
         "type": "string",
