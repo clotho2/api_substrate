@@ -20,7 +20,7 @@ export const SUBSTRATE_URL = getEnvVar(
 // User identity - configurable for multi-user testing
 export const USER_ID = getEnvVar(
   'EXPO_PUBLIC_USER_ID',
-  'angela_wolfe'
+  'user_name'
 );
 
 // Unified session ID across all channels (Discord, mobile, web)
