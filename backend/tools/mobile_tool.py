@@ -35,7 +35,7 @@ def _truncate_for_preview(text: str, max_chars: int = 140) -> str:
 def mobile_tool(
     action: str,
     message: str = "",
-    user_id: str = "angela_wolfe",
+    user_id: str = "user_name",
     urgency: str = "medium",
     trigger_name: str = "nate_initiated",
     **_ignored,
@@ -46,7 +46,7 @@ def mobile_tool(
     Args:
         action: 'send_text' or 'initiate_voice_call'
         message: The text content (required for both actions)
-        user_id: Target user (default 'angela_wolfe')
+        user_id: Target user (default 'user_name')
         urgency: 'low'|'medium'|'high'|'critical' (voice calls only)
         trigger_name: Short label for logging/history
 
