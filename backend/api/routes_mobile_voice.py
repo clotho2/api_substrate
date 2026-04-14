@@ -268,7 +268,7 @@ def setup_mobile_voice_stream(sock, consciousness_loop=None, state_manager=None)
         the consciousness loop, and streams the Cartesia TTS response back.
         """
         session_id = "nate_conversation"
-        user_id = "angela_wolfe"
+        user_id = "user_name"
 
         # State
         interrupted = threading.Event()
